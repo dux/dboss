@@ -1,7 +1,10 @@
-# dboss
+# <img src="internal/pages/logo.svg" alt="" width="32" height="32"> dboss
 
 Your own mini-Heroku on one server: a single-binary Kubernetes alternative that runs, routes, logs and monitors all your apps.
-Supervisor, router, HTTPS, log store and web console in a single file, configured by one `dboss.yaml` per app.
+At heart it is a reverse proxy, with a supervisor, HTTPS, log store and web console built around it, all in a single file configured by one `dboss.yaml` per app.
+
+Apps run on bare metal as plain processes: no containers, no VM layer and no overlay network between the request and your code, so you get the full speed of the box with Heroku's simplicity.
+Under the hood it is a generic procfile runner, so any command can be a service: a Rails server, a Go binary, a worker, or `docker compose up` when you do want Docker.
 
 <table>
   <tr>
@@ -22,7 +25,7 @@ You have a handful of apps and one decent server, and you want them online witho
 
 dboss is for you if:
 
-* You do not use Kubernetes, and do not want to learn it to run four Rails apps.
+* You do not use Kubernetes, and do not want to learn it to run four apps - Rails, Django, Go or Docker.
 * You do not need a swarm of application servers, autoscaling or multi-region failover.
 * One box with enough RAM is genuinely enough, and you would rather spend that RAM on your apps than on a control plane.
 * You want to see what is running, read the logs and fix the config without stitching together five separate tools.
@@ -38,7 +41,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Process supervision** - procfile per app, workers, several instances, restart backoff, health checks and zero-downtime rolling restarts.
 * **Apps that sleep** - an idle app stops on its own and the next request wakes it.
 * **HTTPS** - on-demand Let's Encrypt certificates, or Cloudflare in front.
-* **Logs** - every log line and request in a per-app SQLite store with full-text search.
+* **Logs** - every log line and request in a per-app SQLite store with full-text search. All app logs are automaticly stored and rotated.
 * **Exceptions** - app exceptions grouped by fingerprint, with counts, resolve and ignore.
 * **Traffic** - requests over time, error rate, latency quantiles, top and slowest paths per app.
 * **Events** - JSON event lines stored as Parquet, with filters, saved views, funnels and DuckDB SQL.
@@ -60,7 +63,7 @@ Each app is a folder with a `dboss.yaml` naming its processes and hostnames.
 dboss reads them, hands every process a fixed `PORT`, proxies HTTP to the right one by hostname, stops idle apps and wakes them on the next request, and ingests every process log and request row into that app's log store.
 Daemon features are modules with a common lifecycle, so a new one (an ingestion sink, a security filter) plugs in at one place.
 
-There are no containers.
+dboss itself needs no containers; an app that wants Docker runs it from its procfile (see [Containers](#containers)).
 Deploys are two commands, `dboss deploy sync` and `dboss deploy git` (see [Deploying](#deploying)); lux-deploy, when you use it for releases and rollback, calls `dboss restart` at the end of a deploy.
 The configuration reference ships in the binary: `dboss config --reference`, also embedded from `./internal/config/reference.yaml`.
 
@@ -180,7 +183,7 @@ The demo host file blocks common scanner targets for every app (`defaults.deny`:
 `dboss.yaml` is the only configuration file.
 A file with `procfile` describes an app; any other file describes a host that runs a directory of apps (default `./apps`).
 `dboss.local.yaml` next to it wins when it exists and is meant for server-only overrides (gitignored).
-A folder without either file is also searched in its `config/` subfolder, so an app (a Rails app, say) can keep `config/dboss.yaml`; relative paths still resolve against the app folder, and files in both places are an error.
+A folder without either file is also searched in its `config/` subfolder, so an app can keep `config/dboss.yaml`; relative paths still resolve against the app folder, and files in both places are an error.
 Every command looks for the config as `-c path`, then `$DBOSS_CONFIG`, then the current folder.
 
 Every host key has a sane default - `apps: ./apps`, `dir: ./.dboss`, `proxy.listen: ":80"`, `ports: [3100, 3990]`, the AuthCog realm, session lifetime and the daily maintenance time - so a host file only names what deviates. The config has no tuning knobs: timeouts, rotation sizes and check cadences are built in, and a key dboss dropped fails `dboss check` with its replacement. With no config file at all, `dboss start` runs the default host: `:80`, `./apps`, console off.
@@ -825,15 +828,19 @@ The metrics endpoint exports `dboss_pg_up`, `dboss_pg_database_size_bytes`, `dbo
 
 ## Containers
 
-dboss supervises native processes and does not start or manage containers.
-Run a Docker-packaged app with Docker Compose as its own system and let Cloudflare reach the container's published port directly; dboss stays out of that path.
+dboss runs plain processes, and a container is one more command in the procfile.
+Put `docker compose up` or `docker run` in a procfile entry and dboss starts, stops and restarts it like any other service, with its output in the same log store.
 
-Two rules keep the two systems from colliding:
+```yaml
+procfile:
+  web:
+    command: docker compose up
+    hosts: [shop.example.com]
+```
 
-* Keep container ports outside `ports`. On start dboss clears every listener in the range and before each spawn frees the app's fixed port, so a container listening there would be killed.
-* A hostname is routed by one proxy only. dboss routes just the hosts of the apps in its own `apps` directory, so a container host must be served by Cloudflare or another reverse proxy.
-
-The one bridge without code is a procfile wrapper (`docker run -p 127.0.0.1:$PORT:$PORT ...`), which makes a container answer as a dboss app but leaves its lifecycle on the docker CLI, with the usual caveats around stopping it.
+* Publish the web container on the port dboss hands out, bound to loopback: `ports: ["127.0.0.1:${PORT}:3000"]` in the compose file, or `docker run -p 127.0.0.1:$PORT:3000 ...`. `PORT` is in the command's environment, so compose interpolates it.
+* Stop signals go to the whole process group, so `docker compose up` receives `stop_signal` and stops its containers; a detached `docker compose up -d` would exit at once and leave them running outside dboss.
+* A container dboss does not run keeps its ports outside `ports`: on start dboss clears every listener in the range and before each spawn frees the app's fixed port.
 
 ## Access control
 

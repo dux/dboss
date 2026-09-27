@@ -2,9 +2,11 @@ package ops
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"dboss/internal/diskusage"
+	"dboss/internal/logstore"
 	"dboss/internal/supervisor"
 )
 
@@ -74,8 +76,29 @@ func (s *Service) maintenance(name string, on bool) error {
 	return s.runtime.SetMaintenance(name, on)
 }
 
+// logs tails each process's output. The live file only holds what ingest has not sealed yet (a
+// few seconds), so the tail starts with the newest stdout rows already in the log store.
 func (s *Service) logs(name, process string, lines int) (map[string][]string, error) {
-	return s.runtime.Logs(name, process, lines)
+	if lines <= 0 {
+		lines = supervisor.LogTailLines
+	}
+	live, err := s.runtime.Logs(name, process, lines)
+	if err != nil || s.store == nil {
+		return live, err
+	}
+	for instance, recent := range live {
+		rows, err := s.store.SearchLogs(name, logstore.LogFilter{Channel: "stdout:" + instance, Limit: lines})
+		if err != nil {
+			return nil, err
+		}
+		var merged []string
+		for i := len(rows) - 1; i >= 0; i-- {
+			merged = append(merged, strings.Split(rows[i].Raw, "\n")...)
+		}
+		merged = append(merged, recent...)
+		live[instance] = merged[max(0, len(merged)-lines):]
+	}
+	return live, nil
 }
 
 func (s *Service) ports() map[string]int { return s.runtime.Ports() }

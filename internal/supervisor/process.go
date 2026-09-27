@@ -247,12 +247,12 @@ var (
 	restartBackoffMax   = 60 * time.Second
 )
 
-// Process log files rotate above logMaxSize and keep logKeep rotated files; dboss logs without -n
-// prints logTailLines.
+// Process log files rotate above logMaxSize and keep logKeep rotated files; a logs request
+// without a line count gets LogTailLines per process.
 const (
 	logMaxSize   = 10 << 20
 	logKeep      = 5
-	logTailLines = 500
+	LogTailLines = 500
 )
 
 func backoff(attempt int) time.Duration {
@@ -308,7 +308,7 @@ func (a *appRuntime) snapshot() Snapshot {
 // logs tails the log of every instance, or of the instances of one process or one instance.
 func (a *appRuntime) logs(processName string, lines int) (map[string][]string, error) {
 	if lines <= 0 {
-		lines = logTailLines
+		lines = LogTailLines
 	}
 	names := a.knownInstances()
 	if processName != "" {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -171,6 +172,41 @@ func TestDoRoutesToTheSameMethodForEveryTransport(t *testing.T) {
 		if len(runtime.actions) != 1 || runtime.actions[0] != item.action {
 			t.Fatalf("%s: ran %v, want %q", item.request.Method, runtime.actions, item.action)
 		}
+	}
+}
+
+// fakeLogs answers only log searches, newest first like the store.
+type fakeLogs struct {
+	LogStore
+	rows   map[string][]logstore.LogEntry
+	filter logstore.LogFilter
+}
+
+func (f *fakeLogs) SearchLogs(app string, filter logstore.LogFilter) ([]logstore.LogEntry, error) {
+	f.filter = filter
+	return f.rows[filter.Channel], nil
+}
+
+func TestLogsStartWithTheIngestedRows(t *testing.T) {
+	store := &fakeLogs{rows: map[string][]logstore.LogEntry{
+		"stdout:web": {{Raw: "third"}, {Raw: "first\n  second"}},
+	}}
+	service := New(&fakeRuntime{}, store, nil, nil, nil, nil)
+	data, err := service.Do(Request{Method: ActionLogs, App: "sinatra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := data.(map[string][]string)["web"]
+	if want := []string{"first", "  second", "third", "line"}; !slices.Equal(got, want) {
+		t.Fatalf("web tail %q, want %q", got, want)
+	}
+	if store.filter.Limit != supervisor.LogTailLines {
+		t.Fatalf("store asked for %d rows, want the default %d", store.filter.Limit, supervisor.LogTailLines)
+	}
+	// The live lines win the line budget: they are the newest.
+	data, _ = service.Do(Request{Method: ActionLogs, App: "sinatra", Lines: 2})
+	if got, want := data.(map[string][]string)["web"], []string{"third", "line"}; !slices.Equal(got, want) {
+		t.Fatalf("web tail %q, want %q", got, want)
 	}
 }
 

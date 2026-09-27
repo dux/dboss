@@ -143,7 +143,7 @@ func (m *fakeManager) HostHookToken(name string) (string, error) {
 }
 
 func (m *fakeManager) Exec(app string, argv []string, timeout time.Duration) (supervisor.ExecResult, error) {
-	m.actions = append(m.actions, fmt.Sprintf("exec %s %s", app, strings.Join(argv, " ")))
+	m.actions = append(m.actions, fmt.Sprintf("exec %s %s (%s)", app, strings.Join(argv, " "), timeout))
 	return supervisor.ExecResult{Output: "ran\n", ExitCode: 0}, nil
 }
 
@@ -357,7 +357,7 @@ func TestConsoleBootstrapAndActions(t *testing.T) {
 	handler := newTestHandler(t, manager, fakeRates{"sinatra": {LastMinute: 2, LastHour: 7, LastDay: 20}})
 	cookie, session := sessionCookie(t, handler)
 
-	bootstrapRequest := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me:8081/api/bootstrap", nil)
+	bootstrapRequest := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me:8081/ui/bootstrap", nil)
 	bootstrapRequest.AddCookie(cookie)
 	bootstrapResponse := httptest.NewRecorder()
 	handler.ServeHTTP(bootstrapResponse, bootstrapRequest)
@@ -384,7 +384,7 @@ func TestConsoleBootstrapAndActions(t *testing.T) {
 		t.Fatalf("dashboard hostname = %q, want %q", dashboard.Hostname, host)
 	}
 
-	actionRequest := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/action", strings.NewReader(`{"app":"sinatra","action":"restart"}`))
+	actionRequest := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/action", strings.NewReader(`{"app":"sinatra","action":"restart"}`))
 	actionRequest.Header.Set("Content-Type", "application/json")
 	actionRequest.Header.Set("Origin", "http://dboss.lvh.me:8081")
 	actionRequest.Header.Set("X-CSRF-Token", session.CSRF)
@@ -395,7 +395,7 @@ func TestConsoleBootstrapAndActions(t *testing.T) {
 		t.Fatalf("unexpected action response: %d %v %s", actionResponse.Code, manager.actions, actionResponse.Body.String())
 	}
 
-	destroyRequest := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/action", strings.NewReader(`{"app":"sinatra","action":"destroy"}`))
+	destroyRequest := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/action", strings.NewReader(`{"app":"sinatra","action":"destroy"}`))
 	destroyRequest.Header.Set("Content-Type", "application/json")
 	destroyRequest.Header.Set("Origin", "http://dboss.lvh.me:8081")
 	destroyRequest.Header.Set("X-CSRF-Token", session.CSRF)
@@ -411,7 +411,7 @@ func TestConsoleRunsCronJob(t *testing.T) {
 	manager := &fakeManager{snapshots: []supervisor.Snapshot{{Name: "bun"}}}
 	handler := newTestHandler(t, manager, nil)
 	cookie, session := sessionCookie(t, handler)
-	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/action", strings.NewReader(`{"app":"bun","action":"cron-run","job":"heartbeat"}`))
+	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/action", strings.NewReader(`{"app":"bun","action":"cron-run","job":"heartbeat"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://dboss.lvh.me:8081")
 	request.Header.Set("X-CSRF-Token", session.CSRF)
@@ -428,7 +428,7 @@ func TestConsoleActsOnOneProcess(t *testing.T) {
 	handler := newTestHandler(t, manager, nil)
 	cookie, session := sessionCookie(t, handler)
 	post := func(body string) *httptest.ResponseRecorder {
-		request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/action", strings.NewReader(body))
+		request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/action", strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Origin", "http://dboss.lvh.me:8081")
 		request.Header.Set("X-CSRF-Token", session.CSRF)
@@ -450,7 +450,7 @@ func TestConsoleAddAppReportsTheReason(t *testing.T) {
 	manager := &fakeManager{}
 	handler := newTestHandler(t, manager, nil)
 	cookie, session := sessionCookie(t, handler)
-	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/apps/add", strings.NewReader(`{"repo":"/srv/local/app","name":"shop"}`))
+	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/apps/add", strings.NewReader(`{"repo":"/srv/local/app","name":"shop"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://dboss.lvh.me:8081")
 	request.Header.Set("X-CSRF-Token", session.CSRF)
@@ -510,7 +510,7 @@ func TestConsoleRejectsWrongHostAndMissingCSRF(t *testing.T) {
 		t.Fatalf("wrong host status = %d", wrongHostResponse.Code)
 	}
 
-	actionRequest := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/action", strings.NewReader(`{"app":"sinatra","action":"start"}`))
+	actionRequest := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/action", strings.NewReader(`{"app":"sinatra","action":"start"}`))
 	actionRequest.Header.Set("Content-Type", "application/json")
 	actionRequest.AddCookie(cookie)
 	actionResponse := httptest.NewRecorder()
@@ -546,47 +546,47 @@ func TestConsoleServesLogAndRequestSearch(t *testing.T) {
 	handler := newTestHandler(t, &fakeManager{}, nil)
 	cookie, session := sessionCookie(t, handler)
 
-	logs := call(t, handler, cookie, session, http.MethodGet, "/api/log/search?app=sinatra&channel=stdout&level=error", "")
+	logs := call(t, handler, cookie, session, http.MethodGet, "/ui/log/search?app=sinatra&channel=stdout&level=error", "")
 	if logs.Code != http.StatusOK || !strings.Contains(logs.Body.String(), `"kind":"log"`) || !strings.Contains(logs.Body.String(), `"message":"boom"`) {
 		t.Fatalf("unexpected logs: %d %s", logs.Code, logs.Body.String())
 	}
-	requests := call(t, handler, cookie, session, http.MethodGet, "/api/log/search?app=sinatra&channel=request", "")
+	requests := call(t, handler, cookie, session, http.MethodGet, "/ui/log/search?app=sinatra&channel=request", "")
 	if requests.Code != http.StatusOK || !strings.Contains(requests.Body.String(), `"kind":"request"`) || !strings.Contains(requests.Body.String(), `"path":"/hello"`) || !strings.Contains(requests.Body.String(), `"country":"HR"`) {
 		t.Fatalf("unexpected requests: %d %s", requests.Code, requests.Body.String())
 	}
-	channels := call(t, handler, cookie, session, http.MethodGet, "/api/log/channels?app=sinatra", "")
+	channels := call(t, handler, cookie, session, http.MethodGet, "/ui/log/channels?app=sinatra", "")
 	if channels.Code != http.StatusOK || !strings.Contains(channels.Body.String(), `"id":"file:production.log"`) {
 		t.Fatalf("unexpected channels: %d %s", channels.Code, channels.Body.String())
 	}
-	tree := call(t, handler, cookie, session, http.MethodGet, "/api/log/tree", "")
+	tree := call(t, handler, cookie, session, http.MethodGet, "/ui/log/tree", "")
 	if tree.Code != http.StatusOK || !strings.Contains(tree.Body.String(), `"name":"sinatra"`) || !strings.Contains(tree.Body.String(), `"bytes":4096`) || !strings.Contains(tree.Body.String(), `"id":"file:production.log"`) {
 		t.Fatalf("unexpected tree: %d %s", tree.Code, tree.Body.String())
 	}
-	blocked := call(t, handler, cookie, session, http.MethodGet, "/api/log/blocked", "")
+	blocked := call(t, handler, cookie, session, http.MethodGet, "/ui/log/blocked", "")
 	if blocked.Code != http.StatusOK || !strings.Contains(blocked.Body.String(), `"path":"/wp-login.php"`) || !strings.Contains(blocked.Body.String(), `"count":42`) {
 		t.Fatalf("unexpected blocked: %d %s", blocked.Code, blocked.Body.String())
 	}
-	exceptions := call(t, handler, cookie, session, http.MethodGet, "/api/exceptions?app=sinatra&range=24h", "")
+	exceptions := call(t, handler, cookie, session, http.MethodGet, "/ui/exceptions?app=sinatra&range=24h", "")
 	if exceptions.Code != http.StatusOK || !strings.Contains(exceptions.Body.String(), `"exp_uid":"9f2e1a4b"`) || !strings.Contains(exceptions.Body.String(), `"count":7`) {
 		t.Fatalf("unexpected exceptions: %d %s", exceptions.Code, exceptions.Body.String())
 	}
-	badRange := call(t, handler, cookie, session, http.MethodGet, "/api/exceptions?app=sinatra&range=90d", "")
+	badRange := call(t, handler, cookie, session, http.MethodGet, "/ui/exceptions?app=sinatra&range=90d", "")
 	if badRange.Code != http.StatusBadRequest {
 		t.Fatalf("bad range should be a 400: %d", badRange.Code)
 	}
-	resolve := call(t, handler, cookie, session, http.MethodPost, "/api/exceptions/resolve", `{"app":"sinatra","exp_uid":"9f2e1a4b","on":true}`)
+	resolve := call(t, handler, cookie, session, http.MethodPost, "/ui/exceptions/resolve", `{"app":"sinatra","exp_uid":"9f2e1a4b","on":true}`)
 	if resolve.Code != http.StatusOK || !strings.Contains(resolve.Body.String(), `"ok":true`) {
 		t.Fatalf("unexpected resolve: %d %s", resolve.Code, resolve.Body.String())
 	}
-	noUID := call(t, handler, cookie, session, http.MethodPost, "/api/exceptions/resolve", `{"app":"sinatra"}`)
+	noUID := call(t, handler, cookie, session, http.MethodPost, "/ui/exceptions/resolve", `{"app":"sinatra"}`)
 	if noUID.Code != http.StatusBadRequest {
 		t.Fatalf("missing exp_uid should be a 400: %d", noUID.Code)
 	}
-	ignore := call(t, handler, cookie, session, http.MethodPost, "/api/exceptions/ignore", `{"app":"sinatra","exp_uid":"9f2e1a4b","on":true}`)
+	ignore := call(t, handler, cookie, session, http.MethodPost, "/ui/exceptions/ignore", `{"app":"sinatra","exp_uid":"9f2e1a4b","on":true}`)
 	if ignore.Code != http.StatusOK || !strings.Contains(ignore.Body.String(), `"ok":true`) {
 		t.Fatalf("unexpected ignore: %d %s", ignore.Code, ignore.Body.String())
 	}
-	missingApp := call(t, handler, cookie, session, http.MethodGet, "/api/log/search", "")
+	missingApp := call(t, handler, cookie, session, http.MethodGet, "/ui/log/search", "")
 	if missingApp.Code != http.StatusBadRequest {
 		t.Fatalf("missing app should be a 400: %d", missingApp.Code)
 	}
@@ -631,7 +631,7 @@ func TestDevConsoleOpensOnLoopbackWithoutASession(t *testing.T) {
 	if !newDevTestHandler(t, &fakeManager{held: true}).capabilities()["held"] {
 		t.Fatal("a session waiting for ENTER should report held")
 	}
-	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/api/bootstrap", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/ui/bootstrap", nil)
 	request.RemoteAddr = "127.0.0.1:54321"
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -651,7 +651,7 @@ func TestHandRunHostConsoleAdmitsLoopbackWithoutASession(t *testing.T) {
 	if !handler.capabilities()["dev"] {
 		t.Fatal("a hand-run console should report a local session")
 	}
-	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/api/bootstrap", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/ui/bootstrap", nil)
 	request.RemoteAddr = "127.0.0.1:54321"
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -664,11 +664,11 @@ func TestConsoleServesSystemInspection(t *testing.T) {
 	handler := newTestHandler(t, &fakeManager{}, nil)
 	cookie, session := sessionCookie(t, handler)
 
-	snapshot := call(t, handler, cookie, session, http.MethodGet, "/api/sys", "")
+	snapshot := call(t, handler, cookie, session, http.MethodGet, "/ui/sys", "")
 	if snapshot.Code != http.StatusOK || !strings.Contains(snapshot.Body.String(), `"hostname":"box"`) {
 		t.Fatalf("unexpected sys snapshot: %d %s", snapshot.Code, snapshot.Body.String())
 	}
-	refresh := call(t, handler, cookie, session, http.MethodPost, "/api/sys/refresh", "{}")
+	refresh := call(t, handler, cookie, session, http.MethodPost, "/ui/sys/refresh", "{}")
 	if refresh.Code != http.StatusOK || !strings.Contains(refresh.Body.String(), `"hostname":"refreshed"`) {
 		t.Fatalf("unexpected sys refresh: %d %s", refresh.Code, refresh.Body.String())
 	}
@@ -705,19 +705,19 @@ func TestConsoleRefreshesAppDiskUsage(t *testing.T) {
 	}
 	cookie, session := sessionCookie(t, handler)
 
-	refresh := call(t, handler, cookie, session, http.MethodPost, "/api/disk/refresh", `{"app":"sinatra"}`)
+	refresh := call(t, handler, cookie, session, http.MethodPost, "/ui/disk/refresh", `{"app":"sinatra"}`)
 	if refresh.Code != http.StatusOK || !strings.Contains(refresh.Body.String(), `"total_bytes":2560`) {
 		t.Fatalf("disk refresh = %d %s", refresh.Code, refresh.Body.String())
 	}
-	if missing := call(t, handler, cookie, session, http.MethodPost, "/api/disk/refresh", `{"app":"gone"}`); missing.Code != http.StatusNotFound {
+	if missing := call(t, handler, cookie, session, http.MethodPost, "/ui/disk/refresh", `{"app":"gone"}`); missing.Code != http.StatusNotFound {
 		t.Fatalf("unknown app = %d %s", missing.Code, missing.Body.String())
 	}
-	if empty := call(t, handler, cookie, session, http.MethodPost, "/api/disk/refresh", `{}`); empty.Code != http.StatusBadRequest {
+	if empty := call(t, handler, cookie, session, http.MethodPost, "/ui/disk/refresh", `{}`); empty.Code != http.StatusBadRequest {
 		t.Fatalf("missing app = %d %s", empty.Code, empty.Body.String())
 	}
 
 	// Without the CSRF header the refresh is rejected like every other write.
-	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/disk/refresh", strings.NewReader(`{"app":"sinatra"}`))
+	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/disk/refresh", strings.NewReader(`{"app":"sinatra"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.AddCookie(cookie)
 	response := httptest.NewRecorder()
@@ -731,11 +731,11 @@ func TestConsoleServesTraffic(t *testing.T) {
 	handler := newTestHandler(t, &fakeManager{}, nil)
 	cookie, session := sessionCookie(t, handler)
 
-	traffic := call(t, handler, cookie, session, http.MethodGet, "/api/traffic?app=sinatra&range=24h", "")
+	traffic := call(t, handler, cookie, session, http.MethodGet, "/ui/traffic?app=sinatra&range=24h", "")
 	if traffic.Code != http.StatusOK || !strings.Contains(traffic.Body.String(), `"count":42`) || !strings.Contains(traffic.Body.String(), `"path":"/hello"`) {
 		t.Fatalf("unexpected traffic: %d %s", traffic.Code, traffic.Body.String())
 	}
-	for _, target := range []string{"/api/traffic?range=24h", "/api/traffic?app=sinatra&range=90d", "/api/traffic?app=sinatra"} {
+	for _, target := range []string{"/ui/traffic?range=24h", "/ui/traffic?app=sinatra&range=90d", "/ui/traffic?app=sinatra"} {
 		if response := call(t, handler, cookie, session, http.MethodGet, target, ""); response.Code != http.StatusBadRequest {
 			t.Fatalf("%s: status = %d, want 400", target, response.Code)
 		}
@@ -746,11 +746,11 @@ func TestConsoleServesFleetTraffic(t *testing.T) {
 	handler := newTestHandler(t, &fakeManager{}, nil)
 	cookie, session := sessionCookie(t, handler)
 
-	fleet := call(t, handler, cookie, session, http.MethodGet, "/api/traffic/fleet?range=24h", "")
+	fleet := call(t, handler, cookie, session, http.MethodGet, "/ui/traffic/fleet?range=24h", "")
 	if fleet.Code != http.StatusOK || !strings.Contains(fleet.Body.String(), `"s5":1`) {
 		t.Fatalf("unexpected fleet traffic: %d %s", fleet.Code, fleet.Body.String())
 	}
-	for _, target := range []string{"/api/traffic/fleet", "/api/traffic/fleet?range=90d"} {
+	for _, target := range []string{"/ui/traffic/fleet", "/ui/traffic/fleet?range=90d"} {
 		if response := call(t, handler, cookie, session, http.MethodGet, target, ""); response.Code != http.StatusBadRequest {
 			t.Fatalf("%s: status = %d, want 400", target, response.Code)
 		}
@@ -761,7 +761,7 @@ func TestConsoleAnswersForEveryManagementHost(t *testing.T) {
 	handler := newTestHandler(t, &fakeManager{}, nil)
 	cookie, _ := sessionCookie(t, handler)
 	for host, want := range map[string]int{"dboss.lvh.me:8081": http.StatusOK, "dboss.internal": http.StatusOK, "other.lvh.me:8081": http.StatusNotFound} {
-		request := httptest.NewRequest(http.MethodGet, "http://"+host+"/api/apps", nil)
+		request := httptest.NewRequest(http.MethodGet, "http://"+host+"/ui/apps", nil)
 		request.AddCookie(cookie)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -797,47 +797,47 @@ func TestConsoleConfigEditorRoundTrip(t *testing.T) {
 	store.invalid["broken"] = "decode dboss.yaml: yaml: line 3: mapping values are not allowed in this context"
 	cookie, session := sessionCookie(t, handler)
 
-	list := call(t, handler, cookie, session, http.MethodGet, "/api/config", "")
+	list := call(t, handler, cookie, session, http.MethodGet, "/ui/config", "")
 	var listed struct{ Files []apps.ConfigFile }
 	if err := json.Unmarshal(list.Body.Bytes(), &listed); err != nil || len(listed.Files) != 2 || listed.Files[1].Contents != "" || listed.Files[1].Revision == "" {
 		t.Fatalf("unexpected list: %d %s %v", list.Code, list.Body.String(), err)
 	}
-	read := call(t, handler, cookie, session, http.MethodGet, "/api/config/file?id=app:sinatra", "")
+	read := call(t, handler, cookie, session, http.MethodGet, "/ui/config/file?id=app:sinatra", "")
 	var file apps.ConfigFile
 	if err := json.Unmarshal(read.Body.Bytes(), &file); err != nil || file.Contents == "" || file.Revision != listed.Files[1].Revision {
 		t.Fatalf("unexpected read: %d %s", read.Code, read.Body.String())
 	}
 
-	validate := call(t, handler, cookie, session, http.MethodPost, "/api/config/validate", `{"id":"app:sinatra","contents":"broken"}`)
+	validate := call(t, handler, cookie, session, http.MethodPost, "/ui/config/validate", `{"id":"app:sinatra","contents":"broken"}`)
 	var validated validateResponse
 	if err := json.Unmarshal(validate.Body.Bytes(), &validated); err != nil || validated.OK || validated.Line != 3 {
 		t.Fatalf("unexpected validate: %d %s", validate.Code, validate.Body.String())
 	}
 
-	stale := call(t, handler, cookie, session, http.MethodPut, "/api/config/file", `{"id":"app:sinatra","contents":"procfile:\n  web: ./other\n","revision":"stale"}`)
+	stale := call(t, handler, cookie, session, http.MethodPut, "/ui/config/file", `{"id":"app:sinatra","contents":"procfile:\n  web: ./other\n","revision":"stale"}`)
 	if stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), `"contents":"procfile:\n  web: ./server\n"`) {
 		t.Fatalf("stale write should answer 409 with the current file: %d %s", stale.Code, stale.Body.String())
 	}
-	written := call(t, handler, cookie, session, http.MethodPut, "/api/config/file", `{"id":"app:sinatra","contents":"procfile:\n  web: ./other\n","revision":"`+file.Revision+`"}`)
+	written := call(t, handler, cookie, session, http.MethodPut, "/ui/config/file", `{"id":"app:sinatra","contents":"procfile:\n  web: ./other\n","revision":"`+file.Revision+`"}`)
 	var result ops.ConfigResult
 	if err := json.Unmarshal(written.Body.Bytes(), &result); err != nil || written.Code != http.StatusOK || result.File.Revision == file.Revision || len(result.Invalid) != 1 || manager.actions[len(manager.actions)-1] != "rescan" {
 		t.Fatalf("unexpected write: %d %s actions=%v", written.Code, written.Body.String(), manager.actions)
 	}
 
-	local := call(t, handler, cookie, session, http.MethodPost, "/api/config/local", `{"app":"sinatra"}`)
+	local := call(t, handler, cookie, session, http.MethodPost, "/ui/config/local", `{"app":"sinatra"}`)
 	if local.Code != http.StatusOK || !strings.Contains(local.Body.String(), `"source":"dboss.local.yaml"`) {
 		t.Fatalf("unexpected override: %d %s", local.Code, local.Body.String())
 	}
-	effective := call(t, handler, cookie, session, http.MethodGet, "/api/config/effective?app=sinatra", "")
+	effective := call(t, handler, cookie, session, http.MethodGet, "/ui/config/effective?app=sinatra", "")
 	if effective.Code != http.StatusOK || !strings.Contains(effective.Body.String(), "idle_stop") {
 		t.Fatalf("unexpected effective config: %d %s", effective.Code, effective.Body.String())
 	}
-	reference := call(t, handler, cookie, session, http.MethodGet, "/api/config/reference", "")
+	reference := call(t, handler, cookie, session, http.MethodGet, "/ui/config/reference", "")
 	if reference.Code != http.StatusOK || !strings.Contains(reference.Body.String(), "PART 1") {
 		t.Fatalf("unexpected reference: %d", reference.Code)
 	}
 
-	noCSRF := httptest.NewRequest(http.MethodPut, "http://dboss.lvh.me:8081/api/config/file", strings.NewReader(`{"id":"host","contents":"","revision":""}`))
+	noCSRF := httptest.NewRequest(http.MethodPut, "http://dboss.lvh.me:8081/ui/config/file", strings.NewReader(`{"id":"host","contents":"","revision":""}`))
 	noCSRF.Header.Set("Content-Type", "application/json")
 	noCSRF.AddCookie(cookie)
 	noCSRFResponse := httptest.NewRecorder()
@@ -853,7 +853,7 @@ func TestConsoleConfigFormRoundTrip(t *testing.T) {
 	store := handler.store.(*fakeStore)
 	cookie, session := sessionCookie(t, handler)
 
-	form := call(t, handler, cookie, session, http.MethodGet, "/api/config/form?id=app:sinatra", "")
+	form := call(t, handler, cookie, session, http.MethodGet, "/ui/config/form?id=app:sinatra", "")
 	if form.Code != http.StatusOK {
 		t.Fatalf("form: %d %s", form.Code, form.Body.String())
 	}
@@ -885,7 +885,7 @@ func TestConsoleConfigFormRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyBody := `{"id":"app:sinatra","revision":"` + file.Revision + `","recipe":"web","values":{"max_body":"20m"},"reset":["deletable"]}`
-	applied := call(t, handler, cookie, session, http.MethodPost, "/api/config/apply", applyBody)
+	applied := call(t, handler, cookie, session, http.MethodPost, "/ui/config/apply", applyBody)
 	if applied.Code != http.StatusOK {
 		t.Fatalf("apply: %d %s", applied.Code, applied.Body.String())
 	}
@@ -906,7 +906,7 @@ func TestConsoleConfigFormRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreign := `{"id":"app:sinatra","revision":"` + current.Revision + `","recipe":"web","values":{"log_retention":"999h"},"reset":[]}`
-	if got := call(t, handler, cookie, session, http.MethodPost, "/api/config/apply", foreign); got.Code != http.StatusOK {
+	if got := call(t, handler, cookie, session, http.MethodPost, "/ui/config/apply", foreign); got.Code != http.StatusOK {
 		t.Fatalf("foreign apply: %d %s", got.Code, got.Body.String())
 	}
 	if strings.Contains(store.files["app:sinatra"].Contents, "999h") {
@@ -914,7 +914,7 @@ func TestConsoleConfigFormRoundTrip(t *testing.T) {
 	}
 
 	unknown := `{"id":"app:sinatra","revision":"` + current.Revision + `","recipe":"nope","values":{},"reset":[]}`
-	if got := call(t, handler, cookie, session, http.MethodPost, "/api/config/apply", unknown); got.Code != http.StatusBadRequest {
+	if got := call(t, handler, cookie, session, http.MethodPost, "/ui/config/apply", unknown); got.Code != http.StatusBadRequest {
 		t.Errorf("unknown recipe should be a 400: %d %s", got.Code, got.Body.String())
 	}
 }
@@ -953,7 +953,7 @@ func TestConsoleConfigFormWritesRealOverride(t *testing.T) {
 	}
 	cookie, session := sessionCookie(t, handler)
 
-	form := call(t, handler, cookie, session, http.MethodGet, "/api/config/form?id=app:sinatra", "")
+	form := call(t, handler, cookie, session, http.MethodGet, "/ui/config/form?id=app:sinatra", "")
 	if form.Code != http.StatusOK {
 		t.Fatalf("form: %d %s", form.Code, form.Body.String())
 	}
@@ -971,7 +971,7 @@ func TestConsoleConfigFormWritesRealOverride(t *testing.T) {
 	}
 
 	apply := `{"id":"app:sinatra","revision":"` + payload.File.Revision + `","recipe":"web","values":{"max_body":"20m"},"reset":[]}`
-	applied := call(t, handler, cookie, session, http.MethodPost, "/api/config/apply", apply)
+	applied := call(t, handler, cookie, session, http.MethodPost, "/ui/config/apply", apply)
 	if applied.Code != http.StatusOK {
 		t.Fatalf("apply: %d %s", applied.Code, applied.Body.String())
 	}
@@ -993,7 +993,7 @@ func TestConsoleConfigFormWritesRealOverride(t *testing.T) {
 		t.Fatalf("apply did not rescan: %v", manager.actions)
 	}
 
-	hostForm := call(t, handler, cookie, session, http.MethodGet, "/api/config/form?id=host", "")
+	hostForm := call(t, handler, cookie, session, http.MethodGet, "/ui/config/form?id=host", "")
 	var hostPayload struct {
 		File    apps.ConfigFile `json:"file"`
 		Recipes []config.Recipe `json:"recipes"`
@@ -1014,7 +1014,7 @@ func TestConsoleConfigFormWritesRealOverride(t *testing.T) {
 		t.Fatal("the host form has no notifications recipe")
 	}
 	hostApply := `{"id":"host","revision":"` + hostPayload.File.Revision + `","recipe":"notifications","values":{"notify.url":"https://hooks.example.com"},"reset":[]}`
-	if got := call(t, handler, cookie, session, http.MethodPost, "/api/config/apply", hostApply); got.Code != http.StatusOK {
+	if got := call(t, handler, cookie, session, http.MethodPost, "/ui/config/apply", hostApply); got.Code != http.StatusOK {
 		t.Fatalf("host apply: %d %s", got.Code, got.Body.String())
 	}
 	hostOverride, err := os.ReadFile(filepath.Join(hostDir, config.LocalFileName))

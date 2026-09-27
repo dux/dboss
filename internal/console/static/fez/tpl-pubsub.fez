@@ -35,7 +35,7 @@
     async load() {
       this.state.loading = true
       try {
-        const data = await Dboss.api('/api/pubsub')
+        const data = await Dboss.api('/ui/pubsub')
         this.state.apps = data.apps || []
         this.state.guide = data.guide || ''
         if (!this.state.apps.some((hub) => hub.name === this.state.publishApp && hub.process === this.state.publishProcess)) {
@@ -66,7 +66,7 @@
       if (this.state.busy) return
       try {
         this.state.busy = true
-        this.state.credential = await Dboss.api(`/api/pubsub/secret?app=${encodeURIComponent(name)}&process=${encodeURIComponent(process)}`)
+        this.state.credential = await Dboss.api(`/ui/pubsub/secret?app=${encodeURIComponent(name)}&process=${encodeURIComponent(process)}`)
       } catch (error) {
         this.message(error.message, true)
       } finally {
@@ -80,7 +80,7 @@
       if (!window.confirm(`Rotate the publish secret for ${label}? The old secret stops working.`)) return
       try {
         this.state.busy = true
-        this.state.credential = await Dboss.api('/api/pubsub/rotate', { method: 'POST', body: JSON.stringify({ app: name, process }) })
+        this.state.credential = await Dboss.api('/ui/pubsub/rotate', { method: 'POST', body: JSON.stringify({ app: name, process }) })
         this.message(`Rotated the secret for ${label}.`)
         Toast.show(`${label}: publish secret rotated`)
       } catch (error) {
@@ -117,7 +117,7 @@
       }
       try {
         this.state.busy = true
-        const result = await Dboss.api('/api/pubsub/publish', { method: 'POST', body: JSON.stringify({ app, process, channel, event, data }) })
+        const result = await Dboss.api('/ui/pubsub/publish', { method: 'POST', body: JSON.stringify({ app, process, channel, event, data }) })
         this.message(`Published ${event} to ${app}/${result.channel} (${result.subscribers} subscribers).`)
         Toast.show(`${app}/${result.channel}: message sent`)
       } catch (error) {

@@ -51,6 +51,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Web console** - live state, start/stop, log search, config editing with history, and an audit row for every action.
 * **PostgreSQL** - inspection, SQL prompt, scheduled backups, rotation and restore.
 * **PubSub** - realtime channels over WebSocket or SSE.
+* **HTTP API** - every CLI action as `POST /api/<action>` with a bearer token, a guide at `GET /api` and an OpenAPI export.
 * **Metrics and alerts** - Prometheus `/metrics`, `/healthz`, `/readyz`, and webhook alerts on crashes, OOM kills, full disks, error rates and slow responses.
 * **Resource limits** - per-process memory and CPU limits on a cgroup v2 host.
 
@@ -204,7 +205,7 @@ ports: [3100, 3199]
 
 tokens:
   github: $GITHUB_TOKEN   # outbound: dboss pulls private repos with it
-  dboss: $DBOSS_TOKEN     # inbound: hook pings and /metrics present it
+  dboss: $DBOSS_TOKEN     # inbound: hook pings, /metrics and /api present it
 ```
 
 App file (`./demo/apps/bun/dboss.yaml`):
@@ -249,7 +250,7 @@ Every app-level key can be set once under `defaults:` in the host file and repea
 $ dboss config --keys tokens
 Tokens  (root dboss.yaml)
   tokens.github  outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only  e.g. $GITHUB_TOKEN
-  tokens.dboss   inbound: every /hooks ping and /metrics must present it; unset refuses hooks and hides /metrics                                    e.g. $DBOSS_TOKEN
+  tokens.dboss   inbound: every /hooks ping, /metrics and /api call must present it; unset refuses hooks and the API and hides /metrics                                    e.g. $DBOSS_TOKEN
 ```
 
 ## Commands
@@ -789,6 +790,26 @@ It also names any listener in that range bound to a public address (`*:3101`, `0
 An app binds its own port - dboss injects `PORT` and never an interface - and the proxy always dials `127.0.0.1`, so a public bind is a second door into the app that answers without `basic_auth`, `allow_ips`, the `auth` sign-in gate or the `X-Dboss-User` strip.
 Bind loopback in the procfile (`puma -b tcp://127.0.0.1:$PORT`, `gunicorn -b 127.0.0.1:$PORT`, `next start -H 127.0.0.1`) or firewall the range.
 
+## HTTP API
+
+The management host serves every action the CLI runs over the control socket as one `POST /api/<action>`, for scripts, CI and agents.
+
+* `GET /api` - the guide, for people and agents alike. A browser (Firefox, Chrome, Edge, Safari) gets it as a rendered page; curl, scripts and agents get the markdown, and `?format=md` forces it. It opens with every GET endpoint on the host as a relative link (`/api`, `/api/openapi.json`, `/healthz`, `/readyz`, `/metrics`, hook status), then covers how to connect, the answer shape, the error codes and every action with its params. It is generated from the action catalog (`./internal/ops/spec.go`), so it never lags the code.
+* `GET /api/openapi.json` - the same catalog as OpenAPI 3.1. Import it into Swagger UI, Postman, Insomnia, Bruno or Hoppscotch, or generate a client from it.
+* `POST /api/<action>` - runs one action. Send `tokens.dboss` as `Authorization: Bearer <token>` and the action's params as a JSON object (no params: an empty body or `{}`).
+
+```sh
+curl -s -X POST https://dboss.example.com/api/ls -H "Authorization: Bearer $DBOSS_TOKEN"
+curl -s -X POST https://dboss.example.com/api/restart -H "Authorization: Bearer $DBOSS_TOKEN" -d '{"app": "shop"}'
+```
+
+Every action is `POST`, reads included; only the guide and the export are `GET`, and both are open.
+Success is HTTP `200` `{"ok": true, "data": ...}`.
+A refused or failed call is HTTP `400` `{"ok": false, "error": {"code": "...", "message": "..."}}`, with the code one of `api_disabled` (no `tokens.dboss`), `unauthorized`, `unknown_action`, `invalid_request` (an unknown param, a missing required one or a wrong type) and `failed` (the action ran and failed).
+Audited actions write their audit row with the actor `api`.
+Without `tokens.dboss` the API refuses every call.
+The token grants everything the CLI can do, `exec`, `pg-query` and `destroy` included, so treat it like root on the box.
+
 ## Notifications
 
 A host can post runtime events to one operator webhook:
@@ -867,7 +888,7 @@ It maps a user to a plain password or a bcrypt hash printed by `dboss password`;
 `allow_ips` limits the app to a list of CIDRs (address ranges such as `10.0.0.0/8`), matched against the client address.
 `deny` refuses paths with `403` before the app is contacted: `*.php` matches any path ending in `.php`, `/admin/*` the path and everything under it, and a plain `/path` is exact, all case-insensitive.
 Each blocked path is counted once in the reserved host database (`log/_dboss/dboss.sqlite`, table `blocked`: `path`, `count`), aggregated across apps and over time.
-The Logs page has a **Blocked requests** button that opens the `#/blocked` page, listing those paths with their request count and share of the total (`GET /api/log/blocked`).
+The Logs page has a **Blocked requests** button that opens the `#/blocked` page, listing those paths with their request count and share of the total (`GET /ui/log/blocked`).
 Behind Cloudflare set `proxy.cloudflare: true` in the host file: only Cloudflare's published ranges (built in) and the box itself may connect, and the client address comes from `CF-Connecting-IP`, which then cannot be spoofed.
 
 ```yaml
@@ -982,7 +1003,7 @@ An app's processes start with the web processes (the ones with `hosts`) first, t
 
 ## Audit log
 
-Every mutating action records who did what to which app and how it turned out: start, stop, restart, destroy, maintenance, rescan, cron runs, hook runs, `exec`, and config file writes and restores. Console actions carry the signed-in email, a hook ping carries `hook:<app>/<hook>`, and control-socket actions are attributed to `cli`.
+Every mutating action records who did what to which app and how it turned out: start, stop, restart, destroy, maintenance, rescan, cron runs, hook runs, `exec`, and config file writes and restores. Console actions carry the signed-in email, a hook ping carries `hook:<app>/<hook>`, control-socket actions are attributed to `cli`, and `/api` calls to `api`.
 
 Rows live in an `audit` table in the reserved `_dboss` database, are kept for `audit_retention` (default `8760h`, `0` keeps them forever), and are pruned with the daily log prune. The console has an **Audit** tab with app, actor and action filters; `dboss audit [--app name] [--actor who] [--action name] [-n rows]` prints the same rows.
 
@@ -1062,7 +1083,7 @@ Everything lives under `./internal/console/static/` and is embedded in the binar
 Every page is a hash route on `/`, so reload, Back/Forward and a pasted link all reproduce the same view:
 
 * `fez/db-shell.fez` - navbar, the `ROUTES` list that drives it, the route outlet, API calls and the 5 second poll; exposed as `Dboss`.
-* `fez/tpl-overview.fez` - `#/overview`: memory and disk (`/api/sys`), a 24h fleet traffic chart (`/api/traffic/fleet`), the last audit rows and the service list.
+* `fez/tpl-overview.fez` - `#/overview`: memory and disk (`/ui/sys`), a 24h fleet traffic chart (`/ui/traffic/fleet`), the last audit rows and the service list.
 * `fez/tpl-logs.fez` - `#/logs`: the log viewer page, a thin wrapper around `db-log-view`.
 * `fez/tpl-traffic.fez` - `#/traffic`: per-app requests over time, error rate, latency quantiles and the top paths, status codes, countries, client IPs and methods from the request log.
 * `fez/tpl-audit.fez` - `#/audit`: operator actions with app, actor and action filters.

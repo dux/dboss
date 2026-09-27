@@ -71,7 +71,7 @@ func uploadBackup(t *testing.T, handler *Handler, database string, archive []byt
 	if err := form.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/pg/backup/upload?database="+database, &body)
+	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/ui/pg/backup/upload?database="+database, &body)
 	request.Header.Set("Content-Type", form.FormDataContentType())
 	request.Header.Set("Origin", "http://dboss.lvh.me:8081")
 	request.Header.Set("X-CSRF-Token", session.CSRF)
@@ -100,7 +100,7 @@ func TestPGBackupUploadAndDownloadRoundTrip(t *testing.T) {
 	}
 
 	cookie, session := sessionCookie(t, handler)
-	download := call(t, handler, cookie, session, http.MethodGet, "/api/pg/backup/download?id="+result.Backup.ID, "")
+	download := call(t, handler, cookie, session, http.MethodGet, "/ui/pg/backup/download?id="+result.Backup.ID, "")
 	if download.Code != http.StatusOK {
 		t.Fatalf("download should serve the archive: %d %s", download.Code, download.Body.String())
 	}
@@ -111,7 +111,7 @@ func TestPGBackupUploadAndDownloadRoundTrip(t *testing.T) {
 		t.Fatalf("download should be an attachment named after the dump, got %q", got)
 	}
 
-	missing := call(t, handler, cookie, session, http.MethodGet, "/api/pg/backup/download?id=nope", "")
+	missing := call(t, handler, cookie, session, http.MethodGet, "/ui/pg/backup/download?id=nope", "")
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("an unknown id should be a 404: %d", missing.Code)
 	}

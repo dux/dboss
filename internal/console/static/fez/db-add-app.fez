@@ -106,7 +106,7 @@
       this.state.pending = true
       this.state.error = ''
       try {
-        const data = await Dboss.api('/api/apps/add', { method: 'POST', body: JSON.stringify(body) })
+        const data = await Dboss.api('/ui/apps/add', { method: 'POST', body: JSON.stringify(body) })
         Dboss.applyApps(data.apps, data.updated_at)
         Toast.show(`Added ${data.app.name}`)
         this.state.pending = false

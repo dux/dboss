@@ -18,7 +18,7 @@
       try {
         if (!this.state.app || !this.state.uid) throw new Error('Missing app or exception id.')
         const params = new URLSearchParams({ app: this.state.app, uid: this.state.uid })
-        const data = await Dboss.api(`/api/exceptions?${params}`)
+        const data = await Dboss.api(`/ui/exceptions?${params}`)
         const raw = (data.rows || [])[0]
         if (!raw) {
           this.state.row = null
@@ -70,7 +70,7 @@
       const on = !this.state.row.resolved
       this.state.busy = true
       try {
-        await Dboss.api('/api/exceptions/resolve', {
+        await Dboss.api('/ui/exceptions/resolve', {
           method: 'POST',
           body: JSON.stringify({ app: this.state.app, exp_uid: this.state.row.exp_uid, on }),
         })
@@ -88,7 +88,7 @@
       const on = !this.state.row.ignored
       this.state.busy = true
       try {
-        await Dboss.api('/api/exceptions/ignore', {
+        await Dboss.api('/ui/exceptions/ignore', {
           method: 'POST',
           body: JSON.stringify({ app: this.state.app, exp_uid: this.state.row.exp_uid, on }),
         })

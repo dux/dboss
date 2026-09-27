@@ -116,8 +116,9 @@ tokens:
   github: $GITHUB_TOKEN
   # Inbound: the token every caller presents to dboss. A hook ping carries it as ?token=, as
   # Authorization: Bearer, as X-Gitlab-Token, or signs the raw body with it as GitHub's
-  # X-Hub-Signature-256 (paste it into the webhook's Secret field). /metrics takes it as a bearer
-  # token. You choose it, e.g. `openssl rand -hex 32`. Unset refuses every hook and hides /metrics.
+  # X-Hub-Signature-256 (paste it into the webhook's Secret field). /metrics and the /api actions
+  # take it as a bearer token; it grants every action the CLI has, exec and destroy included. You
+  # choose it, e.g. `openssl rand -hex 32`. Unset refuses every hook and API call and hides /metrics.
   dboss: $DBOSS_TOKEN
 
 # --- Proxy -------------------------------------------------------------------
@@ -168,7 +169,8 @@ proxy:
 # it, so authentication never touches application traffic. It also listens on
 # 127.0.0.1:<first port of ports>, which answers to those hostnames and to any loopback name.
 # /healthz (200 while the daemon is up) and /readyz (200 when every autostart app runs) are
-# always open; /metrics (Prometheus text) needs tokens.dboss as a bearer token.
+# always open; /metrics (Prometheus text) needs tokens.dboss as a bearer token. GET /api is the
+# HTTP API guide and POST /api/<action> runs any CLI action for a tokens.dboss bearer.
 #
 # A dev session (one app run from its own folder, the file has procfile) always
 # has a console on a loopback port from ports, with or without this block, and signs a

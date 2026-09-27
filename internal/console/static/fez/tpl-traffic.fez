@@ -29,14 +29,14 @@
     async load() {
       this.state.loading = true
       try {
-        const fleet = await Dboss.api('/api/apps')
+        const fleet = await Dboss.api('/ui/apps')
         this.state.apps = (fleet.apps || []).map((app) => app.name).sort()
         if (!this.state.apps.includes(this.state.app)) this.state.app = this.state.apps[0] || ''
         Dboss.setQs('app', this.state.app)
         this.state.needsSelectSync = true
         if (this.state.app) {
           const params = new URLSearchParams({ app: this.state.app, range: this.state.range })
-          const data = await Dboss.api(`/api/traffic?${params}`)
+          const data = await Dboss.api(`/ui/traffic?${params}`)
           this.shape(data.traffic)
         }
         this.state.error = ''

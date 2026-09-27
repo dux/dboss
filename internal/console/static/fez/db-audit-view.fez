@@ -26,7 +26,7 @@
       this.state.shown = this.props.id
       this.state.loading = true
       try {
-        const data = await Dboss.api(`/api/audit?row=${this.props.id}`)
+        const data = await Dboss.api(`/ui/audit?row=${this.props.id}`)
         this.state.row = (data.rows || [])[0] || null
         this.state.error = ''
       } catch (error) {

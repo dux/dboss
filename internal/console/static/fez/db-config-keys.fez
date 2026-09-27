@@ -4,8 +4,8 @@
 
   const loadRegistry = () => {
     registry ||= Promise.all([
-      Dboss.api('/api/config/keys'),
-      Dboss.api('/api/config/blocks'),
+      Dboss.api('/ui/config/keys'),
+      Dboss.api('/ui/config/blocks'),
     ]).catch((error) => {
       registry = null
       throw error

@@ -41,8 +41,8 @@
       this.state.loading = true
       try {
         const data = refresh
-          ? await Dboss.api('/api/pg/refresh', { method: 'POST', body: '{}' })
-          : await Dboss.api('/api/pg')
+          ? await Dboss.api('/ui/pg/refresh', { method: 'POST', body: '{}' })
+          : await Dboss.api('/ui/pg')
         this.apply(data)
         this.state.error = ''
       } catch (error) {
@@ -138,7 +138,7 @@
       }
       try {
         this.state.busy = true
-        const data = await Dboss.api('/api/pg/config', { method: 'POST', body: JSON.stringify({ backups }) })
+        const data = await Dboss.api('/ui/pg/config', { method: 'POST', body: JSON.stringify({ backups }) })
         this.apply(data)
         this.message('Backup rotation saved.')
         Toast.show('PostgreSQL backup rotation saved')
@@ -154,7 +154,7 @@
       if (this.state.busy) return
       try {
         this.state.busy = true
-        const data = await Dboss.api('/api/pg/backup', { method: 'POST', body: JSON.stringify({ database: name }) })
+        const data = await Dboss.api('/ui/pg/backup', { method: 'POST', body: JSON.stringify({ database: name }) })
         this.state.backups = data.backups || []
         this.message(name ? `Backup finished for ${name}.` : 'Backup finished.')
         Toast.show(name ? `${name}: backup finished` : 'Backup finished')
@@ -177,7 +177,7 @@
       body.append('file', file)
       try {
         this.state.busy = true
-        const data = await Dboss.api(`/api/pg/backup/upload?database=${encodeURIComponent(name)}`, { method: 'POST', body })
+        const data = await Dboss.api(`/ui/pg/backup/upload?database=${encodeURIComponent(name)}`, { method: 'POST', body })
         this.state.backups = data.backups || []
         this.message(`Uploaded ${file.name} into ${name}.`)
         Toast.show(`${name}: backup uploaded`)
@@ -198,7 +198,7 @@
       if (!window.confirm(`Restore backup ${entry.id} into ${target}?`)) return
       try {
         this.state.busy = true
-        const result = await Dboss.api('/api/pg/restore', { method: 'POST', body: JSON.stringify({ id: entry.id, target }) })
+        const result = await Dboss.api('/ui/pg/restore', { method: 'POST', body: JSON.stringify({ id: entry.id, target }) })
         Toast.show(`Restored into ${result.target}`)
         this.message(`Restored into ${result.target}.`)
       } catch (error) {
@@ -214,7 +214,7 @@
       if (!window.confirm(`Delete backup ${id}?`)) return
       try {
         this.state.busy = true
-        const data = await Dboss.api('/api/pg/backup/delete', { method: 'POST', body: JSON.stringify({ id }) })
+        const data = await Dboss.api('/ui/pg/backup/delete', { method: 'POST', body: JSON.stringify({ id }) })
         this.state.backups = data.backups || []
         Toast.show('Backup deleted')
         this.message('Backup deleted.')
@@ -237,7 +237,7 @@
       }
       try {
         this.state.busy = true
-        await Dboss.api('/api/pg/drop', { method: 'POST', body: JSON.stringify({ database: name, confirm: name }) })
+        await Dboss.api('/ui/pg/drop', { method: 'POST', body: JSON.stringify({ database: name, confirm: name }) })
         this.closeDatabase()
         Toast.show(`${name} dropped`)
         await this.load(true)
@@ -260,7 +260,7 @@
       this.state.running = true
       this.state.resultError = ''
       try {
-        const data = await Dboss.api('/api/pg/query', { method: 'POST', body: JSON.stringify({ database: name, sql }) })
+        const data = await Dboss.api('/ui/pg/query', { method: 'POST', body: JSON.stringify({ database: name, sql }) })
         this.state.result = data.result
       } catch (error) {
         this.state.result = null
@@ -526,7 +526,7 @@
           <span class="badge" class:badge-success={entry.status === 'ok'} class:badge-danger={entry.status !== 'ok'}>{entry.status}</span>
           <span class="pg-backup-action">
             {#if entry.status === 'ok'}
-              <a class="btn btn-sm" href="/api/pg/backup/download?id={entry.id}" download>Download</a>
+              <a class="btn btn-sm" href="/ui/pg/backup/download?id={entry.id}" download>Download</a>
               <button class="btn btn-sm" type="button" onclick="fez.restoreById('{entry.id}')" disabled={state.busy}>Restore</button>
             {:else}
               <span class="text-muted">{entry.error || '-'}</span>

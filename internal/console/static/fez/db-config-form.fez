@@ -57,7 +57,7 @@
         return
       }
       try {
-        const data = await Dboss.api(`/api/config/form?id=${encodeURIComponent(this.props.file_id)}`)
+        const data = await Dboss.api(`/ui/config/form?id=${encodeURIComponent(this.props.file_id)}`)
         this.state.file = data.file
         this.state.values = data.values || {}
         this.state.recipes = data.recipes || []
@@ -223,7 +223,7 @@
       const { values, reset } = this.buildPayload(recipe, this.state.drafts[recipe.id] || {})
       try {
         this.state.busy = true
-        const response = await fetch('/api/config/apply', {
+        const response = await fetch('/ui/config/apply', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': Dboss.state.csrf },
           body: JSON.stringify({ id: this.props.file_id, revision: this.state.revision, recipe: recipe.id, values, reset }),

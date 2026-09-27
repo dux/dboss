@@ -101,7 +101,7 @@ func (a *authenticator) authenticate(w http.ResponseWriter, r *http.Request) (au
 		// sending them to `dboss login` buys nothing; hand them the local session directly.
 		return a.localSession, true
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/") {
+	if strings.HasPrefix(r.URL.Path, "/ui/") {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = io.WriteString(w, `{"error":"authentication required"}`+"\n")

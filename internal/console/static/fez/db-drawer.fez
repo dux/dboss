@@ -32,7 +32,7 @@
 
     async showReference() {
       try {
-        this.open('Configuration reference', await Dboss.apiText('/api/config/reference'))
+        this.open('Configuration reference', await Dboss.apiText('/ui/config/reference'))
       } catch (error) {
         Toast.show(error.message, true)
       }

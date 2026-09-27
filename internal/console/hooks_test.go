@@ -121,7 +121,7 @@ func TestHookEndpointOnlyAnswersOnTheManagementHost(t *testing.T) {
 func TestHookAPIRequiresSession(t *testing.T) {
 	manager := &fakeManager{hooks: map[string][]supervisor.HookInfo{"sinatra": {{HookSnapshot: supervisor.HookSnapshot{Name: "deploy"}}}}}
 	handler := newTestHandler(t, manager, nil)
-	request := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me:8081/api/hooks?app=sinatra", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me:8081/ui/hooks?app=sinatra", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code == http.StatusOK {

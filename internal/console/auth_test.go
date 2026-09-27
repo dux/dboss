@@ -96,7 +96,7 @@ func TestLoopbackHostOnlySignsInThroughCLI(t *testing.T) {
 	if login.Code != http.StatusSeeOther {
 		t.Fatalf("login status = %d", login.Code)
 	}
-	bootstrap := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/api/bootstrap", nil)
+	bootstrap := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/ui/bootstrap", nil)
 	bootstrap.AddCookie(cookieNamed(t, login.Result().Cookies(), authSessionCookie))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, bootstrap)
@@ -107,7 +107,7 @@ func TestLoopbackHostOnlySignsInThroughCLI(t *testing.T) {
 
 func TestDevSignsInLoopbackPeer(t *testing.T) {
 	auth := devAuthenticator(true, "dboss.lvh.me")
-	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/api/bootstrap", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/ui/bootstrap", nil)
 	request.RemoteAddr = "127.0.0.1:54321"
 	session, ok := auth.authenticate(httptest.NewRecorder(), request)
 	if !ok || session.Email != cliEmail || session.CSRF == "" {
@@ -123,7 +123,7 @@ func TestDevSignsInLoopbackPeer(t *testing.T) {
 
 func TestDevStillAuthenticatesRemotePeer(t *testing.T) {
 	auth := devAuthenticator(true, "dboss.lvh.me")
-	api := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me/api/bootstrap", nil)
+	api := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me/ui/bootstrap", nil)
 	api.RemoteAddr = "203.0.113.7:54321"
 	response := httptest.NewRecorder()
 	if _, ok := auth.authenticate(response, api); ok || response.Code != http.StatusUnauthorized {
@@ -136,7 +136,7 @@ func TestDevStillAuthenticatesRemotePeer(t *testing.T) {
 		t.Fatalf("remote page request = %v %d", ok, redirect.Code)
 	}
 	// A loopback host header from a remote peer is not local.
-	forged := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/api/bootstrap", nil)
+	forged := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3100/ui/bootstrap", nil)
 	forged.RemoteAddr = "203.0.113.7:54321"
 	spoofed := httptest.NewRecorder()
 	if _, ok := auth.authenticate(spoofed, forged); ok {
@@ -220,7 +220,7 @@ func TestAuthCogLoginAndSession(t *testing.T) {
 
 func TestAPIAuthenticationFailureIsJSON(t *testing.T) {
 	auth := testAuthenticator("dboss.lvh.me")
-	request := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me:8081/api/apps", nil)
+	request := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me:8081/ui/apps", nil)
 	response := httptest.NewRecorder()
 	if _, ok := auth.authenticate(response, request); ok {
 		t.Fatal("unauthenticated API request was allowed")

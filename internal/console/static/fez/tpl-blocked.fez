@@ -15,7 +15,7 @@
     async load() {
       this.state.busy = true
       try {
-        const data = await Dboss.api('/api/log/blocked')
+        const data = await Dboss.api('/ui/log/blocked')
         const rows = data.rows || []
         const total = rows.reduce((sum, row) => sum + Number(row.count || 0), 0)
         this.state.total = total

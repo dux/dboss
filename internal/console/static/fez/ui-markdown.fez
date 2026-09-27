@@ -1,0 +1,15 @@
+<script>
+  // fez's own ui-markdown, without its CDN import: fez loads a component that imports through a
+  // blob: URL, which the CSP blocks, so the page loads the vendored /assets/marked.umd.js first
+  // and this reads window.marked.
+
+  // No template: the root is ours. src names a <script type="application/json"> holding the
+  // markdown as one JSON string, so the text never passes through the fez template compiler.
+  class {
+    onMount(props) {
+      const text = JSON.parse(document.getElementById(props.src).textContent)
+      this.root.classList.add('markdown')
+      this.root.innerHTML = window.marked.parse(text)
+    }
+  }
+</script>

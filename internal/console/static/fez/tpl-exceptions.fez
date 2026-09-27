@@ -27,14 +27,14 @@
     async load() {
       this.state.busy = true
       try {
-        const fleet = await Dboss.api('/api/apps')
+        const fleet = await Dboss.api('/ui/apps')
         this.state.apps = (fleet.apps || []).map((app) => app.name).sort()
         if (!this.state.apps.includes(this.state.app)) this.state.app = this.state.apps[0] || ''
         Dboss.setQs('app', this.state.app)
         this.state.needsSelectSync = true
         if (this.state.app) {
           const params = new URLSearchParams({ app: this.state.app, range: this.state.range })
-          const data = await Dboss.api(`/api/exceptions?${params}`)
+          const data = await Dboss.api(`/ui/exceptions?${params}`)
           this.state.rows = (data.rows || []).map((row) => this.shape(row))
         } else {
           this.state.rows = []
@@ -79,7 +79,7 @@
       const on = !row.resolved
       this.state.busy = true
       try {
-        await Dboss.api('/api/exceptions/resolve', {
+        await Dboss.api('/ui/exceptions/resolve', {
           method: 'POST',
           body: JSON.stringify({ app: this.state.app, exp_uid: row.exp_uid, on }),
         })
@@ -98,7 +98,7 @@
       const on = !row.ignored
       this.state.busy = true
       try {
-        await Dboss.api('/api/exceptions/ignore', {
+        await Dboss.api('/ui/exceptions/ignore', {
           method: 'POST',
           body: JSON.stringify({ app: this.state.app, exp_uid: row.exp_uid, on }),
         })

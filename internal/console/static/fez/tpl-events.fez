@@ -69,7 +69,7 @@
     async load() {
       this.state.loading = true
       try {
-        const fleet = await Dboss.api('/api/apps')
+        const fleet = await Dboss.api('/ui/apps')
         this.state.apps = (fleet.apps || []).map((app) => app.name).sort()
         if (!this.state.apps.includes(this.state.app)) this.state.app = this.state.apps[0] || ''
         Dboss.setQs('app', this.state.app)
@@ -103,19 +103,19 @@
 
     async loadSummary() {
       const params = new URLSearchParams({ app: this.state.app, filter: this.effectiveFilter() })
-      const data = await Dboss.api(`/api/events?${params}`)
+      const data = await Dboss.api(`/ui/events?${params}`)
       this.shape(data.summary)
     }
 
     async loadLatest() {
       const params = new URLSearchParams({ app: this.state.app, filter: this.effectiveFilter(), limit: '100' })
-      const data = await Dboss.api(`/api/events/latest?${params}`)
+      const data = await Dboss.api(`/ui/events/latest?${params}`)
       this.state.openRow = -1
       this.state.latest = data.events || []
     }
 
     async loadViews() {
-      const data = await Dboss.api(`/api/events/views?${new URLSearchParams({ app: this.state.app })}`)
+      const data = await Dboss.api(`/ui/events/views?${new URLSearchParams({ app: this.state.app })}`)
       this.state.catalog = this.normalizeCatalog(data.views)
     }
 
@@ -267,7 +267,7 @@
       const seq = ++this.state.suggestSeq
       try {
         const params = new URLSearchParams({ app: this.state.app, filter: this.effectiveFilter(rest), key })
-        const data = await Dboss.api(`/api/events/facets?${params}`)
+        const data = await Dboss.api(`/ui/events/facets?${params}`)
         if (seq !== this.state.suggestSeq) return
         const lower = prefix.toLowerCase()
         const items = (data.facets || [])
@@ -414,7 +414,7 @@
       const filter = this.state.filterNode ? this.state.filterNode.value.trim() : this.state.filter
       if (!name) return
       try {
-        const data = await Dboss.api('/api/events/views', { method: 'POST', body: JSON.stringify({ app: this.state.app, kind: 'view', entry: { name, filter } }) })
+        const data = await Dboss.api('/ui/events/views', { method: 'POST', body: JSON.stringify({ app: this.state.app, kind: 'view', entry: { name, filter } }) })
         this.state.catalog = this.normalizeCatalog(data.views)
         this.state.saving = false
         Toast.show(`View ${name} saved`)
@@ -436,7 +436,7 @@
       const entry = this.entry(kind, index)
       if (!entry) return
       try {
-        await Dboss.api('/api/events/views/delete', { method: 'POST', body: JSON.stringify({ app: this.state.app, kind, name: entry.name }) })
+        await Dboss.api('/ui/events/views/delete', { method: 'POST', body: JSON.stringify({ app: this.state.app, kind, name: entry.name }) })
         this.state.pendingDelete = ''
         Toast.show(`${kind === 'view' ? 'View' : 'Funnel'} ${entry.name} deleted`)
         await this.loadViews()
@@ -540,7 +540,7 @@
       this.state.funnelRunning = true
       this.state.funnelError = ''
       try {
-        const data = await Dboss.api('/api/events/funnel', { method: 'POST', body: JSON.stringify(body) })
+        const data = await Dboss.api('/ui/events/funnel', { method: 'POST', body: JSON.stringify(body) })
         this.state.funnelTitle = saved ? saved.name : (body.funnel.name || 'draft')
         this.state.funnelResult = data.result
         this.state.funnelGroups = this.groupFunnel(data.result)
@@ -556,7 +556,7 @@
     async saveFunnel() {
       const funnel = this.builder()
       try {
-        const data = await Dboss.api('/api/events/views', { method: 'POST', body: JSON.stringify({ app: this.state.app, kind: 'funnel', entry: funnel }) })
+        const data = await Dboss.api('/ui/events/views', { method: 'POST', body: JSON.stringify({ app: this.state.app, kind: 'funnel', entry: funnel }) })
         this.state.catalog = this.normalizeCatalog(data.views)
         Toast.show(`Funnel ${funnel.name} saved`)
       } catch (error) {
@@ -593,7 +593,7 @@
       this.state.running = true
       this.state.sqlError = ''
       try {
-        const data = await Dboss.api('/api/events/query', { method: 'POST', body: JSON.stringify({ app: this.state.app, sql }) })
+        const data = await Dboss.api('/ui/events/query', { method: 'POST', body: JSON.stringify({ app: this.state.app, sql }) })
         this.state.result = data.result
       } catch (error) {
         this.state.result = null

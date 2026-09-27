@@ -69,7 +69,7 @@
 
     async loadTree() {
       try {
-        const data = await Dboss.api('/api/log/tree')
+        const data = await Dboss.api('/ui/log/tree')
         this.state.tree = data.apps || []
         const names = this.state.tree.map((group) => group.name)
         if (!names.includes(this.state.app)) this.state.app = names[0] || ''
@@ -157,7 +157,7 @@
         if (this.state.method) params.set('method', this.state.method)
         if (this.state.status) params.set('status', this.state.status)
         if (append && this.state.before) params.set('before', this.state.before)
-        const data = await Dboss.api(`/api/log/search?${params}`)
+        const data = await Dboss.api(`/ui/log/search?${params}`)
         const rows = (data.rows || []).map((row) => this.decorate(row))
         if (append) {
           this.state.rows = [...this.state.rows, ...rows]

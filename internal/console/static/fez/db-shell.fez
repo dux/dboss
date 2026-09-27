@@ -142,7 +142,7 @@
 
     async bootstrap() {
       try {
-        const data = await this.api('/api/bootstrap')
+        const data = await this.api('/ui/bootstrap')
         this.state.csrf = data.csrf
         this.state.viewer = data.viewer
         this.state.version = data.version || ''
@@ -160,7 +160,7 @@
       if (this.globalState.busy || document.hidden) return
       try {
         if (!quiet) this.setBusy(true)
-        const data = await this.api('/api/apps')
+        const data = await this.api('/ui/apps')
         this.applyApps(data.apps, data.updated_at, data.capabilities)
       } catch (error) {
         this.globalState.status = 'Daemon unavailable'
@@ -179,7 +179,7 @@
       } else if (['stop', 'restart'].includes(action) && !window.confirm(`${action[0].toUpperCase()}${action.slice(1)} ${target}?`)) return
       try {
         this.setBusy(true)
-        const data = await this.api('/api/action', { method: 'POST', body: JSON.stringify({ app, action, ...extra }) })
+        const data = await this.api('/ui/action', { method: 'POST', body: JSON.stringify({ app, action, ...extra }) })
         this.applyApps(data.apps, data.updated_at)
         Toast.show(action === 'destroy' ? `${app} destroyed` : `${target}: ${action.replace('-', ' ')} requested`)
       } catch (error) {
@@ -193,7 +193,7 @@
       if (this.globalState.busy) return
       try {
         this.setBusy(true)
-        const data = await this.api('/api/rescan', { method: 'POST', body: '{}' })
+        const data = await this.api('/ui/rescan', { method: 'POST', body: '{}' })
         this.applyApps(data.apps)
         this.globalState.restartRequired = data.restart_required || []
         Fez.publish('config:changed')
@@ -213,7 +213,7 @@
       if (this.globalState.busy) return
       try {
         this.setBusy(true)
-        await this.api('/api/logout', { method: 'POST', body: '{}' })
+        await this.api('/ui/logout', { method: 'POST', body: '{}' })
         window.location.assign('/')
       } catch (error) {
         Toast.show(error.message, true)

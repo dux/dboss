@@ -29,9 +29,9 @@
 
     // Each widget loads on its own, so a host without sysinfo or a log store still shows the rest.
     loadWidgets() {
-      Dboss.api('/api/sys').then((data) => { this.state.sys = data.snapshot }).catch(() => { this.state.sys = false })
-      Dboss.api('/api/traffic/fleet?range=24h').then((data) => { this.state.chart = this.shape(data.series || []) }).catch(() => { this.state.chart = false })
-      Dboss.api('/api/audit?limit=3')
+      Dboss.api('/ui/sys').then((data) => { this.state.sys = data.snapshot }).catch(() => { this.state.sys = false })
+      Dboss.api('/ui/traffic/fleet?range=24h').then((data) => { this.state.chart = this.shape(data.series || []) }).catch(() => { this.state.chart = false })
+      Dboss.api('/ui/audit?limit=3')
         .then((data) => { this.state.audit = data.rows || []; this.state.auditError = '' })
         .catch((error) => { this.state.audit = []; this.state.auditError = error.message })
     }

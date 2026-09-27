@@ -28,7 +28,7 @@ var keySpecs = map[string]KeySpec{
 
 	// --- Tokens ---
 	"tokens.github": {Block: "tokens", Name: "GitHub token", Description: "outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only", Example: "$GITHUB_TOKEN", Secret: true},
-	"tokens.dboss":  {Block: "tokens", Name: "Dboss token", Description: "inbound: every /hooks ping and /metrics must present it; unset refuses hooks and hides /metrics", Example: "$DBOSS_TOKEN", Secret: true},
+	"tokens.dboss":  {Block: "tokens", Name: "Dboss token", Description: "inbound: every /hooks ping, /metrics and /api call must present it; unset refuses hooks and the API and hides /metrics", Example: "$DBOSS_TOKEN", Secret: true},
 
 	// --- Proxy ---
 	"proxy.listen":     {Block: "proxy", Name: "Listen addresses", Description: "one or more addresses to listen on; owns port 80 and routes every request to an app, empty disables the proxy", Example: "127.0.0.1:8080"},

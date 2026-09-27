@@ -15,7 +15,7 @@
 
     async loadHooks() {
       try {
-        const data = await Dboss.api(`/api/hooks?app=${encodeURIComponent(this.props.app.name)}`)
+        const data = await Dboss.api(`/ui/hooks?app=${encodeURIComponent(this.props.app.name)}`)
         const meta = {}
         for (const hook of data.hooks || []) meta[hook.name] = hook
         this.state.hookMeta = meta
@@ -131,7 +131,7 @@
     // here. The shell owns the app list, so the answer is picked up by a normal reload.
     async measureDisk() {
       try {
-        await Dboss.api('/api/disk/refresh', { method: 'POST', body: JSON.stringify({ app: this.props.app.name }) })
+        await Dboss.api('/ui/disk/refresh', { method: 'POST', body: JSON.stringify({ app: this.props.app.name }) })
         await Dboss.reload()
         Toast.show(`${this.props.app.name}: disk measured`)
       } catch (error) {
@@ -152,7 +152,7 @@
 
     async runHook(hook) {
       try {
-        await Dboss.api('/api/hooks/run', { method: 'POST', body: JSON.stringify({ app: this.props.app.name, hook: hook.name }) })
+        await Dboss.api('/ui/hooks/run', { method: 'POST', body: JSON.stringify({ app: this.props.app.name, hook: hook.name }) })
         Toast.show(`${this.props.app.name}: ${hook.name} started`)
         this.loadHooks()
       } catch (error) {

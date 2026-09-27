@@ -152,14 +152,17 @@ v0.8.1
 ```
 
 The release tag still carries the whole count (`v81`), and `dboss update` compares that integer, so there is no separate major/minor/patch to maintain.
-`make build` and `.github/workflows/release.yml` both inject it; a binary built straight from source with `go build` reports `dev`, and `dboss update` refuses to replace one without `--force`.
+`make build` and `make assets` both inject it; a binary built straight from source with `go build` reports `dev`, and `dboss update` refuses to replace one without `--force`.
 
-Releases are built by `.github/workflows/release.yml` on every `v*` tag push; building from source is still the option below and needs Go 1.25+.
+Releases are built and published by `make release` from a clean `main` with an authenticated `gh`; it refuses uncommitted changes, since they would ship under the previous commit's number.
+It rebuilds `./bin/dboss` and one asset per platform plus `checksums.txt`, pushes `main`, tags the release on that commit and removes every older release, so `latest` is always the newest build.
+Building from source is still the option below and needs Go 1.25+.
 
 ## Build and run the demo
 
 ```sh
 make build            # ./bin/dboss
+make release          # from a clean main: rebuild, push main, publish ./dist as the only GitHub release
 make demo             # builds, then runs the host session on ./demo/dboss.yaml
 ```
 

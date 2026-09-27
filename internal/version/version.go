@@ -3,8 +3,8 @@ package version
 
 import "strings"
 
-// Version is the build version: v<number of commits in main>, injected by `make build` and by
-// the release workflow with -ldflags "-X dboss/internal/version.Version=v81". A plain
+// Version is the build version: v<number of commits in main>, injected by `make build` and
+// `make assets` with -ldflags "-X dboss/internal/version.Version=v81". A plain
 // `go build` leaves it at "dev", which is what marks a from-source binary.
 var Version = Dev
 

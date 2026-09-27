@@ -1,6 +1,7 @@
 .DS_Store
 /dboss
 /bin/
+/dist/
 /coverage/
 /tmp/
 node_modules/

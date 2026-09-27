@@ -7,7 +7,7 @@ DIST_DIR := ./dist
 CMD := ./cmd/dboss
 # Every platform `dboss update` can install onto. The release asset is named
 # dboss_<os>_<arch>, which is exactly what the updater asks GitHub for.
-PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
+PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
 # The version is the number of commits in main. HEAD and 0 only cover a checkout without a
 # main branch, so a build outside a normal clone still succeeds.

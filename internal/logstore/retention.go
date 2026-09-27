@@ -77,39 +77,56 @@ func (s *Store) pruneAll() {
 	}
 }
 
-// Vacuum rewrites one app's database to reclaim the space the prune freed. A missing database is
-// a no-op.
+// VACUUM copies the whole database through the WAL, so it only runs when the free pages are worth
+// it: at least vacuumMinFree bytes and a quarter of the file.
+const (
+	vacuumMinFree  = 16 << 20
+	vacuumMinShare = 4
+)
+
+// Vacuum rewrites one app's database when enough of it is free pages, then truncates the WAL the
+// rewrite went through. A missing database is a no-op.
 func (s *Store) Vacuum(ctx context.Context, app string) error {
+	db, done, err := s.maintenanceDB(app)
+	if err != nil || db == nil {
+		return err
+	}
+	defer done()
+	pages, free, size, err := pageStats(ctx, db)
+	if err != nil {
+		return err
+	}
+	if free*size >= vacuumMinFree && free*vacuumMinShare >= pages {
+		if _, err := db.ExecContext(ctx, `VACUUM`); err != nil {
+			return err
+		}
+	}
+	return truncateWAL(ctx, db)
+}
+
+// truncateWAL checkpoints every frame and cuts the WAL to zero. A reader holding an old snapshot
+// makes SQLite skip the truncate; the next pass tries again.
+func truncateWAL(ctx context.Context, db *sql.DB) error {
+	var busy, log, checkpointed int64
+	return db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &log, &checkpointed)
+}
+
+// maintenanceDB is the app's writer connection, or one opened for this pass when no writer holds
+// the database, so maintenance never creates a database or a writer loop. A missing database is
+// nil.
+func (s *Store) maintenanceDB(app string) (*sql.DB, func(), error) {
 	s.mu.Lock()
 	w := s.apps[app]
 	s.mu.Unlock()
 	if w != nil {
-		_, err := w.db.ExecContext(ctx, `VACUUM`)
-		return err
+		return w.db, func() {}, nil
 	}
 	if exists, err := s.exists(app); !exists {
-		return err
+		return nil, nil, err
 	}
 	db, err := sql.Open("sqlite", s.dbPath(app))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer db.Close()
-	_, err = db.ExecContext(ctx, `VACUUM`)
-	return err
-}
-
-// vacuumAll vacuums every database on disk, including databases left by removed apps.
-func (s *Store) vacuumAll() {
-	for _, app := range s.diskApps() {
-		if app == HostApp {
-			continue
-		}
-		if err := s.Vacuum(s.ctx, app); err != nil {
-			logx.Warnf("log vacuum %s: %v", app, err)
-		}
-	}
-	if err := s.Vacuum(s.ctx, HostApp); err != nil {
-		logx.Warnf("log vacuum %s: %v", HostApp, err)
-	}
+	return db, func() { _ = db.Close() }, nil
 }

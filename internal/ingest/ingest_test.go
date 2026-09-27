@@ -87,7 +87,7 @@ func (m *memorySink) AppendExceptions(_ string, batch logstore.ExceptionBatch) e
 		if m.offsets == nil {
 			m.offsets = map[string]logstore.TailOffset{}
 		}
-		m.offsets[batch.Path] = logstore.TailOffset{Path: batch.Path, Inode: batch.Inode, Offset: batch.Offset}
+		m.offsets[batch.Path] = logstore.TailOffset{Path: batch.Path, Inode: batch.Inode, Offset: batch.Offset, Base: batch.Base}
 	}
 	return nil
 }
@@ -99,11 +99,11 @@ func (m *memorySink) TailOffsets(string) (map[string]logstore.TailOffset, error)
 	return m.offsets, nil
 }
 
-func (m *memorySink) SaveTailOffset(_, path string, inode uint64, offset int64) error {
+func (m *memorySink) SaveTailOffset(_ string, offset logstore.TailOffset) error {
 	if m.offsets == nil {
 		m.offsets = map[string]logstore.TailOffset{}
 	}
-	m.offsets[path] = logstore.TailOffset{Path: path, Inode: inode, Offset: offset}
+	m.offsets[offset.Path] = offset
 	return nil
 }
 
@@ -229,6 +229,10 @@ func TestTailResetsOnTruncation(t *testing.T) {
 	module.runOnce()
 	if len(sink.entries) != 2 || sink.entries[1].Message != "new" {
 		t.Fatalf("truncated file should restart: %+v", sink.entries)
+	}
+	// The bytes read before the truncation move into Base, so event ids never repeat in one inode.
+	if at := sink.offsets[path]; at.Base != int64(len("long enough first line\n")) || at.Offset != int64(len("new\n")) {
+		t.Fatalf("truncation should carry the read bytes into base: %+v", at)
 	}
 }
 

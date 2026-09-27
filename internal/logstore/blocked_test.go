@@ -10,7 +10,7 @@ import (
 
 func TestRecordBlockedCountsByPath(t *testing.T) {
 	dir := t.TempDir()
-	store := New(dir, 5*time.Millisecond, nil, "", time.Hour, 0)
+	store := New(dir, 5*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 
 	if err := store.RecordBlocked("/admin"); err != nil {
@@ -47,7 +47,7 @@ func TestRecordBlockedCountsByPath(t *testing.T) {
 }
 
 func TestBlockedListsCounts(t *testing.T) {
-	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, 0)
+	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 
 	// A host that never blocked a request has no blocked table yet.
@@ -83,7 +83,7 @@ func TestBlockedListsCounts(t *testing.T) {
 }
 
 func TestBlockedIsCapped(t *testing.T) {
-	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, 0)
+	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 
 	for i := 0; i < BlockedLimit+5; i++ {

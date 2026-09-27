@@ -88,8 +88,9 @@ log_level: info           # debug | info | warn | error
 audit_retention: 8760h
 
 # Daily housekeeping at this local time: logs and request rows older than their retention are
-# pruned, then every app database and the host database is VACUUMed to reclaim the space. Run it
-# off peak, since VACUUM rewrites each database.
+# pruned, trimmed to max_db_size, then every app database and the host database with at least 16m
+# and a quarter of its pages free is VACUUMed, and its WAL truncated. The trim and VACUUM also run
+# every 7 hours. Run it off peak, since VACUUM rewrites each database.
 maintenance_at: "04:10"
 
 # Post disk-low once a filesystem holding the config, the apps or the runtime folder is fuller
@@ -234,6 +235,13 @@ defaults:
   # 10m and keep 5 rotated files.
   log_retention: 336h       # 14 days for request rows and app log files
   stdout_retention: 3h      # process stdout and the dboss daemon log
+  # Cap on the space the app's dboss.sqlite uses. Every 7 hours (and in the daily maintenance)
+  # a database past it loses the oldest two days of request, log and exception minute rows,
+  # counted from its oldest row, and again until it fits; exception summaries are kept. An app
+  # that logs more than the cap in two days keeps only what came after the cut. The freed pages
+  # are reused, so the file stops growing, and the same pass VACUUMs it once enough is free. The
+  # host value also caps the reserved _dboss database and databases left by removed apps.
+  max_db_size: 100m         # 0 no cap
 
   # Housekeeping of the app's own ./tmp directory. Once a day dboss deletes the files last
   # modified longer than tmp_clean ago, then the sub-directories that are left empty. The
@@ -474,6 +482,7 @@ restart: on-failure
 max_restarts: 5
 log_retention: 168h
 stdout_retention: 3h
+max_db_size: 500m
 tmp_clean: false            # this app keeps its own ./tmp
 memory_max: 512m
 cpu_max: 0

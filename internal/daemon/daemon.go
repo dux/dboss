@@ -128,7 +128,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 	for _, scanErr := range invalid {
 		logx.Warnf("skip invalid app: %v", scanErr)
 	}
-	logs := logstore.New(cfg.LogDir, logFlush, manager, cfg.MaintenanceAt, cfg.Defaults.StdoutRetention.Value(), cfg.AuditRetention.Value())
+	logs := logstore.New(cfg.LogDir, logFlush, manager, cfg.MaintenanceAt, cfg.Defaults.StdoutRetention.Value(), cfg.AuditRetention.Value(), int64(cfg.Defaults.MaxDBSize))
 	if retention := cfg.Defaults.StdoutRetention.Value(); retention > 0 {
 		log.SetOutput(io.MultiWriter(log.Writer(), ingest.NewDaemonSink(logs)))
 	}

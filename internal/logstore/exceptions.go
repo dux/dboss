@@ -200,6 +200,7 @@ type ExceptionBatch struct {
 	Path     string
 	Inode    uint64
 	Offset   int64
+	Base     int64
 	Groups   []ExceptionGroup
 	Warnings []LogEntry
 }
@@ -232,7 +233,7 @@ func (s *Store) AppendExceptions(app string, batch ExceptionBatch) error {
 		}
 	}
 	if batch.Path != "" {
-		if _, err := tx.Exec(`INSERT INTO tail_offsets (path, inode, offset, updated_ts) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET inode = excluded.inode, offset = excluded.offset, updated_ts = excluded.updated_ts`, batch.Path, batch.Inode, batch.Offset, stamp(time.Now())); err != nil {
+		if _, err := tx.Exec(saveTailOffset, batch.Path, batch.Inode, batch.Offset, batch.Base, stamp(time.Now())); err != nil {
 			_ = tx.Rollback()
 			return err
 		}

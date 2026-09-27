@@ -67,7 +67,7 @@ func seed(dir string, apps []string, now time.Time) error {
 			return err
 		}
 	}
-	store := logstore.New(dir, 50*time.Millisecond, nil, "", time.Hour, 0)
+	store := logstore.New(dir, 50*time.Millisecond, nil, "", time.Hour, 0, 0)
 	rng := rand.New(rand.NewSource(now.UnixNano()))
 	for _, app := range apps {
 		seedApp(store, rng, app, app+".lvh.me", now)
@@ -82,7 +82,7 @@ func seed(dir string, apps []string, now time.Time) error {
 	}
 	// Exceptions last, on a fresh store: the batched request/log writers above are stopped, so
 	// the synchronous exception upsert never contends with them for SQLite's write lock.
-	exceptions := logstore.New(dir, 50*time.Millisecond, nil, "", time.Hour, 0)
+	exceptions := logstore.New(dir, 50*time.Millisecond, nil, "", time.Hour, 0, 0)
 	if len(apps) > 0 {
 		if err := seedExceptions(exceptions, rng, apps[0], now); err != nil {
 			_ = exceptions.Close()

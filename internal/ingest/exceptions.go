@@ -163,14 +163,10 @@ func (m *Module) tailExceptions(snapshot supervisor.Snapshot, dir, path string, 
 	if err != nil {
 		return err
 	}
-	inode := inodeOf(info)
-	start := previous.Offset
-	if previous.Path == "" || previous.Inode != inode || info.Size() < start {
-		start = 0
-	}
-	if start >= info.Size() {
-		if previous.Path == "" || previous.Inode != inode {
-			return m.store.SaveTailOffset(snapshot.Name, path, inode, start)
+	at := resume(previous, path, info)
+	if at.Offset >= info.Size() {
+		if at != previous {
+			return m.store.SaveTailOffset(snapshot.Name, at)
 		}
 		return nil
 	}
@@ -178,14 +174,14 @@ func (m *Module) tailExceptions(snapshot supervisor.Snapshot, dir, path string, 
 	if err != nil {
 		name = filepath.Base(path)
 	}
-	if _, err := file.Seek(start, io.SeekStart); err != nil {
+	if _, err := file.Seek(at.Offset, io.SeekStart); err != nil {
 		return err
 	}
 	reader := bufio.NewReaderSize(file, 64*1024)
 	now := time.Now()
 	aggregator := newExceptionAggregator()
 	var warnings []logstore.LogEntry
-	next := start
+	next := at.Offset
 	for lines := 0; lines < exceptionBatch; lines++ {
 		line, err := reader.ReadBytes('\n')
 		if len(line) == 0 || line[len(line)-1] != '\n' {
@@ -205,11 +201,17 @@ func (m *Module) tailExceptions(snapshot supervisor.Snapshot, dir, path string, 
 			break
 		}
 	}
-	return m.store.AppendExceptions(snapshot.Name, logstore.ExceptionBatch{
+	at.Offset = next
+	err = m.store.AppendExceptions(snapshot.Name, logstore.ExceptionBatch{
 		Path:     path,
-		Inode:    inode,
-		Offset:   next,
+		Inode:    at.Inode,
+		Offset:   at.Offset,
+		Base:     at.Base,
 		Groups:   aggregator.result(),
 		Warnings: warnings,
 	})
+	if err != nil {
+		return err
+	}
+	return m.release(snapshot.Name, at)
 }

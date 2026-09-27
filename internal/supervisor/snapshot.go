@@ -75,28 +75,29 @@ type Snapshot struct {
 	Branch    string `json:"branch,omitempty"`
 	BranchURL string `json:"branch_url,omitempty"`
 	// Pages is the app's own pages folder, resolved against Dir.
-	Pages           string               `json:"pages"`
-	Hosts           []string             `json:"hosts"`
-	WebProcesses    []WebProcessSnapshot `json:"web_processes"`
-	Autostart       bool                 `json:"autostart"`
-	Deletable       bool                 `json:"deletable"`
-	WakeButton      bool                 `json:"wake_button,omitempty"`
-	Web             config.Web           `json:"web"`
-	Processes       []ProcessSnapshot    `json:"processes"`
-	Cron            []CronSnapshot       `json:"cron,omitempty"`
-	Hooks           []HookSnapshot       `json:"hooks,omitempty"`
-	LastActivity    time.Time            `json:"last_activity,omitempty"`
-	Uptime          string               `json:"uptime,omitempty"`
-	Resources       res.Stats            `json:"resources"`
-	RequestRates    RequestRates         `json:"request_rates"`
-	Disk            DiskUsage            `json:"disk"`
+	Pages        string               `json:"pages"`
+	Hosts        []string             `json:"hosts"`
+	WebProcesses []WebProcessSnapshot `json:"web_processes"`
+	Autostart    bool                 `json:"autostart"`
+	Deletable    bool                 `json:"deletable"`
+	WakeButton   bool                 `json:"wake_button,omitempty"`
+	Web          config.Web           `json:"web"`
+	Processes    []ProcessSnapshot    `json:"processes"`
+	Cron         []CronSnapshot       `json:"cron,omitempty"`
+	Hooks        []HookSnapshot       `json:"hooks,omitempty"`
+	LastActivity time.Time            `json:"last_activity,omitempty"`
+	Uptime       string               `json:"uptime,omitempty"`
+	Resources    res.Stats            `json:"resources"`
+	RequestRates RequestRates         `json:"request_rates"`
+	Disk         DiskUsage            `json:"disk"`
 	// Exceptions is the number of unresolved exception groups the log store holds; ops fills it.
-	Exceptions int    `json:"exceptions,omitempty"`
-	Error      string `json:"error,omitempty"`
-	ErrorLog        []string             `json:"error_log,omitempty"`
-	LogRetention    time.Duration        `json:"-"`
-	StdoutRetention time.Duration        `json:"-"`
-	TmpClean        time.Duration        `json:"-"`
+	Exceptions      int           `json:"exceptions,omitempty"`
+	Error           string        `json:"error,omitempty"`
+	ErrorLog        []string      `json:"error_log,omitempty"`
+	LogRetention    time.Duration `json:"-"`
+	StdoutRetention time.Duration `json:"-"`
+	MaxDBSize       int64         `json:"-"`
+	TmpClean        time.Duration `json:"-"`
 }
 
 // Serving reports whether a request for the app would be answered by the app itself: it runs, or

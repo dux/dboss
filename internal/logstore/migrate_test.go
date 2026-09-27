@@ -28,7 +28,7 @@ func TestRequestsTableGainsCountryColumnInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := New(dir, 5*time.Millisecond, nil, "", time.Hour, 0)
+	store := New(dir, 5*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 	if err := store.Record("demo", time.Hour, RequestEntry{Time: time.Now(), Method: "GET", Host: "demo.test", Path: "/new", Status: 200, Country: "HR"}); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestExceptionsTableGainsResolvedColumnInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := New(dir, time.Hour, nil, "", time.Hour, 0)
+	store := New(dir, time.Hour, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 	rows, err := store.Exceptions("demo", ExceptionFilter{})
 	if err != nil || len(rows) != 1 || rows[0].ExpUID != "e" || rows[0].IsResolved || rows[0].IsIgnored {

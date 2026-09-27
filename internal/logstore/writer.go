@@ -120,6 +120,7 @@ func (s *Store) writer(app string) (*appWriter, error) {
 	_, _ = db.Exec(`ALTER TABLE requests ADD COLUMN country TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE exceptions ADD COLUMN is_resolved INTEGER NOT NULL DEFAULT 0`)
 	_, _ = db.Exec(`ALTER TABLE exceptions ADD COLUMN is_ignored INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE tail_offsets ADD COLUMN base INTEGER NOT NULL DEFAULT 0`)
 	w := &appWriter{db: db, entries: make(chan entry, queueSize), stop: make(chan struct{}), done: make(chan struct{})}
 	s.apps[app] = w
 	go w.loop(s.flush)
@@ -154,7 +155,7 @@ var schema = []string{
 	`CREATE INDEX IF NOT EXISTS logs_process ON logs(process)`,
 	`CREATE INDEX IF NOT EXISTS logs_level ON logs(level)`,
 	`CREATE INDEX IF NOT EXISTS logs_source ON logs(source)`,
-	`CREATE TABLE IF NOT EXISTS tail_offsets (path TEXT PRIMARY KEY, inode INTEGER NOT NULL, offset INTEGER NOT NULL, updated_ts TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS tail_offsets (path TEXT PRIMARY KEY, inode INTEGER NOT NULL, offset INTEGER NOT NULL, base INTEGER NOT NULL DEFAULT 0, updated_ts TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS audit (ts TEXT NOT NULL, actor TEXT NOT NULL, app TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL, result TEXT NOT NULL, error TEXT NOT NULL)`,
 	`CREATE INDEX IF NOT EXISTS audit_ts ON audit(ts)`,
 	`CREATE TABLE IF NOT EXISTS blocked (path TEXT PRIMARY KEY, count INTEGER NOT NULL)`,

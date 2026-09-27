@@ -2,12 +2,15 @@ package logstore
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestAuditRecordSearchAndPrune(t *testing.T) {
-	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, time.Hour)
+	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, time.Hour, 0)
 	defer store.Close()
 	now := time.Now()
 	rows := []AuditEntry{
@@ -83,7 +86,7 @@ func TestAuditRecordSearchAndPrune(t *testing.T) {
 }
 
 func TestVacuumKeepsDatabaseUsable(t *testing.T) {
-	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, time.Hour)
+	store := New(t.TempDir(), 5*time.Millisecond, nil, "", time.Hour, time.Hour, 0)
 	defer store.Close()
 	if err := store.RecordLogs("web", []LogEntry{{Time: time.Now(), Source: "stdout", Process: "web", Level: "info", Message: "hello"}}); err != nil {
 		t.Fatal(err)
@@ -98,5 +101,42 @@ func TestVacuumKeepsDatabaseUsable(t *testing.T) {
 	logs, err := store.SearchLogs("web", LogFilter{Channel: "stdout", Limit: 5})
 	if err != nil || len(logs) == 0 {
 		t.Fatalf("logs after vacuum = %+v, %v", logs, err)
+	}
+}
+
+func TestVacuumOnlyWhenMostlyFreeAndTruncatesWAL(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir, time.Hour, nil, "", time.Hour, 0, 0)
+	defer store.Close()
+	ctx := context.Background()
+	entries := make([]LogEntry, 5000)
+	for i := range entries {
+		entries[i] = LogEntry{Time: time.Now().Add(-time.Hour), Source: "file", Process: "production.log", Level: "info", Message: "row", Raw: strings.Repeat("x", 4096)}
+	}
+	if err := store.AppendLogs("web", entries); err != nil {
+		t.Fatal(err)
+	}
+	fileSize := func() int64 {
+		info, err := os.Stat(filepath.Join(dir, "web", "dboss.sqlite"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.Size()
+	}
+	if err := store.Vacuum(ctx, "web"); err != nil {
+		t.Fatal(err)
+	}
+	full := fileSize()
+	if info, err := os.Stat(filepath.Join(dir, "web", "dboss.sqlite-wal")); err == nil && info.Size() != 0 {
+		t.Fatalf("wal left at %d bytes after maintenance", info.Size())
+	}
+	if err := store.Prune(ctx, "web", time.Minute, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Vacuum(ctx, "web"); err != nil {
+		t.Fatal(err)
+	}
+	if shrunk := fileSize(); shrunk*4 > full {
+		t.Fatalf("vacuum should reclaim the pruned rows: %d -> %d", full, shrunk)
 	}
 }

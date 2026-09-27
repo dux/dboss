@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"dboss/internal/module"
 	"dboss/internal/schedule"
 	"dboss/internal/supervisor"
 
@@ -28,6 +29,8 @@ type Store struct {
 	maintenanceAt  string
 	hostRetention  time.Duration
 	auditRetention time.Duration
+	hostMaxDBSize  int64
+	compaction     module.Ticker
 	mu             sync.Mutex
 	apps           map[string]*appWriter
 	ctx            context.Context
@@ -38,21 +41,24 @@ type Store struct {
 // maintenanceAt drive the daily retention prune and the VACUUM after it; a nil snapshotter or an
 // empty time disables both. hostRetention bounds the reserved HostApp database that holds dboss's
 // own daemon log; auditRetention bounds the audit table (0 keeps audit rows forever).
-func New(dir string, flush time.Duration, snapshotter Snapshotter, maintenanceAt string, hostRetention, auditRetention time.Duration) *Store {
-	return &Store{dir: dir, flush: flush, snapshotter: snapshotter, maintenanceAt: maintenanceAt, hostRetention: hostRetention, auditRetention: auditRetention, apps: map[string]*appWriter{}}
+// hostMaxDBSize caps the HostApp database and databases left by removed apps (0 no cap).
+func New(dir string, flush time.Duration, snapshotter Snapshotter, maintenanceAt string, hostRetention, auditRetention time.Duration, hostMaxDBSize int64) *Store {
+	return &Store{dir: dir, flush: flush, snapshotter: snapshotter, maintenanceAt: maintenanceAt, hostRetention: hostRetention, auditRetention: auditRetention, hostMaxDBSize: hostMaxDBSize, apps: map[string]*appWriter{}}
 }
 
 func (s *Store) Name() string { return "logstore" }
 
-// Start launches the daily maintenance: the retention prune, then VACUUM, so the vacuum reclaims
-// what the prune freed. Databases open lazily on first write.
+// Start launches the daily maintenance (the retention prune, then compactAll, so the vacuum
+// reclaims what the prune freed) and compactAll every compactInterval. Databases open lazily on
+// first write.
 func (s *Store) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	if s.snapshotter != nil {
 		go schedule.Daily(s.ctx, s.maintenanceAt, func() {
 			s.pruneAll()
-			s.vacuumAll()
+			s.compactAll()
 		})
+		s.compaction.Run(s.ctx, compactInterval, false, func(context.Context) { s.compactAll() })
 	}
 	return nil
 }
@@ -61,6 +67,7 @@ func (s *Store) Close() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	_ = s.compaction.Close()
 	s.mu.Lock()
 	writers := make([]*appWriter, 0, len(s.apps))
 	for _, w := range s.apps {

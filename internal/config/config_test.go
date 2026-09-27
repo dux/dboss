@@ -667,6 +667,24 @@ func TestStdoutRetentionDefaultsAndValidates(t *testing.T) {
 	}
 }
 
+func TestMaxDBSizeDefaultsAndOverrides(t *testing.T) {
+	if got := Default().Defaults.MaxDBSize; got != 100<<20 {
+		t.Fatalf("max_db_size default = %d, want 100m", got)
+	}
+	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  max_db_size: 1g\n"), "/srv/dboss.yaml")
+	if err != nil || cfg.Defaults.MaxDBSize != 1<<30 {
+		t.Fatalf("host max_db_size: %v %d", err, cfg.Defaults.MaxDBSize)
+	}
+	app, err := ParseApp([]byte("procfile:\n  web: ./server\nmax_db_size: 20m\n"), "/srv/apps/demo/dboss.yaml", cfg.Defaults)
+	if err != nil || app.MaxDBSize != 20<<20 {
+		t.Fatalf("app max_db_size: %v %d", err, app.MaxDBSize)
+	}
+	inherited, err := ParseApp([]byte("procfile:\n  web: ./server\n"), "/srv/apps/demo/dboss.yaml", cfg.Defaults)
+	if err != nil || inherited.MaxDBSize != 1<<30 {
+		t.Fatalf("inherited max_db_size: %v %d", err, inherited.MaxDBSize)
+	}
+}
+
 func TestTmpCleanDefaultsAndTakesFalse(t *testing.T) {
 	if got := Default().Defaults.TmpClean.Value(); got != 7*24*time.Hour {
 		t.Fatalf("tmp_clean default = %v, want 168h", got)

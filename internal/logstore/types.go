@@ -78,6 +78,9 @@ type TailOffset struct {
 	Path   string
 	Inode  uint64
 	Offset int64
+	// Base is how many bytes were released or truncated from the head of this inode, so
+	// Base+Offset keeps growing for the life of the inode.
+	Base int64
 }
 
 // LogFilter narrows SearchLogs. Channel selects one log type: "stdout", "dboss" or "file:<path>".

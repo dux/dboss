@@ -9,7 +9,7 @@ import (
 
 func openExceptionStore(t *testing.T) *Store {
 	t.Helper()
-	store := New(t.TempDir(), time.Hour, nil, "", time.Hour, 0)
+	store := New(t.TempDir(), time.Hour, nil, "", time.Hour, 0, 0)
 	t.Cleanup(func() { store.Close() })
 	return store
 }
@@ -381,7 +381,7 @@ func TestUnresolvedExceptionCount(t *testing.T) {
 
 func TestAppendExceptionsRollsBack(t *testing.T) {
 	dir := t.TempDir()
-	store := New(dir, time.Hour, nil, "", time.Hour, 0)
+	store := New(dir, time.Hour, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 	w, err := store.writer("demo")
 	if err != nil {
@@ -401,7 +401,7 @@ func TestAppendExceptionsRollsBack(t *testing.T) {
 		t.Fatal("AppendExceptions should fail on a closed database")
 	}
 
-	fresh := New(dir, time.Hour, nil, "", time.Hour, 0)
+	fresh := New(dir, time.Hour, nil, "", time.Hour, 0, 0)
 	defer fresh.Close()
 	if _, err := fresh.writer("demo"); err != nil {
 		t.Fatal(err)

@@ -378,14 +378,28 @@ Each row belongs to a channel and the console's **Logs** viewer selects one:
 * `STDOUT` - the stdout/stderr of each app process, sealed and parsed by the ingestion module.
 * `dboss` - dboss's own daemon log, mirrored into the reserved `dir/log/_dboss` database and
   offered as **Host (dboss)** in the app picker.
-* one channel per `*.log` file the app writes under `<app dir>/log`, tailed by byte offset and
-  never rotated or deleted. A `*.exceptions.log` file is the exception stream instead (see
+* one channel per `*.log` file the app writes under `<app dir>/log`, tailed by byte offset. A `*.exceptions.log` file is the exception stream instead (see
   **Exceptions** below), so it has its own tab rather than a log channel.
+
+Once more than 1m of an app log file (plain, `.exceptions.log` or `.json.log`) is stored, dboss cuts that head off the file in place, so the file stays about 1m instead of growing for the life of the app.
+The file is never renamed or recreated: the app keeps writing through its open handle, and on Linux `fallocate(FALLOC_FL_COLLAPSE_RANGE)` removes the head under the same inode lock the app's appends take, so no line is lost.
+The app must open its log files for appending, which every logger does; a shell `>` redirect does not.
+This needs ext4 or xfs; on another filesystem dboss leaves the file as it is and warns once, and on macOS files are never cut.
+A crash between saving the offset and the cut re-reads the cut bytes, so a few rows can repeat, but none are skipped.
+An app with `log_retention: 0` is not ingested, so its files are never touched.
 
 `REQUEST` rows and app log files are kept for `log_retention` (default `336h`, two weeks);
 `STDOUT` and the dboss daemon log for `stdout_retention` (default `3h`). Both are deleted by the
 daily prune; `log_retention: 0` disables the store for the app.
-The prune runs daily at `maintenance_at` (default `04:10`) and is followed by SQLite `VACUUM` on every app database and the host database to reclaim the freed space, including databases left behind by apps removed from the config.
+`max_db_size` (default `100m`, `0` no cap) bounds each app database by size on top of retention: every 7 hours a database whose rows use more than the cap loses the oldest two days of request, log and exception minute rows, counted from its oldest row, and again until it fits.
+An app that logs more than the cap within two days keeps only what came after the cut.
+Exception summaries, the audit and the blocked counters are never trimmed.
+The freed pages are reused by later inserts, so the file stops growing, and the next `VACUUM` shrinks it once enough of it is free.
+Set it in host `defaults:` for every app or at an app's top level; the host value also caps the reserved `_dboss` database and databases left by removed apps.
+The prune runs daily at `maintenance_at` (default `04:10`) and is followed by the `max_db_size` trim and SQLite `VACUUM` on every app database and the host database to reclaim the freed space, including databases left behind by apps removed from the config.
+The same trim and `VACUUM` also run every 7 hours between the daily runs.
+`VACUUM` rewrites the whole file, so it only runs on a database where at least 16m and a quarter of the file are free pages.
+Each pass then truncates the database's write-ahead log (`dboss.sqlite-wal`), so a burst of writes or a vacuum never leaves a large WAL behind.
 Process log files rotate at 10m and keep five rotated files.
 The supervisor owns the process log file: every 5 seconds it
 seals the current segment into `<process>.log.<unix>.sealed` and opens a fresh one, then the
@@ -421,7 +435,7 @@ line, but any producer may append the same shape:
 ```
 
 * `uid` (required, nonempty) is the fingerprint that groups occurrences; `message` is required. `dump`, `user`, `ip`, `tags` and `description` are optional and type-checked; `ts` is RFC3339 UTC and falls back to the time dboss reads the line. A malformed line becomes a `warn` row on the file's channel, like an event.
-* dboss tails the file every 5 seconds by byte offset, never deletes it, and keeps a trailing partial line for the next pass.
+* dboss tails the file every 5 seconds by byte offset, keeps a trailing partial line for the next pass, and cuts the stored head off the file like any app log file.
 
 Two tables hold the stream:
 

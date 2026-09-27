@@ -26,6 +26,7 @@ type ProcessOverrides struct {
 	MaxRestarts        *int              `yaml:"max_restarts,omitempty" json:"max_restarts,omitempty"`
 	LogRetention       *Duration         `yaml:"log_retention,omitempty" json:"log_retention,omitempty"`
 	StdoutRetention    *Duration         `yaml:"stdout_retention,omitempty" json:"stdout_retention,omitempty"`
+	MaxDBSize          *Size             `yaml:"max_db_size,omitempty" json:"max_db_size,omitempty"`
 	TmpClean           *Duration         `yaml:"tmp_clean,omitempty" json:"tmp_clean,omitempty"`
 	Env                map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
 	MemoryMax          *Size             `yaml:"memory_max,omitempty" json:"memory_max,omitempty"`

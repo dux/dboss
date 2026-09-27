@@ -47,7 +47,7 @@ type Store interface {
 	AppendLogs(app string, entries []logstore.LogEntry) error
 	AppendExceptions(app string, batch logstore.ExceptionBatch) error
 	TailOffsets(app string) (map[string]logstore.TailOffset, error)
-	SaveTailOffset(app, path string, inode uint64, offset int64) error
+	SaveTailOffset(app string, offset logstore.TailOffset) error
 	RemoveTailOffsets(app string, paths []string) error
 	RequestCountries(app string, ids []string, since time.Time) (map[string]string, error)
 }
@@ -68,10 +68,12 @@ type Module struct {
 	loop     module.Ticker
 	// warned keeps a bad namespace file from logging a warning every pass.
 	warned map[string]bool
+	// unreleasable holds the app log files release gave up on, so it warns once per file.
+	unreleasable map[string]bool
 }
 
 func New(sealer Sealer, apps Snapshotter, store Store, events EventSink, interval time.Duration) *Module {
-	return &Module{sealer: sealer, apps: apps, store: store, events: events, interval: interval, warned: map[string]bool{}}
+	return &Module{sealer: sealer, apps: apps, store: store, events: events, interval: interval, warned: map[string]bool{}, unreleasable: map[string]bool{}}
 }
 
 func (m *Module) Name() string { return "ingest" }
@@ -178,7 +180,7 @@ func carryTail(path string, lines []string, modified time.Time) error {
 }
 
 // tailFiles reads new bytes from every *.log file under the app's ./log directory. The files are
-// the app's, not dboss's: they are never rotated or deleted here.
+// the app's: dboss never renames or deletes them, it only releases their ingested head (release).
 func (m *Module) tailFiles(snapshot supervisor.Snapshot) {
 	dir := filepath.Join(snapshot.Dir, "log")
 	files, err := logFiles(dir)
@@ -227,15 +229,10 @@ func (m *Module) tailFile(snapshot supervisor.Snapshot, dir, path string, previo
 	if err != nil {
 		return err
 	}
-	inode := inodeOf(info)
-	start := previous.Offset
-	// A replaced or truncated file starts over; the read cursor never survives a new inode.
-	if previous.Path == "" || previous.Inode != inode || info.Size() < start {
-		start = 0
-	}
-	if start >= info.Size() {
-		if previous.Path == "" || previous.Inode != inode {
-			return m.store.SaveTailOffset(snapshot.Name, path, inode, start)
+	at := resume(previous, path, info)
+	if at.Offset >= info.Size() {
+		if at != previous {
+			return m.store.SaveTailOffset(snapshot.Name, at)
 		}
 		return nil
 	}
@@ -243,7 +240,7 @@ func (m *Module) tailFile(snapshot supervisor.Snapshot, dir, path string, previo
 	if err != nil {
 		name = filepath.Base(path)
 	}
-	entries, next, err := parseRange(file, start, "file", name, time.Since(info.ModTime()) < tailQuiet)
+	entries, next, err := parseRange(file, at.Offset, "file", name, time.Since(info.ModTime()) < tailQuiet)
 	if err != nil {
 		return err
 	}
@@ -252,7 +249,26 @@ func (m *Module) tailFile(snapshot supervisor.Snapshot, dir, path string, previo
 			return err
 		}
 	}
-	return m.store.SaveTailOffset(snapshot.Name, path, inode, next)
+	at.Offset = next
+	if err := m.store.SaveTailOffset(snapshot.Name, at); err != nil {
+		return err
+	}
+	return m.release(snapshot.Name, at)
+}
+
+// resume is where a tailer continues in a file: the stored offset while the inode is the same and
+// the file has not shrunk below it, else the start. A replaced file starts from a zero Base; a
+// file the app truncated itself carries the bytes read so far into Base, so Base+Offset never
+// repeats within one inode and event ids stay unique.
+func resume(previous logstore.TailOffset, path string, info os.FileInfo) logstore.TailOffset {
+	inode := inodeOf(info)
+	if previous.Path == "" || previous.Inode != inode {
+		return logstore.TailOffset{Path: path, Inode: inode}
+	}
+	if info.Size() < previous.Offset {
+		return logstore.TailOffset{Path: path, Inode: inode, Base: previous.Base + previous.Offset}
+	}
+	return previous
 }
 
 // logFiles lists the *.log files under dir, recursively. A missing directory is empty, not an
@@ -491,25 +507,21 @@ func (m *Module) tailEvents(snapshot supervisor.Snapshot, dir, path string, prev
 	if err != nil {
 		return err
 	}
-	inode := inodeOf(info)
-	start := previous.Offset
-	if previous.Path == "" || previous.Inode != inode || info.Size() < start {
-		start = 0
-	}
-	if start >= info.Size() {
-		if previous.Path == "" || previous.Inode != inode {
-			return m.store.SaveTailOffset(snapshot.Name, path, inode, start)
+	at := resume(previous, path, info)
+	if at.Offset >= info.Size() {
+		if at != previous {
+			return m.store.SaveTailOffset(snapshot.Name, at)
 		}
 		return nil
 	}
-	if _, err := file.Seek(start, io.SeekStart); err != nil {
+	if _, err := file.Seek(at.Offset, io.SeekStart); err != nil {
 		return err
 	}
 	reader := bufio.NewReaderSize(file, 64*1024)
 	now := time.Now()
 	var rows []events.Row
 	var bad []logstore.LogEntry
-	next := start
+	next := at.Offset
 	for lines := 0; lines < eventBatch; lines++ {
 		line, err := reader.ReadBytes('\n')
 		if len(line) == 0 || line[len(line)-1] != '\n' {
@@ -524,7 +536,7 @@ func (m *Module) tailEvents(snapshot supervisor.Snapshot, dir, path string, prev
 				text := strings.TrimRight(string(line), "\r\n")
 				bad = append(bad, logstore.LogEntry{Time: now, Source: "file", Process: name, Stream: "combined", Level: "warn", Message: "event rejected: " + parseErr.Error(), Raw: text})
 			} else {
-				row.EID = eventID(path, inode, offset)
+				row.EID = eventID(path, at.Inode, at.Base+offset)
 				rows = append(rows, row)
 			}
 		}
@@ -543,7 +555,11 @@ func (m *Module) tailEvents(snapshot supervisor.Snapshot, dir, path string, prev
 			return err
 		}
 	}
-	return m.store.SaveTailOffset(snapshot.Name, path, inode, next)
+	at.Offset = next
+	if err := m.store.SaveTailOffset(snapshot.Name, at); err != nil {
+		return err
+	}
+	return m.release(snapshot.Name, at)
 }
 
 // addCountries fills country from the proxy's request row of each event's request_id. A failed
@@ -576,7 +592,8 @@ func (m *Module) addCountries(app string, rows []events.Row) {
 }
 
 // eventID is a line's identity: the same bytes at the same place in the same file always get the
-// same id, a rewritten file (new inode) gets new ones.
+// same id, a rewritten file (new inode) gets new ones. offset is Base+offset, so a line keeps its
+// id after the head of the file is released.
 func eventID(path string, inode uint64, offset int64) uint64 {
 	hash := fnv.New64a()
 	hash.Write([]byte(path))

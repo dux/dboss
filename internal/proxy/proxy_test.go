@@ -108,7 +108,7 @@ func TestWakeProxyAndRequestLog(t *testing.T) {
 	if len(invalid) != 0 {
 		t.Fatalf("invalid apps: %v", invalid)
 	}
-	requestLogs := logstore.New(cfg.LogDir, 10*time.Millisecond, nil, "", time.Hour, 0)
+	requestLogs := logstore.New(cfg.LogDir, 10*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer requestLogs.Close()
 	handler, err := New(cfg, authcog.NewWithKey([]byte("01234567890123456789012345678901")), manager, requestLogs, nil)
 	if err != nil {
@@ -217,7 +217,7 @@ func TestButtonAppWakesOnPost(t *testing.T) {
 	if len(invalid) != 0 {
 		t.Fatalf("invalid apps: %v", invalid)
 	}
-	requestLogs := logstore.New(cfg.LogDir, 10*time.Millisecond, nil, "", time.Hour, 0)
+	requestLogs := logstore.New(cfg.LogDir, 10*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer requestLogs.Close()
 	handler, err := New(cfg, authcog.NewWithKey([]byte("01234567890123456789012345678901")), manager, requestLogs, nil)
 	if err != nil {

@@ -188,12 +188,14 @@
     # app dboss.yaml, or defaults: in the host file
     log_retention: 336h        # request rows and app log files
     stdout_retention: 3h       # process stdout and the dboss daemon log
+    max_db_size: 100m          # cap on the app's dboss.sqlite, oldest rows go first
     events:
       retention: 90d           # raw events from log/*.json.log
     `,
     logs: `
     log_retention: 168h
     stdout_retention: 12h
+    max_db_size: 250m
     `,
     logsCli: `
     dboss logs -f shop
@@ -669,19 +671,20 @@
           <li><a href="#/help?topic=audit">Audit</a> - who did what, in the reserved <code>_dboss</code> database, with its own retention.</li>
         </ul>
         <h3>Config keys</h3>
-        <div fez:keep="keys-logging"><db-config-keys paths="log_retention,stdout_retention,events.retention,audit_retention,log_level,maintenance_at,dir,deny" /></div>
+        <div fez:keep="keys-logging"><db-config-keys paths="log_retention,stdout_retention,max_db_size,events.retention,audit_retention,log_level,maintenance_at,dir,deny" /></div>
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.logging" />
         <h3>Details</h3>
         <ul>
           <li><code>log_retention</code> (default <code>336h</code>, two weeks) covers request rows and app log files; <code>stdout_retention</code> (default <code>3h</code>) covers stdout and the daemon log. <code>0</code> turns a channel off, and <code>log_retention: 0</code> disables the whole store for the app, so it has no request log, no traffic and no events either.</li>
+          <li><code>max_db_size</code> (default <code>100m</code>, <code>0</code> no cap) bounds the app's <code>dboss.sqlite</code> on top of retention. Every 7 hours a database past it loses the oldest two days of request, log and exception minute rows, again and again until it fits; exception summaries and the audit are kept. The host <code>defaults:</code> value also caps the <code>_dboss</code> database and databases left by removed apps.</li>
           <li><code>events.retention</code> (default <code>365d</code>) removes only the raw Parquet days; the daily counts and tag facets stay.</li>
           <li><code>log_level</code> is dboss's own level: <code>debug</code>, <code>info</code>, <code>warn</code> or <code>error</code>. The log always goes to stderr, so it is the terminal in the foreground and journald under systemd.</li>
           <li><code>dir</code> is the runtime directory; every store lives under its <code>log/</code>. Keep it on a filesystem with room for the retention you choose.</li>
-          <li><code>maintenance_at</code> (default <code>04:10</code>) is the one daily housekeeping time: the prune runs first, then SQLite <code>VACUUM</code> on every app database and the host database. Run it off peak, since the vacuum rewrites each file.</li>
-          <li>Process log files rotate at 10m and keep five rotated files; stdout retention is what bounds the copied segments. App <code>*.log</code> files are app-owned: dboss tails them and advances an offset, never deletes or renames them.</li>
+          <li><code>maintenance_at</code> (default <code>04:10</code>) is the one daily housekeeping time: the prune runs first, then SQLite <code>VACUUM</code> on every app database and the host database with at least 16m and a quarter of the file free, then the WAL is truncated. The trim and vacuum also run every 7 hours. Run it off peak, since the vacuum rewrites each file.</li>
+          <li>Process log files rotate at 10m and keep five rotated files; stdout retention is what bounds the copied segments. App <code>*.log</code> files are never renamed or deleted: once more than 1m of one is stored, dboss cuts that head off in place (Linux, ext4 or xfs), under the same inode lock the app's appends take, so the file stays small and no line is lost. The app must open the file for appending, as every logger does.</li>
           <li><code>deny</code> refuses paths before the app is contacted and counts each hit under <a href="#/help?topic=blocked">Blocked requests</a>. The list and its patterns are in <a href="#/help?topic=access">Access control</a>.</li>
-          <li><code>log_retention</code>, <code>stdout_retention</code> and <code>events.retention</code> are app keys; <code>dir</code>, <code>log_level</code>, <code>audit_retention</code> and <code>maintenance_at</code> are host keys that need a daemon restart.</li>
+          <li><code>log_retention</code>, <code>stdout_retention</code>, <code>max_db_size</code> and <code>events.retention</code> are app keys; <code>dir</code>, <code>log_level</code>, <code>audit_retention</code> and <code>maintenance_at</code> are host keys that need a daemon restart.</li>
         </ul>
       </section>
     {/if}
@@ -698,7 +701,7 @@
           <li>Bounded disk use: rotation, retention per channel, a daily prune and SQLite <code>VACUUM</code>.</li>
         </ul>
         <h3>Config keys</h3>
-        <div fez:keep="keys-logs"><db-config-keys paths="log_retention,stdout_retention,dir,maintenance_at,log_level" /></div>
+        <div fez:keep="keys-logs"><db-config-keys paths="log_retention,stdout_retention,max_db_size,dir,maintenance_at,log_level" /></div>
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.logs" />
         <h3>Details</h3>
@@ -708,7 +711,7 @@
           <li><code>dboss</code> - the daemon's own log.</li>
           <li>one channel per <code>*.log</code> file under the app's <code>log/</code> folder.</li>
         </ul>
-        <p><code>log_retention</code> (default two weeks) covers requests and app log files; <code>stdout_retention</code> (default three hours) covers stdout and the daemon log. <code>log_retention: 0</code> turns the store off for the app. The daily prune runs at <code>maintenance_at</code> (default 04:10) and is followed by SQLite <code>VACUUM</code> on every store. Process log files rotate at 10m and keep five rotated files.</p>
+        <p><code>log_retention</code> (default two weeks) covers requests and app log files; <code>stdout_retention</code> (default three hours) covers stdout and the daemon log. <code>log_retention: 0</code> turns the store off for the app. <code>max_db_size</code> (default 100m) caps the store by size: past it the oldest two days are wiped, checked every 7 hours. The daily prune runs at <code>maintenance_at</code> (default 04:10) and is followed by SQLite <code>VACUUM</code> on every store. Process log files rotate at 10m and keep five rotated files.</p>
         <db-preview-yaml :text="state.examples.logsCli" lang="text" />
         <p>With <code>--search</code>, <code>--level</code> or <code>--channel</code> the command queries the store instead of tailing files.</p>
       </section>

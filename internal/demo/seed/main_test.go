@@ -21,7 +21,7 @@ func TestSeedPopulatesDatabases(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := logstore.New(dir, time.Hour, nil, "", time.Hour, 0)
+	store := logstore.New(dir, time.Hour, nil, "", time.Hour, 0, 0)
 	defer store.Close()
 	requests, err := store.SearchRequests("demo", logstore.RequestFilter{Limit: 5})
 	if err != nil || len(requests) == 0 {

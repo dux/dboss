@@ -23,7 +23,7 @@ var keySpecs = map[string]KeySpec{
 	"log_level":       {Block: "host", Name: "Log level", Description: "dboss's own log level", Enum: []string{"debug", "info", "warn", "error"}},
 	"audit_retention": {Block: "host", Name: "Audit retention", Description: "how long operator audit rows are kept; 0 keeps them forever", Example: "30d"},
 	"disk_alert":      {Block: "host", Name: "Disk alert", Description: "percent of a filesystem in use that posts disk-low; 0 disables", Example: "85"},
-	"maintenance_at":  {Block: "host", Name: "Maintenance time", Description: "local time of the daily log prune, followed by the SQLite VACUUM", Example: "03:30"},
+	"maintenance_at":  {Block: "host", Name: "Maintenance time", Description: "local time of the daily log prune, followed by the SQLite VACUUM of databases with enough free pages", Example: "03:30"},
 	"authcog_realm":   {Block: "host", Name: "AuthCog realm", Description: "AuthCog host the console and every app sign-in use", Example: "dboss.authcog.com"},
 
 	// --- Tokens ---
@@ -75,6 +75,7 @@ var keySpecs = map[string]KeySpec{
 	"max_restarts":        {Block: "runtime", Name: "Max restarts", Description: "consecutive failures before the app is marked crashed", Example: "10"},
 	"log_retention":       {Block: "runtime", Name: "Log retention", Description: "how long request rows and app log files are kept; 0 disables the whole log store for the app", Example: "72h"},
 	"stdout_retention":    {Block: "runtime", Name: "Stdout retention", Description: "how long process stdout and the dboss daemon log are kept; 0 disables both"},
+	"max_db_size":         {Block: "runtime", Name: "Log database size", Description: "cap on the app's dboss.sqlite; past it the oldest two days of request, log and exception rows are wiped until it fits; 0 no cap", Example: "500m"},
 	"tmp_clean":           {Block: "runtime", Name: "Tmp cleanup", Description: "delete files under the app's ./tmp older than this once a day; false or 0 never cleans", Example: "7d"},
 	"env":                 {Block: "runtime", Name: "Environment", Description: "extra environment for every process, lowest priority", Example: "{RAILS_ENV: production}"},
 	"memory_max":          {Block: "runtime", Name: "Memory limit", Description: "memory limit, cgroup v2 hosts only; 0 unlimited", Example: "512m"},

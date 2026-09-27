@@ -28,6 +28,7 @@ type Process struct {
 	MaxRestarts        int               `yaml:"max_restarts" json:"max_restarts"`
 	LogRetention       Duration          `yaml:"log_retention" json:"log_retention"`
 	StdoutRetention    Duration          `yaml:"stdout_retention" json:"stdout_retention"`
+	MaxDBSize          Size              `yaml:"max_db_size" json:"max_db_size"`
 	TmpClean           Duration          `yaml:"tmp_clean" json:"tmp_clean"`
 	Env                map[string]string `yaml:"env" json:"env"`
 	MemoryMax          Size              `yaml:"memory_max" json:"memory_max"`

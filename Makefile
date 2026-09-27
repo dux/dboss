@@ -16,7 +16,7 @@ LDFLAGS := -X dboss/internal/version.Version=$(VERSION)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test fmt vet lint check assets release-ready release demo demo-watch seed kill clean
+.PHONY: help build test e2e fmt vet lint check assets release-ready release demo demo-watch seed kill clean
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -25,17 +25,20 @@ build: ## Build dboss into ./bin/dboss
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
-test: ## Run the test suite
+test: ## Run the unit tests
 	$(GO) test ./...
+
+e2e: ## Run the end-to-end suite: the real binary on a copy of ./demo (needs bun, lsof, mise and the sinatra gems)
+	$(GO) test -tags e2e -count=1 ./e2e/
 
 fmt: ## Format Go source files
 	$(GO) fmt ./...
 
 vet: ## Run go vet
-	$(GO) vet ./...
+	$(GO) vet -tags e2e ./...
 
 lint: vet ## Run go vet and staticcheck
-	$(GO) tool staticcheck ./...
+	$(GO) tool staticcheck -tags e2e ./...
 
 check: lint test ## Run static checks and tests
 

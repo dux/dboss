@@ -168,14 +168,15 @@ make release          # from a clean main: rebuild, push main, publish ./dist as
 make demo             # builds, then runs the host session on ./demo/dboss.yaml
 ```
 
-The demo listens on `:80` and hosts three apps, and it needs no `sudo`.
+The demo listens on `:80` and hosts four apps, and it needs no `sudo`.
 Binding port 80 normally takes root or `CAP_NET_BIND_SERVICE`, but on a terminal a `proxy.listen` port the process may not bind moves to the first free port of `ports` instead of failing.
 The startup banner names the address every app ended up on, so when the demo falls back the URLs below need that port, for example `http://bun.lvh.me:3101`.
 
 * http://dboss.lvh.me - management console
-* http://sinatra.lvh.me - Ruby app (`autostart: false`, wakes on first request; needs the Ruby from `./demo/apps/sinatra/mise.toml` and `bundle install`)
-* http://bun.lvh.me - Bun app
-* http://button.lvh.me - Bun app with `autostart: button`; it serves a start button and only its POST brings it up, so a crawler or favicon request never starts it (stop it in the console to see the page again)
+* http://sinatra.lvh.me - Ruby app (`autostart: false`, wakes on first request; needs the Ruby from `./demo/apps/sinatra/mise.toml` and `bundle install`): a worker with a file log, events, custom dboss pages, `/raise` for the exception stream and `/boom` and `/slow` for the alerts
+* http://bun.lvh.me - Bun app: two copies of `web` (`count: 2`), a second web process on http://admin.bun.lvh.me, static files, cron, a deploy hook, lifecycle steps, events and the AuthCog login at `/authcog`
+* http://button.lvh.me - Bun app with `autostart: button`; it serves a start button and only its POST brings it up, so a crawler or favicon request never starts it (stop it in the console to see the page again); behind `auth` with a pubsub chat at `/chat`
+* http://scratch.lvh.me - `deletable` throwaway app behind `basic_auth` (`demo` / `demo`) and `allow_ips`; destroy it to see the destroy step, `git checkout demo/apps/scratch` brings it back
 
 The demo host file blocks common scanner targets for every app (`defaults.deny`: `*.php`, `*.asp`, `*.aspx`, `*.jsp`, `*.cgi`, `/.git/*`, `/.env`, `/wp-admin/*`, `/wp-content/*`, `/cgi-bin/*`, `/phpmyadmin`), so `curl -i http://bun.lvh.me/wp-login.php` answers `403`.
 
@@ -422,7 +423,7 @@ One row is one record, not one physical line:
 * A row is capped at 1000 lines or 256 KiB. Its level comes from its first line.
 
 A record that is still being written is not cut: while a log was written to in the last 2 seconds its last open row waits for the next pass.
-`dboss logs -f` still tails the live file, while `dboss logs --search q [--level l] [--channel c] [-n rows]` queries the same store the viewer uses and prints matching rows.
+`dboss logs` prints each process's newest stdout rows from the store followed by the lines not ingested yet, `dboss logs -f` tails the live file, and `dboss logs --search q [--level l] [--channel c] [-n rows]` queries the same store the viewer uses and prints matching rows.
 
 The **Logs** route (the **Logs** button on an app card opens `#/logs?app=<name>` in a new tab)
 filters by channel, time range, level or HTTP method/status and free text, highlights matches,
@@ -1146,13 +1147,20 @@ internal/console/     management console: auth, JSON API, embedded fez frontend
 internal/ctl/         control socket protocol, server and client
 internal/ops/         one implementation of every app action, shared by CLI and console
 internal/res/         resource backend: process groups or cgroup v2 limits
-demo/                 host config and three sample apps
+demo/                 host config and four sample apps
+e2e/                  end-to-end suite: the built binary on a copy of demo/ (build tag e2e)
 ```
 
 ## Validation
 
 ```sh
-make check                                   # go vet + staticcheck + go test ./...
+make check                                   # go vet + staticcheck + go test ./... (unit tests)
+make e2e                                     # end-to-end suite, about 90s
 go test ./internal/console/                  # console API and auth, including dboss login
 bun ~/dev/gems/fez/bin/fez compile 'internal/console/static/fez/*.fez'   # component syntax check
 ```
+
+Unit tests sit next to the package they cover and never start a real process tree.
+The end-to-end suite in `./e2e` builds the binary, copies the demo apps into a temp host with its own port window, proxy port and notify sink, starts `dboss start` there and drives the four apps through the proxy, the HTTP API, the console, the hook endpoint and the CLI: routing and instances, static files, deny, basic auth, the sign-in gate, maintenance and error pages, a rolling restart that must not drop a request, crash recovery, idle stop and wake, lifecycle steps and destroy, cron, hooks, log, exception and event ingest, pubsub and audit.
+It needs `bun`, `lsof`, `mise` and the sinatra gems (`bundle install` in `./demo/apps/sinatra`); `duckdb` is optional and only adds the funnel and SQL checks.
+`E2E_KEEP=1 make e2e` keeps the temp host folder and its `daemon.log`, which a failing run always keeps.

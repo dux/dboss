@@ -9,10 +9,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"dboss/internal/release"
 	"dboss/internal/version"
@@ -89,9 +91,29 @@ func (c CLI) update(args []string) error {
 	}
 	if install {
 		fmt.Fprintf(c.Out, "updated %s to %s\n", target, tag)
-		fmt.Fprintln(c.Out, "restart the host to run it: sudo systemctl restart dboss")
+		if hint := restartHint(); hint != "" {
+			fmt.Fprintln(c.Out, hint)
+		}
 	}
 	return nil
+}
+
+// restartHint says how to put the new binary to work, and only when something still runs the
+// old one: the systemd service, or a hand-run daemon answering on the control socket.
+func restartHint() string {
+	if _, err := os.Stat(unitPath); err == nil {
+		return "restart the service to run it: sudo systemctl restart dboss"
+	}
+	socket, err := (&workdir{}).socket("")
+	if err != nil {
+		socket = defaultSocket
+	}
+	conn, err := net.DialTimeout("unix", socket, time.Second)
+	if err != nil {
+		return ""
+	}
+	_ = conn.Close()
+	return "a dboss is running on " + socket + ": stop it and run dboss start again to use the new binary"
 }
 
 // installRelease stages the asset next to the running binary, so the final move is a rename

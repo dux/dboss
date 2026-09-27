@@ -14,7 +14,8 @@ import (
 	"dboss/internal/res"
 )
 
-const unitPath = "/etc/systemd/system/dboss.service"
+// unitPath is a variable so a test can point it at a temporary file.
+var unitPath = "/etc/systemd/system/dboss.service"
 
 // systemd renders the unit that runs `dboss start` for the resolved config, and with --install
 // writes it in place and enables it. The unit is generated so the paths always match this box.

@@ -132,12 +132,13 @@ dboss doctor
 ```sh
 dboss update --check        # is there a newer release?
 sudo dboss update           # download it, verify it, replace the binary
-sudo systemctl restart dboss
+sudo systemctl restart dboss # only when dboss update says so
 ```
 
 `dboss update` does what the install script does, without the host setup: it asks GitHub for the latest release, downloads the asset for this platform, verifies its sha256 against the release `checksums.txt` and renames it over the running executable.
 A failed download or a checksum mismatch leaves the old binary exactly where it was.
 It follows a symlink to the real file, so `~/bin/dboss` updates what it points at, and it stops with a `sudo dboss update` hint rather than elevating itself when the binary directory is not writable.
+The running daemon keeps the old binary until it restarts, so after an install `dboss update` prints what to run: `sudo systemctl restart dboss` when the systemd unit exists, a stop-and-start hint when a hand-run daemon answers on the control socket, and nothing when no dboss is running.
 `--version <tag>` installs a named release instead of the latest.
 
 The running daemon keeps the old binary in memory until it is restarted, which is why the restart is a separate step.

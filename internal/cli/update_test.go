@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -156,5 +157,55 @@ func TestChecksumFor(t *testing.T) {
 	}
 	if got := checksumFor(listing, "dboss_windows_amd64"); got != "" {
 		t.Errorf("unknown asset returned %q", got)
+	}
+}
+
+// withUnit points unitPath at a file that exists or not, for the length of the test.
+func withUnit(t *testing.T, exists bool) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "dboss.service")
+	if exists {
+		if err := os.WriteFile(path, []byte("[Service]\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	previous := unitPath
+	unitPath = path
+	t.Cleanup(func() { unitPath = previous })
+}
+
+func TestRestartHintNamesSystemdWhenTheUnitExists(t *testing.T) {
+	withUnit(t, true)
+	t.Setenv("DBOSS_SOCKET", filepath.Join(t.TempDir(), "missing.sock"))
+	if hint := restartHint(); !strings.Contains(hint, "sudo systemctl restart dboss") {
+		t.Fatalf("hint = %q, want the systemctl command", hint)
+	}
+}
+
+func TestRestartHintNamesARunningDaemon(t *testing.T) {
+	withUnit(t, false)
+	// A short directory keeps the socket path under the macOS sun_path limit.
+	dir, err := os.MkdirTemp("", "dboss")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "d.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	t.Setenv("DBOSS_SOCKET", socket)
+	if hint := restartHint(); !strings.Contains(hint, socket) || !strings.Contains(hint, "dboss start") || strings.Contains(hint, "systemctl") {
+		t.Fatalf("hint = %q, want a stop-and-start hint for %s", hint, socket)
+	}
+}
+
+func TestRestartHintIsEmptyWhenNothingRuns(t *testing.T) {
+	withUnit(t, false)
+	t.Setenv("DBOSS_SOCKET", filepath.Join(t.TempDir(), "missing.sock"))
+	if hint := restartHint(); hint != "" {
+		t.Fatalf("hint = %q, want none", hint)
 	}
 }

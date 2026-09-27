@@ -18,9 +18,11 @@ idle_stop: 2m
 # The dboss pages (starting, maintenance, error, ...) come from public/error_pages/template.html,
 # the default pages folder, so they carry the app's look; try /boom.
 
-# Posts error-rate to the notify webhook once more than 10% of the requests in 5 minutes fail.
+# Posts error-rate to the notify webhook once more than 10% of the requests in 5 minutes fail,
+# and slow once their p95 passes 2s; /boom and /slow trigger them.
 alerts:
   error_rate: 10
+  slow_p95: 2s
 
 # Analytics from log/shop.json.log (written by /shop): a saved view and a funnel, both also
 # shown in the console's Events tab.

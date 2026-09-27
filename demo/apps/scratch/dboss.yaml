@@ -17,6 +17,11 @@ basic_auth:
 headers:
   X-Frame-Options: DENY
 
+# Only this machine may reach it; any other client address gets 403.
+allow_ips:
+  - 127.0.0.0/8
+  - ::1/128
+
 lifecycle:
   create: ../bun/lifecycle.sh create
   start: ../bun/lifecycle.sh start

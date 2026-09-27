@@ -18,18 +18,24 @@ Bun.serve({
           <main>
             <h1>Hello from Bun</h1>
             <p>Served by dboss on port ${port}.</p>
-            <p>PROC_TYPE=${env("PROC_TYPE")} GREETING=${env("GREETING")} SOURCE=${env("SOURCE")} PORT=${env("PORT")}</p>
+            <p>PROC_TYPE=${env("PROC_TYPE")} PROC_INSTANCE=${env("PROC_INSTANCE")} GREETING=${env("GREETING")} SOURCE=${env("SOURCE")} PORT=${env("PORT")}</p>
 
             <h2>Static files</h2>
             <img src="/dboss.svg" alt="Served by dboss" width="260" height="72" style="max-width: 100%; height: auto;">
             <p>This image is served by dboss straight from disk, not by the Bun app.</p>
             <p>The file is <code>public/dboss.svg</code>; dboss answers <code>/dboss.svg</code> at the same path, so the app never sees the request and the asset still loads while the app is stopped.</p>
+
+            <h2>AuthCog login</h2>
+            <p><a href="/authcog">Sign in with AuthCog</a>: dboss runs the round trip and hands this app the profile once.</p>
           </main>
         </body>
       </html>`,
       {headers: {"content-type": "text/html; charset=utf-8"}},
     ),
     "/up": Response.json({service: "bun", status: "ok"}),
+    // Reached only after dboss verified the AuthCog callback (authcog: true); a real app would
+    // start its own session from this profile.
+    "/authcog": (request) => Response.json({profile: JSON.parse(request.headers.get("x-dboss-user") ?? "null")}),
     // Target of the host notify webhook, so dboss events show up in this app's stdout.
     "/notify": {
       POST: async (request) => {

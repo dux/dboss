@@ -11,5 +11,7 @@ procfile:
     health: /up
 autostart: button
 
-# Any AuthCog account may sign in; the page shows the X-Dboss-User header dboss sets.
+# Any AuthCog account may sign in; the page shows the X-Dboss-User header dboss sets. A sign-in
+# lasts 8 hours before AuthCog is asked again.
 auth: ["*"]
+session_ttl: 8h

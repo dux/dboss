@@ -1,14 +1,19 @@
 # frozen_string_literal: true
 
+require "digest"
 require "fileutils"
 require "json"
 require "securerandom"
 require "sinatra"
+require "time"
 
 set :bind, "127.0.0.1"
 set :port, ENV.fetch("PORT", "4567").to_i
 set :server, :puma
 set :host_authorization, permitted_hosts: ["lvh.me", ".lvh.me"]
+# Let the error handler below answer instead of Sinatra's development backtrace page.
+set :show_exceptions, false
+set :raise_errors, false
 
 get "/" do
   content_type :html
@@ -29,6 +34,12 @@ get "/" do
 
           <h2>dboss events</h2>
           <p>Every request to <a href="/shop">/shop</a> writes page_view, checkout_started and checkout_completed events to <code>log/shop.json.log</code>. dboss stores them as Parquet: try <code>dboss events sinatra</code>, <code>dboss events sinatra --facets plan</code> or the console's Events tab.</p>
+
+          <h2>dboss exceptions</h2>
+          <p><a href="/raise">/raise</a> raises; the error handler appends one line to <code>log/app.exceptions.log</code>. dboss groups the lines by <code>uid</code> (class and raising line) in the console's Exceptions tab, whatever <code>?n=</code> is.</p>
+
+          <h2>dboss alerts</h2>
+          <p><a href="/slow">/slow</a> takes 3 seconds. Once the p95 of the last 5 minutes passes <code>alerts.slow_p95</code> (2s), dboss posts <code>slow</code> to the notify webhook, which lands in the bun app's stdout.</p>
 
           <h2>dboss pages</h2>
           <p>dboss answers some requests itself. This app ships one <code>public/error_pages/template.html</code>, so every page dboss shows for it uses the app's own look.</p>
@@ -88,6 +99,34 @@ end
 get "/up" do
   content_type :json
   JSON.generate(service: "sinatra", status: "ok")
+end
+
+# Exception stream: one JSON line per raise in log/<name>.exceptions.log. The uid is the
+# fingerprint dboss groups by; the Lux ExceptionWriter writes the same shape.
+EXCEPTIONS_LOG = File.join(__dir__, "log", "app.exceptions.log")
+
+error do
+  exception = env["sinatra.error"]
+  line = JSON.generate(
+    uid: Digest::SHA1.hexdigest("#{exception.class}#{exception.backtrace&.first}")[0, 16],
+    message: "#{exception.class}: #{exception.message}",
+    dump: Array(exception.backtrace).first(20).join("\n"),
+    user: @visitor,
+    ip: request.ip,
+    tags: ["path:#{request.path}"],
+    ts: Time.now.utc.iso8601
+  )
+  File.open(EXCEPTIONS_LOG, "a") { |file| file.puts(line) }
+  "error"
+end
+
+get "/raise" do
+  Integer(params.fetch("n", "abc")).to_s
+end
+
+get "/slow" do
+  sleep 3
+  "slow"
 end
 
 # Always fails, to show the error page from public/error_pages and the error-rate alert.

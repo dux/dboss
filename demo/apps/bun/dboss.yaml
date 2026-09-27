@@ -4,6 +4,9 @@ procfile:
     hosts:
       - bun.lvh.me
     health: /up
+    # Two copies, web.1 and web.2, each on its own port; the proxy sends a request to the one with
+    # fewer in flight, so reloading / shows both PROC_INSTANCE values.
+    count: 2
   # A second web process in the same app: its own port, host and health check.
   admin:
     command: ./start.sh
@@ -19,6 +22,13 @@ static: ./public
 env:
   GREETING: from-config
   SOURCE: config
+
+# dboss runs the AuthCog sign-in at /authcog and forwards the callback once to the app with the
+# profile as JSON in X-Dboss-User; the app would create its own session there. The rest stays open.
+authcog: true
+
+# Request bodies over 1 MB are refused before the app is contacted.
+max_body: 1m
 
 # Analytics events from log/*.json.log. `make seed` fills the same Parquet store the app would, so
 # the console's Events tab has data: a saved view, a second one to filter by page, and a 4-step

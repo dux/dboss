@@ -73,44 +73,6 @@
       window.location.hash = `#/exception?app=${encodeURIComponent(this.state.app)}&uid=${encodeURIComponent(row.exp_uid)}`
     }
 
-    async resolve(index) {
-      const row = this.state.rows[index]
-      if (!row) return
-      const on = !row.resolved
-      this.state.busy = true
-      try {
-        await Dboss.api('/ui/exceptions/resolve', {
-          method: 'POST',
-          body: JSON.stringify({ app: this.state.app, exp_uid: row.exp_uid, on }),
-        })
-        this.state.rows = this.state.rows.map((item, i) => (i === index ? { ...item, resolved: on, ignored: on ? item.ignored : false } : item))
-        this.state.error = ''
-      } catch (error) {
-        this.state.error = error.message
-      } finally {
-        this.state.busy = false
-      }
-    }
-
-    async ignore(index) {
-      const row = this.state.rows[index]
-      if (!row) return
-      const on = !row.ignored
-      this.state.busy = true
-      try {
-        await Dboss.api('/ui/exceptions/ignore', {
-          method: 'POST',
-          body: JSON.stringify({ app: this.state.app, exp_uid: row.exp_uid, on }),
-        })
-        this.state.rows = this.state.rows.map((item, i) => (i === index ? { ...item, ignored: on, resolved: on ? true : item.resolved } : item))
-        this.state.error = ''
-      } catch (error) {
-        this.state.error = error.message
-      } finally {
-        this.state.busy = false
-      }
-    }
-
     pickApp(name) {
       this.state.app = name
       Dboss.setQs('app', name)
@@ -199,29 +161,25 @@
             <th class="num">Count</th>
             <th class="num">Clients</th>
             <th>Last seen</th>
-            <th class="exceptions-action">Actions</th>
+            <th class="exceptions-status">Status</th>
           </tr>
         </thead>
         <tbody>
         {#each state.rows as row, index}
           <tr class="log-row" class:log-row-resolved={row.resolved} onclick="fez.open({index})" title="Open the full exception">
             <td>
-              <div class="log-process">
-                {row.short}
-                {#if row.ignored}<span class="badge">ignored</span>{:else if row.resolved}<span class="badge badge-success">resolved</span>{/if}
-              </div>
+              <div class="log-process">{row.short}</div>
               <div class="log-message">{row.message || '(no message)'}</div>
             </td>
             <td class="num">{row.countLabel}</td>
             <td class="num">{row.clients}</td>
             <td class="log-time">{row.lastLabel}</td>
-            <td class="exceptions-action">
-              <button class="btn btn-sm" type="button" onclick="event.stopPropagation(); fez.resolve({index})" disabled={state.busy}>
-                {row.resolved ? 'Reopen' : 'Resolve'}
-              </button>
-              <button class="btn btn-sm" type="button" onclick="event.stopPropagation(); fez.ignore({index})" disabled={state.busy}>
-                {row.ignored ? 'Unignore' : 'Ignore'}
-              </button>
+            <td class="exceptions-status">
+              {#if row.ignored}
+                <span class="badge">ignored</span>
+              {:else}
+                <span class="badge {row.resolved ? 'badge-success' : 'badge-danger'}">{row.resolved ? 'resolved' : 'open'}</span>
+              {/if}
             </td>
           </tr>
         {/each}

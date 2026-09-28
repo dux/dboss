@@ -543,7 +543,7 @@
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.routing" />
         <h3>Details</h3>
-        <p>A leading <code>*.</code> matches subdomains only; a leading <code>.</code> matches the bare domain and every subdomain, so <code>hosts: .example.com</code> is <code>example.com</code> plus <code>*.example.com</code>. A single value is accepted like a list, and in single-app dev mode a process with no hosts is bound to <code>.lvh.me</code>.</p>
+        <p>A leading <code>*.</code> matches subdomains only; a leading <code>.</code> matches the bare domain and every subdomain, so <code>hosts: .example.com</code> is <code>example.com</code> plus <code>*.example.com</code>. A single value is accepted like a list, and in single-app dev mode a process with no hosts is bound to <code>&#60;app&#62;.lvh.me</code>.</p>
         <p><code>maintenance on</code> answers every request with the maintenance page while the app keeps running. A stopped app gets the starting page, then the real response once it is healthy. A host no app matches gets the host's <code>404</code> page.</p>
         <p>Each request walks the stages in this order: canonical redirect, <code>allow_ips</code>, <code>deny</code>, health endpoint, <code>auth</code> sign-in, <code>basic_auth</code>, maintenance, static files, body buffer, then wake or forward. Forwarded headers (<code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>, <code>X-Real-IP</code>) are added only when missing, so Cloudflare's values win.</p>
       </section>

@@ -38,6 +38,9 @@
 #     app file serves both. The value replaces the base key outright, so a block override names
 #     the leaf key it changes rather than restating the block. The suffix works at every depth
 #     and inside free-form maps, so procfile, env and headers entries take it too.
+#   - A _tauri suffix works the same way for `dboss build tauri` only: the desktop build takes
+#     the _tauri value and drops every _dev one, and every session drops the _tauri keys, so
+#     `js_tauri: bun run build` is a one-shot build that never runs as a process on the box.
 #     A dev session also gets the management console on a loopback port from ports, with no
 #     management block and no sign-in; see that block for what it costs.
 #
@@ -393,7 +396,7 @@ postgres:
 # case-insensitive, port stripped, and must be unique across the app's web processes. A leading
 # "*." matches subdomains only; a leading "." matches the bare domain and every subdomain, so
 # ".myapp.com" means "myapp.com" and "*.myapp.com". Longest match wins.
-# In single mode (no hosts declared) the first process is bound to .lvh.me for local dev.
+# In single mode (no hosts declared) the first process is bound to <app>.lvh.me for local dev.
 #
 # The static directory is an app key (see the Web keys above); every web process serves it.
 #

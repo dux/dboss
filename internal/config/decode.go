@@ -31,9 +31,10 @@ var hostKeys = []string{"apps", "dir", "ports", "log_level", "audit_retention", 
 var hostTopKeys = append(append([]string{}, hostKeys...), "hooks", "pages")
 
 // decode parses one document into raw and reports every top-level key present in it. The node
-// tree is kept so every error can be pointed at a line and a key. allowDev lets the document be
-// a dev session when it turns out to be an app; a file read as an app under a host never is.
-func decode(data []byte, path string, raw *file, allowDev bool) (map[string]bool, *yaml.Node, error) {
+// tree is kept so every error can be pointed at a line and a key. profile is the variant suffix
+// the document is read with when it turns out to be an app (DevSuffix for a dev session,
+// TauriSuffix for a desktop build); a host file and an app read under a host use none.
+func decode(data []byte, path string, raw *file, profile string) (map[string]bool, *yaml.Node, error) {
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return nil, nil, located(err, path, nil)
@@ -41,7 +42,10 @@ func decode(data []byte, path string, raw *file, allowDev bool) (map[string]bool
 	if err := checkKeys(&root, reflect.TypeOf(file{}), ""); err != nil {
 		return nil, nil, located(err, path, &root)
 	}
-	changed := applyDev(&root, allowDev && hasTopKey(&root, "procfile"))
+	if !hasTopKey(&root, "procfile") {
+		profile = ""
+	}
+	changed := applyProfile(&root, profile)
 	changed = expandEnv(&root, "") || changed
 	if changed && len(root.Content) > 0 {
 		if err := root.Content[0].Decode(raw); err != nil && !errors.Is(err, io.EOF) {
@@ -131,7 +135,7 @@ func Load(path string) (Config, error) {
 // validated before it is written to disk. Relative paths resolve against path's directory.
 func Parse(data []byte, path string) (Config, error) {
 	raw := file{Config: Default()}
-	keys, root, err := decode(data, path, &raw, true)
+	keys, root, err := decode(data, path, &raw, DevSuffix)
 	if err != nil {
 		return Config{}, err
 	}
@@ -180,7 +184,7 @@ func Parse(data []byte, path string) (Config, error) {
 		return Config{}, located(err, path, root)
 	}
 	if hasApp {
-		app, err := buildApp(raw.appFile, cfg.Defaults, true)
+		app, err := buildApp(raw.appFile, cfg.Defaults, true, filepath.Base(cfg.Dir))
 		if err != nil {
 			return Config{}, located(err, path, root)
 		}

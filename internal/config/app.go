@@ -21,9 +21,9 @@ const DefaultStatic = "./public"
 // serves for it: <name>.html per page, template.html for every page.
 const DefaultPages = "./public/error_pages"
 
-// DevHost is bound to a single-app config that declares no hosts, so `dboss start` inside an
-// app folder serves it on *.lvh.me with no config.
-const DevHost = ".lvh.me"
+// DevDomain is the suffix a single-app config that declares no hosts binds to: `<app>.lvh.me`,
+// so `dboss start` inside an app folder serves it with no config.
+const DevDomain = "lvh.me"
 
 // ProcessSpec is one entry of a procfile: the command to run, the hosts the single web process
 // answers, its optional realtime hub, its readiness check and the canonical hostname. A scalar
@@ -380,9 +380,9 @@ func (a *App) resolveCanonical() error {
 	return nil
 }
 
-// UseDevHosts binds the first process to DevHost when no process declares hosts. It is
+// UseDevHosts binds the first process to <app>.lvh.me when no process declares hosts. It is
 // single-app mode only, so a host running a folder with no config still gets a hostname.
-func (a *App) UseDevHosts() {
+func (a *App) UseDevHosts(app string) {
 	if len(a.Hosts) > 0 || len(a.Procfile) == 0 {
 		return
 	}
@@ -390,8 +390,9 @@ func (a *App) UseDevHosts() {
 	if _, ok := a.Procfile["web"]; !ok {
 		name = processNames(a.Procfile)[0]
 	}
-	a.WebProcesses = []WebProcess{{Name: name, Hosts: List{DevHost}, Static: string(a.Web.Static)}}
-	a.Hosts = List{DevHost}
+	hosts := List{"." + app + "." + DevDomain}
+	a.WebProcesses = []WebProcess{{Name: name, Hosts: hosts, Static: string(a.Web.Static)}}
+	a.Hosts = hosts
 }
 
 type appFile struct {
@@ -419,7 +420,7 @@ func LoadApp(path string, defaults Defaults) (App, error) {
 // ParseApp is LoadApp on bytes already in memory.
 func ParseApp(data []byte, path string, defaults Defaults) (App, error) {
 	raw := file{Config: Default()}
-	keys, root, err := decode(data, path, &raw, false)
+	keys, root, err := decode(data, path, &raw, "")
 	if err != nil {
 		return App{}, err
 	}
@@ -428,14 +429,41 @@ func ParseApp(data []byte, path string, defaults Defaults) (App, error) {
 			return App{}, located(keyErr(key, "is only valid in the root %s", FileName), path, root)
 		}
 	}
-	app, err := buildApp(raw.appFile, defaults, false)
+	app, err := buildApp(raw.appFile, defaults, false, "")
 	if err != nil {
 		return App{}, located(err, path, root)
 	}
 	return app, nil
 }
 
-func buildApp(raw appFile, defaults Defaults, dev bool) (App, error) {
+// LoadProfile reads the app file in dir with one variant profile applied: "" is the box view,
+// DevSuffix the dev session's and TauriSuffix what `dboss build tauri` packages. Host keys a
+// single-app file may carry are ignored, and so are the dev hosts: this is the app alone.
+func LoadProfile(dir, profile string) (App, string, error) {
+	path, err := FindInDir(dir)
+	if err != nil {
+		return App{}, "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return App{}, "", err
+	}
+	raw := file{Config: Default()}
+	keys, root, err := decode(data, path, &raw, profile)
+	if err != nil {
+		return App{}, "", err
+	}
+	if !keys["procfile"] {
+		return App{}, "", located(&Error{Message: "is not an app file (no procfile)", Hint: "run it inside an app folder"}, path, root)
+	}
+	app, err := buildApp(raw.appFile, raw.Defaults, false, "")
+	if err != nil {
+		return App{}, "", located(err, path, root)
+	}
+	return app, path, nil
+}
+
+func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error) {
 	if len(raw.Procfile) == 0 {
 		return App{}, &Error{Key: "procfile", Message: "must contain at least one process", Hint: "e.g. procfile:\n    web: bundle exec puma"}
 	}
@@ -459,7 +487,7 @@ func buildApp(raw appFile, defaults Defaults, dev bool) (App, error) {
 	}
 	apply(&app.Defaults, raw.Overrides)
 	if dev {
-		app.UseDevHosts()
+		app.UseDevHosts(name)
 	}
 	app.resolveStatic()
 	if err := app.resolveHealth(); err != nil {

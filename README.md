@@ -223,7 +223,7 @@ The proxy listens on `:80` by default and owns that port for every app; the demo
 When it does not have either and stdout is a terminal, the proxy falls back to the first free port of `ports` instead of exiting, so developing against an app needs no sudo; under systemd stdout is a pipe and the bind failure is still fatal.
 A dev session (`dboss start` in an app folder) never takes `:80` unless asked: it ignores `proxy.listen` and serves on the next free port, so the app opens as `http://myapp.lvh.me:3110`.
 `dboss start --https` listens on `:80` and `:443` instead and fails when either is taken.
-Every process that declares `hosts` is a web process, and an app may have several, each serving its own hostnames; a process with only a command is a background worker. Running dboss inside an app folder with no hosts binds the first process to `.lvh.me`.
+Every process that declares `hosts` is a web process, and an app may have several, each serving its own hostnames; a process with only a command is a background worker. Running dboss inside an app folder with no hosts binds the first process to `<app>.lvh.me`.
 Every key that takes a list also accepts a single value, so `allow_ips: 10.0.0.0/8` equals `allow_ips: [10.0.0.0/8]`.
 A leading `*.` in a host matches subdomains only; a leading `.` matches the bare domain and every subdomain, so `hosts: .myapp.com` covers `myapp.com` and `*.myapp.com`.
 The web process can also set `canonical_host` (one of its hosts); every other host answers 301 to it, so `www` never serves content.
@@ -241,6 +241,7 @@ env:
 ```
 
 The suffix works at every depth and inside free-form maps such as `procfile`, `env` and `headers`; the value replaces the base key outright, so a block override names the leaf key it changes (`alerts: {error_rate_dev: 0}`) rather than restating the block. A `<key>_dev` is checked against the schema in both modes, so a typo is caught by `dboss check` on the host too.
+A `_tauri` suffix works the same way for the desktop build only (see [Desktop apps](#desktop-apps-tauri)): `dboss build tauri` takes the `_tauri` value and drops every `_dev` one, and every session drops the `_tauri` keys.
 Every app-level key can be set once under `defaults:` in the host file and repeated at the top level of an app file; the app value wins key by key.
 `dboss config --keys [filter]` lists every key grouped by block, with a one-line description, its default and, when useful, an example; the same list is behind the Help button in the console's Configuration view.
 `dboss config --reference` prints the long annotated reference, and `dboss config [app] -d` prints a resolved config with every default filled in.
@@ -284,6 +285,7 @@ Apps
   cron          list an app's scheduled jobs, or run one now
   hooks         list an app's deploy hooks with their ping URL, or run one
   deploy        push an app to a box: sync over ssh, or git pull through the deploy hook
+  build         package the app in this folder as a Tauri desktop app
   exec          run a one-off command in the app's environment
   audit         list operator actions: start, stop, restart, destroy, hook runs and config writes
 
@@ -637,6 +639,45 @@ It needs `git`, `rsync` and `ssh` locally, and `rsync` plus `dboss` on the ssh u
 `git` needs no ssh.
 It posts to the app's `deploy` hook (`hooks: {deploy: true}`, see below) with `tokens.dboss` as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
 A failed pull prints git's answer and exits with its code; an app without the hook gets the line to add.
+
+## Desktop apps (Tauri)
+
+`dboss build tauri`, run inside an app folder, packages the app as a desktop app.
+The procfile names decide the shape, and an app declares exactly one of `sidecar` and `server`:
+
+* `js` is the frontend build, run once to completion before anything else.
+* `sidecar` is the main server in any compiled language. A small Rust shell, the same file for every app, starts it as its own process.
+* `server` is a Rust library crate exposing `pub async fn serve(port: u16)` (any error type that prints). The shell links it in, so the bundle is one binary.
+
+```yaml
+procfile:
+  sidecar:
+    command: exec ./bin/server
+    command_dev: exec go run ./app     # the build reads this: Go, package ./app
+    hosts: [app.example.com]
+    health: /up
+  js_dev: exec bun run --cwd web dev   # the watcher, dev only
+  js_tauri: bun run --cwd web build    # the one-shot build, desktop only
+```
+
+The file is read with the `_tauri` profile: every `<key>_tauri` replaces `<key>` and the `_dev` keys are dropped.
+`js_tauri` therefore never becomes a process on the box, and `command_tauri` can point a server entry somewhere else.
+A sidecar is found in this order: `command_tauri`; `go run` or `cargo run` in `command_dev`, looking through a `cd dir &&` and wrappers such as watchexec; a `go.mod` with a root main package or a `Cargo.toml` with one binary; the executable the box `command` names inside the app folder.
+Nothing matching (`bundle exec ...`) stops the build with the `command_tauri: ./path/to/binary` hint.
+Go is built with `-trimpath -ldflags "-s -w"`, Cargo with `--release`, and the arguments after the program in the matched command are passed at launch.
+The build names the toolchain it picked, and warns when a Go sidecar uses cgo, since the bundle then needs those C libraries on the user's machine.
+
+At launch the shell picks a free loopback port and starts the server with `PORT`, `APP_NAME`, `PROC_TYPE` and the config `env` (never `.env`, so no secret ships inside the bundle), in the app data folder (`~/Library/Application Support/<identifier>` on macOS).
+It polls the web process's `health` (else `/`), opens the window on `http://127.0.0.1:<port>/` and stops the sidecar when the app quits.
+There is no dboss proxy in the bundle, so the server serves its own assets; the build warns when the app has a non-empty `static` folder.
+The window has no Tauri IPC permissions: it only ever shows the server's pages.
+
+The shell project lives under the user cache folder (`~/Library/Caches/dboss/tauri` on macOS), with one cargo target directory shared by every app, so Tauri compiles once per machine.
+A build that changes nothing takes a second; one that changes the app name or identifier relinks the shell, which with LTO takes about half a minute.
+A Go sidecar bundle is the shell (about 3 MB) plus the Go binary; a `server` bundle is one binary.
+Bundles land in `./dist/tauri`: `--out` moves them, `--bundles app,dmg` limits the formats, `--identifier` sets the bundle id (default `dev.dboss.<app>`) and `--icon` a square PNG (default `./icon.png`, then `./public/icon.png`, else a plain square).
+It builds for the machine it runs on, unsigned; it needs `cargo` and the Tauri CLI (`cargo install tauri-cli --version '^2' --locked`).
+To call it from your app's Makefile, write the target as `build-tauri:` or `build\:tauri:`, since `:` is make syntax.
 
 ## Deploy hooks
 

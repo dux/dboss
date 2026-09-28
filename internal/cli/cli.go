@@ -79,6 +79,8 @@ func (c CLI) Run(args []string) int {
 		err = c.kill(args[1:])
 	case "deploy":
 		err = c.deploy(args[1:])
+	case "build":
+		err = c.build(args[1:])
 	default:
 		err = c.remote(command, args[1:])
 	}

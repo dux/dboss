@@ -887,8 +887,9 @@ func TestSingleAppModeBindsDevHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.App == nil || len(cfg.App.WebProcesses) != 1 || cfg.App.WebProcesses[0].Name != "web" || !reflect.DeepEqual(cfg.App.Hosts, List{DevHost}) {
-		t.Fatalf("single app should bind %s to web: %+v", DevHost, cfg.App)
+	devHost := "." + filepath.Base(dir) + "." + DevDomain
+	if cfg.App == nil || len(cfg.App.WebProcesses) != 1 || cfg.App.WebProcesses[0].Name != "web" || !reflect.DeepEqual(cfg.App.Hosts, List{devHost}) {
+		t.Fatalf("single app should bind %s to web: %+v", devHost, cfg.App)
 	}
 	// An explicit domain is kept and no dev domain is added.
 	writeConfigFile(t, path, "procfile:\n  web:\n    command: ./server\n    hosts: [my.test]\n")

@@ -8,7 +8,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
+	"time"
 
+	"dboss/internal/logx"
 	"dboss/internal/ops"
 )
 
@@ -19,21 +22,39 @@ type Server struct {
 	login    func() (string, string, error)
 }
 
+// Idle refuses a socket path another session still answers on and removes a stale socket left by
+// one that died. A session calls it before it touches ports or children.
+func Idle(path string) error {
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSocket == 0 {
+			return fmt.Errorf("control socket path is not a socket: %s", path)
+		}
+		connection, dialErr := net.DialTimeout("unix", path, time.Second)
+		if dialErr == nil {
+			_ = connection.Close()
+			return fmt.Errorf("control socket already active: %s", path)
+		}
+		if !errors.Is(dialErr, syscall.ECONNREFUSED) && !errors.Is(dialErr, os.ErrNotExist) {
+			return fmt.Errorf("check control socket: %w", dialErr)
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		logx.Warnf("warning: removed stale control socket %s; no service is listening, continuing startup", path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // Listen serves the control socket. login mints console login links and is nil when the
 // management console is not enabled.
 func Listen(path string, service *ops.Service, login func() (string, string, error)) (*Server, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(path); err == nil {
-		connection, dialErr := net.Dial("unix", path)
-		if dialErr == nil {
-			_ = connection.Close()
-			return nil, fmt.Errorf("control socket already active: %s", path)
-		}
-		if err := os.Remove(path); err != nil {
-			return nil, err
-		}
+	if err := Idle(path); err != nil {
+		return nil, err
 	}
 	listener, err := net.Listen("unix", path)
 	if err != nil {

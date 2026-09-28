@@ -256,6 +256,9 @@ Tokens  (root dboss.yaml)
 
 ## Commands
 
+`dboss start` (or `dboss s`) automatically removes a stale control socket when no service is listening, prints a warning, and continues startup.
+An active listener still blocks a second session; permission errors and non-socket files are left untouched.
+
 ```
 dboss <command> [options]
 dboss help <command>

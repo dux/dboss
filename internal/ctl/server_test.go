@@ -1,10 +1,14 @@
 package ctl
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
+	"log"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,14 +134,69 @@ func TestLoginResponse(t *testing.T) {
 	}
 }
 
-func TestListenServesAndRefusesASecondServer(t *testing.T) {
-	// A unix socket path is capped near 104 bytes on macOS, so keep it short.
-	dir, err := os.MkdirTemp("/tmp", "dboss-ctl")
+func testSocketPath(t *testing.T) string {
+	t.Helper()
+	// Keep Unix socket paths below the macOS limit.
+	if err := os.MkdirAll("../../tmp", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("../../tmp", "ctl-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
-	socket := filepath.Join(dir, "dboss.sock")
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "dboss.sock")
+}
+
+func TestListenRecoversStaleSocketWithWarning(t *testing.T) {
+	socket := testSocketPath(t)
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener.SetUnlinkOnClose(false)
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+	service := ops.New(&fakeRuntime{}, nil, nil, nil, nil, nil)
+	server, err := Listen(socket, service, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	if !strings.Contains(output.String(), "warning: removed stale control socket "+socket) {
+		t.Fatalf("missing recovery warning: %q", output.String())
+	}
+	var apps []supervisor.Snapshot
+	if err := (Client{Socket: socket, Timeout: time.Second}).Call(Request{Method: ops.ActionList}, &apps); err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 || apps[0].Name != "alpha" {
+		t.Fatalf("apps = %v", apps)
+	}
+}
+
+func TestListenPreservesNonSocket(t *testing.T) {
+	socket := testSocketPath(t)
+	if err := os.WriteFile(socket, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if server, err := Listen(socket, nil, nil); err == nil {
+		server.Close()
+		t.Fatal("Listen should refuse a regular file")
+	}
+	if data, err := os.ReadFile(socket); err != nil || string(data) != "keep me" {
+		t.Fatalf("socket path changed: %q, %v", data, err)
+	}
+}
+
+func TestListenServesAndRefusesASecondServer(t *testing.T) {
+	socket := testSocketPath(t)
 	service := ops.New(&fakeRuntime{}, nil, nil, nil, nil, nil)
 	server, listenErr := Listen(socket, service, nil)
 	if listenErr != nil {

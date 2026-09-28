@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"dboss/internal/apps"
+	"dboss/internal/children"
 	"dboss/internal/config"
 	"dboss/internal/ctl"
 	"dboss/internal/events"
@@ -162,7 +163,7 @@ func writable(dir string) error {
 
 // kill stops every app through the daemon, when one answers, then clears the whole port range.
 // A dev session shares the range with other app folders, so it clears only the ports its own
-// folder claimed.
+// folder claimed. With no daemon answering it also stops what a dead session left running.
 func (c CLI) kill(args []string) error {
 	cfg, jsonOutput, err := c.hostCommand("kill", args)
 	if err != nil {
@@ -181,6 +182,12 @@ func (c CLI) kill(args []string) error {
 		}
 		stopped = append(stopped, snapshot.Name)
 	}
+	var reaped []string
+	if err != nil {
+		if reaped, err = children.New(cfg.StateDir).Reap(cfg.Defaults.StopTimeout.Value()); err != nil {
+			return err
+		}
+	}
 	var pids []int
 	if cfg.Dev() {
 		owned, err := ports.Recorded(filepath.Join(cfg.StateDir, "ports.json"))
@@ -198,9 +205,12 @@ func (c CLI) kill(args []string) error {
 		return err
 	}
 	if jsonOutput {
-		encoded, _ := json.Marshal(map[string]any{"stopped": stopped, "killed_pids": pids})
+		encoded, _ := json.Marshal(map[string]any{"stopped": stopped, "killed_pids": pids, "reaped": reaped})
 		fmt.Fprintln(c.Out, string(encoded))
 		return nil
+	}
+	for _, label := range reaped {
+		fmt.Fprintf(c.Out, "stopped %s left by an earlier session\n", label)
 	}
 	if cfg.Dev() {
 		fmt.Fprintf(c.Out, "stopped %d app(s); killed %d remaining listener(s) on this folder's ports\n", len(stopped), len(pids))

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"dboss/internal/children"
 	"dboss/internal/config"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
@@ -88,7 +89,8 @@ func (a *appRuntime) spawn(name string, log *logWriter) (*process, error) {
 		}
 	}
 	cmd.Stdout, cmd.Stderr = logFile, logFile
-	if err := cmd.Start(); err != nil {
+	ledger := children.New(a.cfg.StateDir)
+	if err := ledger.Start(cmd, a.spec.Name+"/"+name); err != nil {
 		closeLog()
 		return nil, fmt.Errorf("start %s: %w", name, err)
 	}
@@ -100,18 +102,14 @@ func (a *appRuntime) spawn(name string, log *logWriter) (*process, error) {
 	if err := backend.Place(a.spec.Name, slot, cmd.Process.Pid, limits); err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
+		ledger.Done(cmd.Process.Pid)
 		closeLog()
 		return nil, err
 	}
 	p := &process{name: name, proc: proc, index: index, slot: slot, cmd: cmd, pid: cmd.Process.Pid, port: port, startedAt: time.Now(), restarts: a.failures[name], oomBase: backend.OOMKills(a.spec.Name, slot), log: logFile, done: make(chan struct{}), waited: make(chan struct{})}
-	if err := a.writePID(p); err != nil {
-		_ = syscall.Kill(-p.pid, syscall.SIGKILL)
-		_ = cmd.Wait()
-		closeLog()
-		return nil, err
-	}
 	go func() {
 		err := cmd.Wait()
+		ledger.Done(p.pid)
 		close(p.waited)
 		a.sendEvent(processEvent{kind: "exit", proc: p, err: err, exitCode: exitCode(err)})
 	}()
@@ -346,7 +344,7 @@ func tail(path string, count int) ([]string, error) {
 	return lines, scanner.Err()
 }
 
-// release forgets a process that has exited: its slot's cgroup and pid file go, and its log is
+// release forgets a process that has exited: its slot's cgroup goes, and its log is
 // closed unless the copy that replaced it, or the one it replaces, still writes there.
 func (a *appRuntime) release(p *process) {
 	if p.released {
@@ -365,7 +363,6 @@ func (a *appRuntime) release(p *process) {
 	}
 	_ = a.backendFor(p.proc).Release(a.spec.Name, p.slot)
 	close(p.done)
-	a.removePID(p.slot)
 }
 
 // logShared reports whether another tracked process writes through p's log.
@@ -386,19 +383,6 @@ func (a *appRuntime) backendFor(string) res.Backend {
 	}
 	return a.backend
 }
-
-func (a *appRuntime) writePID(p *process) error {
-	dir := filepath.Join(a.cfg.StateDir, a.spec.Name)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return os.WriteFile(a.pidPath(p.slot), []byte(strconv.Itoa(p.pid)+"\n"), 0o640)
-}
-
-func (a *appRuntime) pidPath(slot string) string {
-	return filepath.Join(a.cfg.StateDir, a.spec.Name, slot+".pid")
-}
-func (a *appRuntime) removePID(slot string) { _ = os.Remove(a.pidPath(slot)) }
 
 // resolveDir resolves a path from the app file against the app folder.
 func resolveDir(dir, value string) string {

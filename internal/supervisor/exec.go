@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dboss/internal/apps"
+	"dboss/internal/children"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
 )
@@ -70,11 +71,16 @@ func (m *Manager) run(spec *apps.App, procType string, line apps.Command, timeou
 	}
 	var output bytes.Buffer
 	command.Stdout, command.Stderr = &output, &output
-	if err := command.Start(); err != nil {
+	ledger := children.New(m.cfg.StateDir)
+	if err := ledger.Start(command, spec.Name+"/"+procType); err != nil {
 		return ExecResult{}, err
 	}
 	done := make(chan error, 1)
-	go func() { done <- command.Wait() }()
+	go func() {
+		err := command.Wait()
+		ledger.Done(command.Process.Pid)
+		done <- err
+	}()
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}

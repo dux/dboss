@@ -65,7 +65,7 @@ func (c CLI) start(args []string) error {
 		}
 		fmt.Fprintf(c.Out, "login: %s (one-time, 3 minutes)\n", local)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	if err := session.Serve(ctx); err != nil {
 		return err

@@ -22,6 +22,7 @@ import (
 	"dboss/internal/alerts"
 	"dboss/internal/apps"
 	"dboss/internal/authcog"
+	"dboss/internal/children"
 	"dboss/internal/config"
 	"dboss/internal/console"
 	"dboss/internal/ctl"
@@ -96,6 +97,17 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return nil, err
 		}
+	}
+	// Everything below kills what an earlier session left, so a live one must stop us first.
+	if err := ctl.Idle(cfg.Socket); err != nil {
+		return nil, err
+	}
+	reaped, err := children.New(cfg.StateDir).Reap(cfg.Defaults.StopTimeout.Value())
+	if err != nil {
+		return nil, err
+	}
+	if len(reaped) > 0 {
+		logx.Warnf("stopped %d process(es) an earlier session left running: %s", len(reaped), strings.Join(reaped, ", "))
 	}
 	if !cfg.Dev() {
 		cleared, err := ports.ClearPortRange(cfg.Ports, cfg.Defaults.StopTimeout.Value())

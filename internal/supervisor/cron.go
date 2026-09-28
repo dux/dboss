@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dboss/internal/apps"
+	"dboss/internal/children"
 	"dboss/internal/git"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
@@ -254,7 +255,8 @@ func (a *appRuntime) startJob(state *jobState, now time.Time, manual bool) error
 	}
 	cmd.Stdout, cmd.Stderr = out, out
 	_, _ = writer.Write(jobLine(state.kind, state.name, "start", 0, 0, nil))
-	if err := cmd.Start(); err != nil {
+	ledger := children.New(a.cfg.StateDir)
+	if err := ledger.Start(cmd, fmt.Sprintf("%s/%s %s", a.spec.Name, state.kind, state.name)); err != nil {
 		state.lastError = err.Error()
 		_, _ = writer.Write(jobLine(state.kind, state.name, "error", -1, 0, err))
 		return err
@@ -265,6 +267,7 @@ func (a *appRuntime) startJob(state *jobState, now time.Time, manual bool) error
 	state.lastError = ""
 	go func() {
 		err := cmd.Wait()
+		ledger.Done(cmd.Process.Pid)
 		run.finished.Store(true)
 		close(run.waited)
 		a.sendEvent(processEvent{kind: "job-exit", job: run, exitCode: exitCode(err), err: err})

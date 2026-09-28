@@ -52,13 +52,13 @@
         ignored: !!raw.is_ignored,
         message: minutes.length ? minutes[0].message : '',
         description: described ? described.description : '',
-        countLabel: this.number(raw.count),
+        countLabel: Human.number(raw.count),
         firstLabel: this.time(raw.first_at),
         lastLabel: this.time(raw.last_at),
         clients: users.size + ips.size,
         minutes: minutes.map((minute) => ({
           time: this.time(minute.minute_at),
-          countLabel: this.number(minute.count),
+          countLabel: Human.number(minute.count),
           usersLabel: (minute.users || []).join(', '),
           ips: minute.ips || [],
         })),
@@ -109,10 +109,6 @@
       } catch (error) {
         Toast.show(error.message, true)
       }
-    }
-
-    number(value) {
-      return new Intl.NumberFormat().format(Math.round(Number(value || 0)))
     }
 
     time(value) {
@@ -183,7 +179,7 @@
     </article>
     <article class="card stat-card">
       <span class="subheader">Clients</span>
-      <strong class="stat-value">{number(state.row.clients)}</strong>
+      <strong class="stat-value">{Human.number(state.row.clients)}</strong>
       <span class="text-muted">users and IPs</span>
     </article>
     <article class="card stat-card">

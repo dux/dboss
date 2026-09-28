@@ -62,12 +62,6 @@
       this.state.open = { ...this.state.open, [id]: !this.state.open[id] }
     }
 
-    stamp(value) {
-      if (!value) return '-'
-      const date = new Date(value)
-      if (isNaN(date.getTime())) return '-'
-      return date.toLocaleString()
-    }
   }
 </script>
 
@@ -108,7 +102,7 @@
     {#each state.rows as row}
       <div class="audit-entry" class:audit-entry-open={state.open[row.id]}>
         <div class="audit-row audit-row-click" data-result={row.result} onclick="fez.open({row.id})">
-          <span class="service-value">{stamp(row.time)}</span>
+          <span class="service-value">{Human.stamp(row.time)}</span>
           <span class="service-name">{row.actor}</span>
           <span>{row.action}</span>
           <span class="service-value">{row.app || '-'}</span>

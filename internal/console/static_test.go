@@ -1,6 +1,7 @@
 package console
 
 import (
+	"io/fs"
 	"regexp"
 	"slices"
 	"strings"
@@ -85,6 +86,42 @@ func TestButtonComponentIsLoaded(t *testing.T) {
 	}
 	if _, err := assets.ReadFile("static/fez/ui-btn.fez"); err != nil {
 		t.Fatalf("ui-btn.fez is not embedded: %v", err)
+	}
+}
+
+// The console renders one size, count and age through the shared Human global, so a component
+// that grows its own copy would drift from the CLI and the other pages. Guard the lib and the
+// names it owns.
+func TestFormatLibIsShared(t *testing.T) {
+	index, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `src="/assets/format.js"`) {
+		t.Error("index.html must load format.js")
+	}
+	lib, err := assets.ReadFile("static/format.js")
+	if err != nil {
+		t.Fatalf("format.js is not embedded: %v", err)
+	}
+	for _, name := range []string{"bytes", "number", "duration", "ago", "stamp", "time", "percent", "hasTime"} {
+		if !strings.Contains(string(lib), name+"(") {
+			t.Errorf("format.js is missing Human.%s", name)
+		}
+	}
+	files, err := fs.Glob(assets, "static/fez/*.fez")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := regexp.MustCompile(`(?m)^\s+(bytes|number|duration|ago|stamp|percent|hasTime|activity)\([^)]*\)\s*\{`)
+	for _, path := range files {
+		data, err := assets.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if match := owned.FindString(string(data)); match != "" {
+			t.Errorf("%s defines %q; call Human.* instead", path, strings.TrimSpace(match))
+		}
 	}
 }
 

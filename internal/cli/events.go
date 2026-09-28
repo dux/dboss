@@ -10,7 +10,7 @@ import (
 	"text/tabwriter"
 
 	"dboss/internal/events"
-	"dboss/internal/fsutil"
+	"dboss/internal/humanize"
 	"dboss/internal/ops"
 )
 
@@ -36,7 +36,7 @@ func (c CLI) printEvents(method string, data any) error {
 		if summary.Scanned {
 			users = "users"
 		}
-		fmt.Fprintf(c.Out, "%s .. %s  %d events  %d %s  value %s  %s on disk\n", summary.From, summary.To, summary.Count, summary.Users, users, number(summary.ValueSum), fsutil.HumanBytes(summary.Bytes))
+		fmt.Fprintf(c.Out, "%s .. %s  %d events  %d %s  value %s  %s on disk\n", summary.From, summary.To, summary.Count, summary.Users, users, number(summary.ValueSum), humanize.Bytes(summary.Bytes))
 		if len(totals) == 0 {
 			fmt.Fprintln(c.Out, "no events in range")
 			return nil

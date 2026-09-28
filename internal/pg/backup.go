@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"dboss/internal/fsutil"
+	"dboss/internal/humanize"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
 
@@ -100,7 +100,7 @@ func (s *Service) ImportBackup(database string, source io.Reader) (Backup, error
 	if err := s.catalog.record(entry); err != nil {
 		return entry, err
 	}
-	logx.Infof("postgres backup uploaded: %s %s %s", database, fsutil.HumanBytes(size), entry.Time)
+	logx.Infof("postgres backup uploaded: %s %s %s", database, humanize.Bytes(size), entry.Time)
 	return entry, nil
 }
 
@@ -209,7 +209,7 @@ func (s *Service) runDump(ctx context.Context, connConfig *pgx.ConnConfig, opts 
 	if err := s.catalog.record(entry); err != nil {
 		return entry, err
 	}
-	logx.Infof("postgres backup: %s %s %s", database, fsutil.HumanBytes(size), started.UTC().Format(time.RFC3339))
+	logx.Infof("postgres backup: %s %s %s", database, humanize.Bytes(size), started.UTC().Format(time.RFC3339))
 	return entry, nil
 }
 

@@ -275,7 +275,7 @@
           .slice(0, 12)
           .map((facet) => {
             const value = { label: `#${facet.value}`, data: `data.${facet.value}`, tag: `${key}:${facet.value}`, key: `${facet.value}:` }[kind]
-            return { insert: negate + value, label: value, count: this.number(facet.count), type: facet.type || '', more: kind === 'key' }
+            return { insert: negate + value, label: value, count: Human.number(facet.count), type: facet.type || '', more: kind === 'key' }
           })
         this.showSuggest(items)
       } catch {
@@ -336,7 +336,7 @@
         const total = counts.reduce((sum, n) => sum + n, 0)
         return {
           style: `height: ${peak ? Math.max(total ? 2 : 0, (total / peak) * 100) : 0}%`,
-          title: `${date} · ${this.number(total)} events`,
+          title: `${date} · ${Human.number(total)} events`,
           parts: counts.map((count, series) => ({ series, count })).filter((part) => part.count > 0).reverse().map((part) => ({ series: part.series, style: `flex-grow: ${part.count}` })),
         }
       })
@@ -574,7 +574,7 @@
         const pct = Number(row[at('pct_of_first')] || 0)
         groups.get(label).push({
           name: row[at('name')] || `Step ${row[at('step')]}`,
-          actors: this.number(row[at('actors')]),
+          actors: Human.number(row[at('actors')]),
           pct: `${pct}%`,
           bar: `width: ${Math.max(pct ? 1 : 0, Math.min(100, pct))}%`,
           previous: row[at('pct_of_previous')] === null ? '' : `${row[at('pct_of_previous')]}% of previous`,
@@ -640,25 +640,8 @@
 
     // --- formatting ---
 
-    number(value) {
-      return new Intl.NumberFormat().format(Math.round(Number(value || 0)))
-    }
-
     amount(value) {
       return new Intl.NumberFormat([], { maximumFractionDigits: 2 }).format(Number(value || 0))
-    }
-
-    bytes(value) {
-      let amount = Number(value || 0)
-      if (amount < 1024) return `${amount} B`
-      const units = ['KB', 'MB', 'GB', 'TB']
-      let unit = units[0]
-      amount /= 1024
-      for (let index = 1; amount >= 1024 && index < units.length; index += 1) {
-        amount /= 1024
-        unit = units[index]
-      }
-      return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${unit}`
     }
 
     seconds(value) {
@@ -676,10 +659,6 @@
       return `median ${parts.join(' ')}`
     }
 
-    stamp(value) {
-      const date = new Date(value)
-      return isNaN(date.getTime()) ? value : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    }
   }
 </script>
 
@@ -761,13 +740,13 @@
       <section class="stat-row" aria-label="Events summary">
         <article class="card stat-card">
           <span class="subheader">Events</span>
-          <strong class="stat-value">{number(state.summary.count)}</strong>
+          <strong class="stat-value">{Human.number(state.summary.count)}</strong>
           <span class="text-muted">{state.summary.from} – {state.summary.to}</span>
         </article>
         <article class="card stat-card">
           <span class="subheader">{state.summary.scanned ? 'Users' : 'Users (busiest day)'}</span>
-          <strong class="stat-value">{number(state.summary.users)}</strong>
-          <span class="text-muted">{number(state.summary.anons)} anonymous</span>
+          <strong class="stat-value">{Human.number(state.summary.users)}</strong>
+          <span class="text-muted">{Human.number(state.summary.anons)} anonymous</span>
         </article>
         <article class="card stat-card">
           <span class="subheader">Value</span>
@@ -776,7 +755,7 @@
         </article>
         <article class="card stat-card">
           <span class="subheader">On disk</span>
-          <strong class="stat-value">{bytes(state.summary.bytes)}</strong>
+          <strong class="stat-value">{Human.bytes(state.summary.bytes)}</strong>
           <span class="text-muted">{rawNote()}</span>
         </article>
       </section>
@@ -827,7 +806,7 @@
           <div class="sys-row ev-click" onclick="fez.useEvent({i})" title="Filter by this event">
             <span class="text-muted">{row.ns}</span>
             <span class="service-name">{row.event}</span>
-            <span class="num">{number(row.count)}</span>
+            <span class="num">{Human.number(row.count)}</span>
             <span class="num">{amount(row.value)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>
@@ -857,7 +836,7 @@
       {:else}
         {#each state.latest as row, r}
           <div class="sys-row ev-click" class:active={state.openRow === r} onclick="fez.toggleRow({r})">
-            <span class="text-muted ev-time">{stamp(row.ts)}</span>
+            <span class="text-muted ev-time">{Human.time(row.ts)}</span>
             <span class="text-muted">{row.ns}</span>
             <span class="service-name">{row.event}</span>
             <span class="ev-who">{who(row)}</span>
@@ -1023,7 +1002,7 @@
     {#if state.funnelResult}
       <div class="section-head">
         <h2>{state.funnelTitle}</h2>
-        <span class="text-muted">{number(state.funnelResult.duration_ms)} ms</span>
+        <span class="text-muted">{Human.number(state.funnelResult.duration_ms)} ms</span>
       </div>
       {#each state.funnelGroups as group}
         <section class="card ev-funnel">
@@ -1079,7 +1058,7 @@
     {#if state.result}
       <div class="section-head">
         <h2>Result</h2>
-        <span class="text-muted">{number(state.result.rows ? state.result.rows.length : 0)} rows · {number(state.result.duration_ms)} ms</span>
+        <span class="text-muted">{Human.number(state.result.rows ? state.result.rows.length : 0)} rows · {Human.number(state.result.duration_ms)} ms</span>
       </div>
       <section class="card">
         {#if state.result.columns}
@@ -1104,7 +1083,7 @@
             </table>
           </div>
           {#if state.result.truncated}
-            <p class="text-muted sql-note">Showing the first {number(state.result.rows.length)} rows. Add a LIMIT or aggregate to see the rest.</p>
+            <p class="text-muted sql-note">Showing the first {Human.number(state.result.rows.length)} rows. Add a LIMIT or aggregate to see the rest.</p>
           {/if}
         {:else}
           <p class="text-muted sql-note">The statement returned no rows.</p>

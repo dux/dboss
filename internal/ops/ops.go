@@ -229,6 +229,10 @@ type Service struct {
 	pubsub   Pubsub
 	disk     Disk
 	events   *events.Service
+	// appScheme and appPort are the scheme and port the proxy serves apps on, set once by the
+	// daemon, so app snapshots can carry their public URLs.
+	appScheme string
+	appPort   string
 	// previews serializes the built-in github_pr deploys and adds per app, so two pushes to one
 	// branch never race the same checkout while different apps deploy in parallel.
 	previewMu    sync.Mutex
@@ -237,6 +241,13 @@ type Service struct {
 
 func New(runtime Runtime, store LogStore, postgres PG, realtime Pubsub, sizes Disk, notifier Notifier) *Service {
 	return &Service{runtime: runtime, store: store, notifier: notifier, pg: postgres, pubsub: realtime, disk: sizes}
+}
+
+// SetAppAddress records the scheme and port the proxy serves apps on, so Apps and Status list
+// every app's URLs. An empty scheme (no proxy listening) leaves them empty. Call it before the
+// control socket and console start answering.
+func (s *Service) SetAppAddress(scheme, port string) {
+	s.appScheme, s.appPort = scheme, port
 }
 
 // Do runs one action by name. Both transports call it, so the name-to-method mapping and the

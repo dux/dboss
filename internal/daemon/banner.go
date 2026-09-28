@@ -52,6 +52,16 @@ func (d *Daemon) appAddress() (scheme, port string) {
 	return "http", bannerPort(d.listen[0], "http")
 }
 
+// appLinkAddress is the address `dboss ls` and the console link an app with. It is the banner's
+// appAddress but prefers a dev session's HTTPS listener, so a browser opens a trusted https URL
+// instead of the plain http one on :80. A host session is unchanged.
+func (d *Daemon) appLinkAddress() (scheme, port string) {
+	if d.cfg.Dev() && d.devHTTPS != "" {
+		return "https", bannerPort(d.devHTTPS, "https")
+	}
+	return d.appAddress()
+}
+
 // bannerIntro names the build and what this session runs, above the rows.
 func bannerIntro(cfg config.Config) string {
 	if cfg.Dev() {
@@ -136,14 +146,10 @@ func newRow(app, proc, address, note string, pad bool) bannerRow {
 // no address of its own, so it is printed as written instead of being turned into a link that
 // would not resolve.
 func webURL(web supervisor.WebProcessSnapshot, scheme, port string) string {
-	host := config.PrimaryHost(web.CanonicalHost, web.Hosts)
-	if host == "" {
-		return strings.Join(web.Hosts, ", ")
+	if url := config.WebURL(scheme, port, web.CanonicalHost, web.Hosts); url != "" {
+		return url
 	}
-	if port != "" {
-		host = net.JoinHostPort(host, port)
-	}
-	return scheme + "://" + host
+	return strings.Join(web.Hosts, ", ")
 }
 
 // bannerNote is what a process row adds after its address. The banner prints before any app

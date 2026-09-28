@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"dboss/internal/config"
-	"dboss/internal/fsutil"
+	"dboss/internal/humanize"
 	"dboss/internal/logstore"
 	"dboss/internal/logx"
 	"dboss/internal/module"
@@ -115,7 +115,7 @@ func (m *Module) checkDisks(now time.Time) {
 		for i, dir := range dirs {
 			names[i] = dir.Name
 		}
-		parts = append(parts, fmt.Sprintf("%s %.1f%% used, %s free (%s)", dirs[0].Path, dirs[0].Percent, fsutil.HumanBytes(dirs[0].FreeBytes), strings.Join(names, ", ")))
+		parts = append(parts, fmt.Sprintf("%s %.1f%% used, %s free (%s)", dirs[0].Path, dirs[0].Percent, humanize.Bytes(dirs[0].FreeBytes), strings.Join(names, ", ")))
 	}
 	m.sink.Send(notify.Event{Type: notify.DiskLow, Time: now, Error: strings.Join(parts, "; ")})
 }

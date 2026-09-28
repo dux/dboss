@@ -57,6 +57,13 @@ type WebProcessSnapshot struct {
 	Pubsub        config.Pubsub `json:"pubsub"`
 }
 
+// WebURL is the address one web process answers on. Snapshot.URLs lists one per web process with
+// a concrete host, filled in by ops from the session's proxy address.
+type WebURL struct {
+	Process string `json:"process"`
+	URL     string `json:"url"`
+}
+
 // ExecResult is the combined output and exit code of a one-off command.
 type ExecResult struct {
 	Output   string `json:"output"`
@@ -98,6 +105,9 @@ type Snapshot struct {
 	StdoutRetention time.Duration `json:"-"`
 	MaxDBSize       int64         `json:"-"`
 	TmpClean        time.Duration `json:"-"`
+	// URLs lists one address per web process with a concrete host; ops fills it from the session's
+	// proxy address. A worker-only app, or a session with no proxy listening, has none.
+	URLs []WebURL `json:"urls,omitempty"`
 }
 
 // Serving reports whether a request for the app would be answered by the app itself: it runs, or

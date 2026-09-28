@@ -355,6 +355,46 @@ func TestPrintHumanHooksNamesTheMissingToken(t *testing.T) {
 	}
 }
 
+// ls lists one row per service with the app's URL, its own uptime and memory, and the app's last
+// activity once. A worker has a port but no URL.
+func TestPrintHumanListShowsServices(t *testing.T) {
+	var out bytes.Buffer
+	c := CLI{Out: &out, Err: &out}
+	started := time.Now().Add(-2 * time.Hour)
+	apps := []supervisor.Snapshot{{
+		Name:         "bun",
+		State:        supervisor.Running,
+		LastActivity: time.Now().Add(-2 * time.Minute),
+		URLs: []supervisor.WebURL{
+			{Process: "web", URL: "http://bun.lvh.me:3113"},
+			{Process: "admin", URL: "http://admin.bun.lvh.me:3113"},
+		},
+		Processes: []supervisor.ProcessSnapshot{
+			{Name: "admin", Type: "admin", State: supervisor.Running, Port: 3101, PID: 4242, StartedAt: started, MemoryBytes: 31 << 20},
+			{Name: "web.1", Type: "web", State: supervisor.Running, Port: 3103, PID: 4243, StartedAt: started, MemoryBytes: 58 << 20},
+			{Name: "web.2", Type: "web", State: supervisor.Running, Port: 3104, PID: 4244, StartedAt: started, MemoryBytes: 57 << 20},
+			{Name: "job", Type: "job", State: supervisor.Stopped, Port: 3110},
+		},
+	}}
+	if err := c.printHuman(ops.ActionList, apps); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	for _, want := range []string{"NAME", "PID", "bun/admin", "bun/web.1", "bun/web.2", "bun/job", "http://admin.bun.lvh.me:3113", "http://bun.lvh.me:3113", "2h 0m", "31.0M", "4244"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("ls output missing %q:\n%s", want, text)
+		}
+	}
+	if got := strings.Count(text, "2min ago"); got != 1 {
+		t.Errorf("last activity should appear once per app, got %d:\n%s", got, text)
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "bun/job") && strings.Contains(line, "http") {
+			t.Errorf("a worker should have no URL: %q", line)
+		}
+	}
+}
+
 func TestPubsubDataNormalizesPayloads(t *testing.T) {
 	cases := []struct {
 		value string

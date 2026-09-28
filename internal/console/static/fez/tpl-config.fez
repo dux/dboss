@@ -290,11 +290,6 @@
 
     // --- history ---
 
-    stamp(value) {
-      const date = new Date(value)
-      return isNaN(date.getTime()) ? '-' : date.toLocaleString()
-    }
-
     closeHistory() {
       this.state.history = null
     }
@@ -479,7 +474,7 @@
             {#each state.history.revisions as revision}
               <div class="history-row" class:active={revision.revision === state.history.revision}>
                 <code>{revision.revision.slice(0, 8)}</code>
-                <span class="text-muted">{stamp(revision.time)}</span>
+                <span class="text-muted">{Human.stamp(revision.time)}</span>
                 <div class="btn-list">
                   <button class="btn btn-sm" type="button" onclick="fez.previewRevision('{revision.revision}')">View</button>
                   <button class="btn btn-sm" type="button" onclick="fez.restoreRevision('{revision.revision}')">Restore</button>

@@ -64,6 +64,33 @@ func TestAppAddressIsTheProxyNotTheConsole(t *testing.T) {
 	}
 }
 
+func TestAppLinkAddressPrefersDevHTTPS(t *testing.T) {
+	tls := func() config.Config {
+		var cfg config.Config
+		cfg.Proxy.TLS.Listen = ":443"
+		return cfg
+	}()
+	dev := config.Config{App: &config.App{}}
+	for _, test := range []struct {
+		name         string
+		cfg          config.Config
+		listen       []string
+		devHTTPS     string
+		scheme, port string
+	}{
+		{"host claimed port", config.Config{}, []string{":3104"}, "", "http", "3104"},
+		{"host tls", tls, []string{":80"}, "", "https", ""},
+		{"dev plain http", dev, []string{":3104"}, "", "http", "3104"},
+		{"dev https", dev, []string{":80"}, ":443", "https", ""},
+		{"dev https on a custom port", dev, []string{":80"}, "127.0.0.1:8443", "https", "8443"},
+	} {
+		d := &Daemon{cfg: test.cfg, listen: test.listen, devHTTPS: test.devHTTPS}
+		if scheme, port := d.appLinkAddress(); scheme != test.scheme || port != test.port {
+			t.Fatalf("%s: appLinkAddress() = %q, %q, want %q, %q", test.name, scheme, port, test.scheme, test.port)
+		}
+	}
+}
+
 func TestBannerNoteOnlyNamesMaintenance(t *testing.T) {
 	if got := bannerNote(supervisor.Snapshot{State: supervisor.Stopped}); got != "" {
 		t.Fatalf("stopped app note = %q, want none", got)

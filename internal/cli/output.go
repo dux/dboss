@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"dboss/internal/config"
 	"dboss/internal/ctl"
+	"dboss/internal/humanize"
 	"dboss/internal/logstore"
 	"dboss/internal/ops"
 	"dboss/internal/pg"
@@ -83,27 +85,39 @@ func (c CLI) printHuman(method string, data any) error {
 	switch method {
 	case ops.ActionList:
 		writer := tabwriter.NewWriter(c.Out, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(writer, "APP\tSTATE\tPORTS\tUPTIME\tLAST ACTIVITY\tMEM (APPROX)")
+		fmt.Fprintln(writer, "NAME\tSTATE\tPORT\tURL\tUPTIME\tLAST ACTIVITY\tMEM (APPROX)\tPID")
 		for _, snapshot := range data.([]supervisor.Snapshot) {
-			var values []string
-			for _, process := range snapshot.Processes {
-				if process.State != supervisor.Running {
-					continue
+			for index, process := range snapshot.Processes {
+				state := string(process.State)
+				// Draining and maintenance are app-wide, so they ride the app's first row.
+				if index == 0 {
+					if snapshot.Draining {
+						state += " draining"
+					}
+					if snapshot.Maintenance {
+						state += " maintenance"
+					}
 				}
-				values = append(values, fmt.Sprintf("%s:%d", process.Name, process.Port))
+				port, pid := "-", "-"
+				if process.Port > 0 {
+					port = strconv.Itoa(process.Port)
+				}
+				if process.PID > 0 {
+					pid = strconv.Itoa(process.PID)
+				}
+				uptime, memory := "-", "-"
+				if process.State == supervisor.Running {
+					memory = humanize.Bytes(process.MemoryBytes)
+					if !process.StartedAt.IsZero() {
+						uptime = humanize.Duration(time.Since(process.StartedAt))
+					}
+				}
+				last := ""
+				if index == 0 {
+					last = humanize.Ago(snapshot.LastActivity)
+				}
+				fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", snapshot.Name+"/"+process.Name, state, port, processURL(snapshot, process), uptime, last, memory, pid)
 			}
-			last := "-"
-			if !snapshot.LastActivity.IsZero() {
-				last = snapshot.LastActivity.Format(time.RFC3339)
-			}
-			state := string(snapshot.State)
-			if snapshot.Draining {
-				state += " draining"
-			}
-			if snapshot.Maintenance {
-				state += " maintenance"
-			}
-			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%d\n", snapshot.Name, state, strings.Join(values, ","), snapshot.Uptime, last, snapshot.Resources.MemoryBytes)
 		}
 		return writer.Flush()
 	case ops.ActionStatus:
@@ -322,4 +336,15 @@ func (c CLI) printHuman(method string, data any) error {
 		fmt.Fprintln(c.Out, "ok")
 	}
 	return nil
+}
+
+// processURL is the address of one process: the URL ops built for its procfile entry, or "-" for
+// a worker, a wildcard-only host set, or a session with no proxy listening.
+func processURL(snapshot supervisor.Snapshot, process supervisor.ProcessSnapshot) string {
+	for _, entry := range snapshot.URLs {
+		if entry.Process == process.Type {
+			return entry.URL
+		}
+	}
+	return "-"
 }

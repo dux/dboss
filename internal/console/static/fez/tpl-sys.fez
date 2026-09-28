@@ -52,41 +52,6 @@
       return tools.filter((tool) => tool.name.toLowerCase().includes(filter) || (tool.version || '').toLowerCase().includes(filter))
     }
 
-    stamp(value) {
-      if (!value) return '-'
-      const date = new Date(value)
-      if (isNaN(date.getTime())) return '-'
-      return date.toLocaleString()
-    }
-
-    number(value) {
-      return new Intl.NumberFormat().format(Number(value || 0))
-    }
-
-    bytes(value) {
-      const amount = Number(value || 0)
-      if (!amount) return '-'
-      const units = ['B', 'KB', 'MB', 'GB', 'TB']
-      let index = 0
-      let size = amount
-      while (size >= 1024 && index < units.length - 1) {
-        size /= 1024
-        index++
-      }
-      return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
-    }
-
-    duration(seconds) {
-      const total = Number(seconds || 0)
-      if (!total) return '-'
-      const days = Math.floor(total / 86400)
-      const hours = Math.floor((total % 86400) / 3600)
-      const minutes = Math.floor((total % 3600) / 60)
-      if (days) return `${days}d ${hours}h`
-      if (hours) return `${hours}h ${minutes}m`
-      return `${minutes}m`
-    }
-
     async copyIP() {
       const value = this.state.host.public_ip
       if (!value) return
@@ -144,7 +109,7 @@
   </div>
   <div class="page-actions">
     {#if state.snapshot}
-      <span class="refresh-status">Collected {stamp(state.snapshot.collected_at)}</span>
+      <span class="refresh-status">Collected {Human.stamp(state.snapshot.collected_at)}</span>
     {/if}
     <button class="btn" type="button" onclick="fez.load(true)" disabled={state.loading}>
       <svg class="icon"><use href="#i-refresh"></use></svg>
@@ -173,18 +138,18 @@
     <article class="card stat-card">
       <span class="subheader">Load average</span>
       <strong class="stat-value">{load1()}</strong>
-      <span class="text-muted">{state.host.cpus} CPUs · up {duration(state.host.uptime_seconds)}</span>
+      <span class="text-muted">{state.host.cpus} CPUs · up {Human.duration(state.host.uptime_seconds)}</span>
     </article>
     <article class="card stat-card">
       <span class="subheader">Memory</span>
-      <strong class="stat-value">{bytes(state.host.mem_used)}</strong>
-      <span class="text-muted">of {bytes(state.host.mem_total)} · {memPercent()}%</span>
+      <strong class="stat-value">{Human.bytes(state.host.mem_used)}</strong>
+      <span class="text-muted">of {Human.bytes(state.host.mem_total)} · {memPercent()}%</span>
       <span class="meter" data-level={level(memPercent())}><span style={meterStyle(memPercent())}></span></span>
     </article>
     <article class="card stat-card">
       <span class="subheader">Config disk</span>
-      <strong class="stat-value">{bytes(state.config.used_bytes)}</strong>
-      <span class="text-muted">of {bytes(state.config.total_bytes)} · {dirPercent('config')}%</span>
+      <strong class="stat-value">{Human.bytes(state.config.used_bytes)}</strong>
+      <span class="text-muted">of {Human.bytes(state.config.total_bytes)} · {dirPercent('config')}%</span>
       <span class="meter" data-level={level(dirPercent('config'))}><span style={meterStyle(dirPercent('config'))}></span></span>
     </article>
   </section>
@@ -209,7 +174,7 @@
           {/if}
         </span>
       </div>
-      <div class="datagrid-item"><span class="subheader">Uptime</span><span class="datagrid-content">{duration(state.host.uptime_seconds)}</span></div>
+      <div class="datagrid-item"><span class="subheader">Uptime</span><span class="datagrid-content">{Human.duration(state.host.uptime_seconds)}</span></div>
       <div class="datagrid-item"><span class="subheader">CPUs</span><span class="datagrid-content">{state.host.cpus}</span></div>
       <div class="datagrid-item"><span class="subheader">dboss</span><span class="datagrid-content">{state.runtime.dboss || '-'}</span></div>
       <div class="datagrid-item">
@@ -292,8 +257,8 @@
         <div class="sys-row">
           <span class="service-name">{dir.name}</span>
           <span class="sys-version">{dir.path}</span>
-          <span class="service-value">{dir.error ? dir.error : bytes(dir.used_bytes) + ' / ' + bytes(dir.total_bytes)}</span>
-          <span class="service-value">{dir.error ? '-' : bytes(dir.free_bytes) + ' free'}</span>
+          <span class="service-value">{dir.error ? dir.error : Human.bytes(dir.used_bytes) + ' / ' + Human.bytes(dir.total_bytes)}</span>
+          <span class="service-value">{dir.error ? '-' : Human.bytes(dir.free_bytes) + ' free'}</span>
         </div>
       {/each}
     </div>

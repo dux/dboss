@@ -272,7 +272,7 @@ Host session
 
 Apps
   add           clone a repository with a dboss.yaml into the apps folder and start it
-  ls            list apps with state, ports, uptime, last activity and memory
+  ls            list every service (app/process) with state, port, URL, uptime, last activity and memory
   run           start an app; rescans first when it is not known yet
   stop          stop an app and keep it stopped until run or the next request
   restart       stop and start an app on the same ports

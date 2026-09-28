@@ -38,6 +38,29 @@ func TestBestMatchPrefersTheMostSpecificPattern(t *testing.T) {
 	}
 }
 
+func TestWebURL(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		scheme    string
+		port      string
+		canonical string
+		hosts     []string
+		want      string
+	}{
+		{"port joined", "http", "3100", "", []string{"bun.lvh.me"}, "http://bun.lvh.me:3100"},
+		{"no port", "https", "", "shop.example.com", []string{"shop.example.com"}, "https://shop.example.com"},
+		{"canonical wins", "https", "", "b.example.com", []string{"a.example.com", "b.example.com"}, "https://b.example.com"},
+		{"leading dot matches its apex", "http", "3110", "", []string{".sinatra.lvh.me"}, "http://sinatra.lvh.me:3110"},
+		{"wildcard only has no address", "http", "3100", "", []string{"*.example.com"}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := WebURL(test.scheme, test.port, test.canonical, test.hosts); got != test.want {
+				t.Fatalf("WebURL = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestPrimaryHostPicksOneAddress(t *testing.T) {
 	for _, test := range []struct {
 		name      string

@@ -43,37 +43,6 @@
       this.state.errorLog = (app.error_log || []).join('\n')
     }
 
-    number(value) {
-      return new Intl.NumberFormat().format(Number(value || 0))
-    }
-
-    bytes(value) {
-      let amount = Number(value || 0)
-      if (amount < 1024) return `${amount} B`
-      const units = ['KB', 'MB', 'GB', 'TB']
-      let unit = units[0]
-      amount /= 1024
-      for (let index = 1; amount >= 1024 && index < units.length; index += 1) {
-        amount /= 1024
-        unit = units[index]
-      }
-      return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${unit}`
-    }
-
-    hasTime(value) {
-      return Boolean(value) && !String(value).startsWith('0001-')
-    }
-
-    activity(value) {
-      if (!this.hasTime(value)) return 'No traffic'
-      const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000)
-      if (seconds < 10) return 'Just now'
-      if (seconds < 60) return `${seconds}s ago`
-      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-      return `${Math.floor(seconds / 86400)}d ago`
-    }
-
     // A stop drains first, so the daemon can take seconds to answer: the row reads as pending
     // from the click. A cancelled confirm and a failed call never reach a snapshot, so the flag,
     // not the next render, is what gives the buttons back.
@@ -96,35 +65,29 @@
       }
     }
 
+    // clock is the one formatter Human does not cover: a cron job's next run is in the future.
     clock(value) {
-      if (!this.hasTime(value)) return '-'
+      if (!Human.hasTime(value)) return '-'
       const date = new Date(value)
       if (isNaN(date.getTime())) return '-'
       const seconds = Math.round((date.getTime() - Date.now()) / 1000)
-      if (Math.abs(seconds) < 5) return 'now'
-      if (seconds > 0) {
-        if (seconds < 60) return `in ${seconds}s`
-        if (seconds < 3600) return `in ${Math.round(seconds / 60)}m`
-        if (seconds < 86400) return `in ${Math.round(seconds / 3600)}h`
-        return `in ${Math.round(seconds / 86400)}d`
-      }
-      const past = -seconds
-      if (past < 60) return `${past}s ago`
-      if (past < 3600) return `${Math.round(past / 60)}m ago`
-      if (past < 86400) return `${Math.round(past / 3600)}h ago`
-      return `${Math.round(past / 86400)}d ago`
+      if (seconds <= 5) return seconds >= -5 ? 'now' : Human.ago(value)
+      if (seconds < 60) return `in ${seconds}s`
+      if (seconds < 3600) return `in ${Math.round(seconds / 60)}m`
+      if (seconds < 86400) return `in ${Math.round(seconds / 3600)}h`
+      return `in ${Math.round(seconds / 86400)}d`
     }
 
     diskLabel() {
       const disk = this.props.app.disk
-      if (!this.hasTime(disk?.measured_at)) return '-'
-      return this.bytes(disk.total_bytes)
+      if (!Human.hasTime(disk?.measured_at)) return '-'
+      return Human.bytes(disk.total_bytes)
     }
 
     diskTitle() {
       const disk = this.props.app.disk
-      if (!this.hasTime(disk?.measured_at)) return 'Not measured yet - click to measure now'
-      return `app ${this.bytes(disk.app_bytes)} + logs ${this.bytes(disk.log_bytes)}, measured ${this.clock(disk.measured_at)} - click to re-measure`
+      if (!Human.hasTime(disk?.measured_at)) return 'Not measured yet - click to measure now'
+      return `app ${Human.bytes(disk.app_bytes)} + logs ${Human.bytes(disk.log_bytes)}, measured ${this.clock(disk.measured_at)} - click to re-measure`
     }
 
     // The value is measured once a day, so an operator who just cleaned up asks for a fresh walk
@@ -142,7 +105,7 @@
     lastRun(job) {
       if (job.running) return 'running'
       if (job.last_error) return job.last_error
-      if (this.hasTime(job.last_end)) return `exit ${job.last_exit} ${this.clock(job.last_end)}`
+      if (Human.hasTime(job.last_end)) return `exit ${job.last_exit} ${this.clock(job.last_end)}`
       return '-'
     }
 
@@ -223,10 +186,10 @@
 
   <div class="app-stats">
     uptime: <b>{props.app.uptime || '-'}</b> &sdot;
-    memory: <b>{bytes(props.app.resources?.memory_bytes)}</b> &sdot;
+    memory: <b>{Human.bytes(props.app.resources?.memory_bytes)}</b> &sdot;
     disk: <b class="stat-action" title={diskTitle()} onclick="fez.measureDisk()">{diskLabel()}</b> &sdot;
-    last activity: <b>{activity(props.app.last_activity)}</b> &sdot;
-    requests / hour: <b>{number(props.app.request_rates?.last_hour)}</b>
+    last activity: <b>{Human.hasTime(props.app.last_activity) ? Human.ago(props.app.last_activity) : 'No traffic'}</b> &sdot;
+    requests / hour: <b>{Human.number(props.app.request_rates?.last_hour)}</b>
   </div>
 
   {#if props.app.error}
@@ -259,7 +222,7 @@
         <span class="service-value">{process.port || '-'}</span>
         <span class="service-value">{process.pid || '-'}</span>
         <span class="service-value">{process.restarts || 0}</span>
-        <span class="service-value">{bytes(process.memory_bytes)}</span>
+        <span class="service-value">{Human.bytes(process.memory_bytes)}</span>
         <span class="service-actions">
           <ui-btn class="btn-sm btn-icon" icon="i-play" onclick="fez.actProcess('start', '{process.name}')" disabled={state.pending || !state.live || process.state === 'running'} title="Start {process.name}" />
           <ui-btn class="btn-sm btn-icon" icon="i-rotate" onclick="fez.actProcess('restart', '{process.name}')" disabled={state.pending || process.state !== 'running'} title="Restart {process.name}" />

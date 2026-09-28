@@ -55,29 +55,13 @@
         hits: series.map((bucket, index) => ({
           x: Math.max(0, index * step - step / 2).toFixed(1),
           width: step.toFixed(1),
-          title: `${this.hourLabel(bucket.time)} - ${this.number(totals[index])} requests, ${this.number(bucket.s5)} 5xx`,
+          title: `${this.hourLabel(bucket.time)} - ${Human.number(totals[index])} requests, ${Human.number(bucket.s5)} 5xx`,
         })),
       }
     }
 
     hourLabel(value) {
       return new Date(value).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
-    }
-
-    number(value) {
-      return new Intl.NumberFormat().format(Number(value || 0))
-    }
-
-    bytes(value) {
-      let size = Number(value || 0)
-      if (!size) return '-'
-      const units = ['B', 'KB', 'MB', 'GB', 'TB']
-      let index = 0
-      while (size >= 1024 && index < units.length - 1) {
-        size /= 1024
-        index++
-      }
-      return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
     }
 
     memory() {
@@ -104,15 +88,6 @@
 
     meterStyle(percent) {
       return `width: ${percent}%`
-    }
-
-    ago(value) {
-      const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
-      if (isNaN(seconds)) return '-'
-      if (seconds < 60) return `${seconds}s ago`
-      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-      return `${Math.floor(seconds / 86400)}d ago`
     }
   }
 </script>
@@ -146,7 +121,7 @@
     <span class="subheader">Memory</span>
     {#if memory()}
       <strong class="stat-value" class:text-danger={memory().percent >= 90}>{memory().percent}%</strong>
-      <span class="text-muted">{bytes(memory().used)} of {bytes(memory().total)}</span>
+      <span class="text-muted">{Human.bytes(memory().used)} of {Human.bytes(memory().total)}</span>
       <span class="meter" data-level={level(memory().percent)}><span style={meterStyle(memory().percent)}></span></span>
     {:else}
       <strong class="stat-value">-</strong>
@@ -157,7 +132,7 @@
     <span class="subheader">Disk</span>
     {#if disk()}
       <strong class="stat-value" class:text-danger={disk().percent >= 90}>{disk().percent}% full</strong>
-      <span class="text-muted">{bytes(disk().used)} of {bytes(disk().total)}</span>
+      <span class="text-muted">{Human.bytes(disk().used)} of {Human.bytes(disk().total)}</span>
       <span class="meter" data-level={level(disk().percent)}><span style={meterStyle(disk().percent)}></span></span>
     {:else}
       <strong class="stat-value">-</strong>
@@ -170,8 +145,8 @@
       <span class="text-muted">last 24h</span>
     </span>
     <span class="stat-split">
-      <strong class="stat-value">{state.chart ? number(state.chart.total) : '-'}</strong>
-      <span class="text-muted">{number(state.hourly)} this hour{state.chart && state.chart.errors ? `, ${number(state.chart.errors)} 5xx` : ''}</span>
+      <strong class="stat-value">{state.chart ? Human.number(state.chart.total) : '-'}</strong>
+      <span class="text-muted">{Human.number(state.hourly)} this hour{state.chart && state.chart.errors ? `, ${Human.number(state.chart.errors)} 5xx` : ''}</span>
     </span>
     {#if state.chart && state.chart.total}
       <svg class="spark" viewBox="0 0 300 72" preserveAspectRatio="none" role="img" aria-label="Requests per hour over the last 24 hours">
@@ -198,7 +173,7 @@
         <a class="audit-mini-row" href={`#/audit?row=${row.id}`} data-result={row.result} title={row.error || row.detail || row.action}>
           <span class="audit-mini-dot" aria-hidden="true"></span>
           <span class="audit-mini-action">{row.action}{row.app ? ` ${row.app}` : ''}</span>
-          <span class="audit-mini-meta">{row.actor} &middot; {ago(row.time)}</span>
+          <span class="audit-mini-meta">{row.actor} &middot; {Human.ago(row.time)}</span>
         </a>
       {:else}
         <span class="text-muted">{state.audit === null ? 'Loading' : state.auditError || 'No actions recorded yet'}</span>
@@ -209,7 +184,7 @@
 
 <div class="section-head">
   <h2>Services</h2>
-  <span class="text-muted">{globalState.loaded ? `${number(state.running)} of ${number(globalState.apps.length)} running` : ''}</span>
+  <span class="text-muted">{globalState.loaded ? `${Human.number(state.running)} of ${Human.number(globalState.apps.length)} running` : ''}</span>
 </div>
 
 <div class="app-grid" aria-live="polite">

@@ -61,8 +61,8 @@
         ignored: !!row.is_ignored,
         short: (row.exp_uid || '').slice(0, 12),
         message: minutes.length ? minutes[0].message : '',
-        countLabel: this.number(row.count),
-        lastLabel: this.time(row.last_at),
+        countLabel: Human.number(row.count),
+        lastLabel: Human.time(row.last_at),
         clients: clients.size,
       }
     }
@@ -91,16 +91,6 @@
 
     clients() {
       return this.state.rows.reduce((sum, row) => sum + Number(row.clients || 0), 0)
-    }
-
-    number(value) {
-      return new Intl.NumberFormat().format(Math.round(Number(value || 0)))
-    }
-
-    time(value) {
-      if (!value) return ''
-      const date = new Date(value)
-      return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     }
   }
 </script>
@@ -136,17 +126,17 @@
 <section class="stat-row" aria-label="Exceptions summary">
   <article class="card stat-card">
     <span class="subheader">Exceptions</span>
-    <strong class="stat-value">{number(state.rows.length)}</strong>
+    <strong class="stat-value">{Human.number(state.rows.length)}</strong>
     <span class="text-muted">distinct fingerprints</span>
   </article>
   <article class="card stat-card">
     <span class="subheader">Occurrences</span>
-    <strong class="stat-value">{number(total())}</strong>
+    <strong class="stat-value">{Human.number(total())}</strong>
     <span class="text-muted">in the selected range</span>
   </article>
   <article class="card stat-card">
     <span class="subheader">Clients</span>
-    <strong class="stat-value">{number(clients())}</strong>
+    <strong class="stat-value">{Human.number(clients())}</strong>
     <span class="text-muted">users and IPs seen</span>
   </article>
 </section>

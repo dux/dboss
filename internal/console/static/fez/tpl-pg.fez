@@ -291,62 +291,6 @@
       this.state.messageError = error
     }
 
-    stamp(value) {
-      if (!value) return '-'
-      const date = new Date(value)
-      if (isNaN(date.getTime())) return value
-      return date.toLocaleString()
-    }
-
-    ago(value) {
-      if (!value) return ''
-      const then = new Date(value).getTime()
-      if (isNaN(then)) return ''
-      const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000))
-      if (seconds < 60) return `${seconds}s ago`
-      const minutes = Math.floor(seconds / 60)
-      if (minutes < 60) return `${minutes}m ago`
-      const hours = Math.floor(minutes / 60)
-      if (hours < 24) return `${hours}h ago`
-      const days = Math.floor(hours / 24)
-      if (days < 30) return `${days}d ago`
-      const months = Math.floor(days / 30)
-      if (months < 12) return `${months}mo ago`
-      return `${Math.floor(months / 12)}y ago`
-    }
-
-    bytes(value) {
-      const amount = Number(value || 0)
-      if (!amount) return '-'
-      const units = ['B', 'KB', 'MB', 'GB', 'TB']
-      let index = 0
-      let size = amount
-      while (size >= 1024 && index < units.length - 1) {
-        size /= 1024
-        index++
-      }
-      return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
-    }
-
-    number(value) {
-      return new Intl.NumberFormat().format(Number(value || 0))
-    }
-
-    duration(seconds) {
-      const total = Number(seconds || 0)
-      if (!total) return '-'
-      const days = Math.floor(total / 86400)
-      const hours = Math.floor((total % 86400) / 3600)
-      const minutes = Math.floor((total % 3600) / 60)
-      if (days) return `${days}d ${hours}h`
-      if (hours) return `${hours}h ${minutes}m`
-      return `${minutes}m`
-    }
-
-    percent(value) {
-      return `${Math.round(Number(value || 0) * 1000) / 10}%`
-    }
-
     seconds(value) {
       return (Number(value || 0)).toFixed(1)
     }
@@ -379,7 +323,7 @@
     </div>
     <div class="page-actions">
       {#if state.snapshot}
-        <span class="refresh-status">Collected {stamp(state.snapshot.collected_at)}</span>
+        <span class="refresh-status">Collected {Human.stamp(state.snapshot.collected_at)}</span>
       {/if}
       <button class="btn" type="button" onclick="fez.load(true)" disabled={state.loading}>
         <svg class="icon"><use href="#i-refresh"></use></svg>
@@ -430,7 +374,7 @@
   {#if state.result}
     <div class="section-head">
       <h2>Result</h2>
-      <span class="text-muted">{state.result.command || '-'} · {number(state.result.row_count)} rows · {number(state.result.duration_ms)} ms</span>
+      <span class="text-muted">{state.result.command || '-'} · {Human.number(state.result.row_count)} rows · {Human.number(state.result.duration_ms)} ms</span>
     </div>
     <section class="card">
       {#if state.result.columns}
@@ -455,10 +399,10 @@
           </table>
         </div>
         {#if state.result.truncated}
-          <p class="text-muted sql-note">Showing the first {number(state.result.rows.length)} of {number(state.result.row_count)} rows. Add a LIMIT to see the rest.</p>
+          <p class="text-muted sql-note">Showing the first {Human.number(state.result.rows.length)} of {Human.number(state.result.row_count)} rows. Add a LIMIT to see the rest.</p>
         {/if}
       {:else}
-        <p class="text-muted sql-note">{state.result.command || 'Done'} · {number(state.result.row_count)} rows affected. The statement returned no result set.</p>
+        <p class="text-muted sql-note">{state.result.command || 'Done'} · {Human.number(state.result.row_count)} rows affected. The statement returned no result set.</p>
       {/if}
     </section>
   {/if}
@@ -469,14 +413,14 @@
   <section class="card">
     <div class="datagrid pg-detail-stats">
       <div class="datagrid-item"><span class="subheader">Owner</span><span class="datagrid-content">{state.selected.owner || '-'}</span></div>
-      <div class="datagrid-item"><span class="subheader">Size</span><span class="datagrid-content">{bytes(state.selected.size_bytes)}</span></div>
+      <div class="datagrid-item"><span class="subheader">Size</span><span class="datagrid-content">{Human.bytes(state.selected.size_bytes)}</span></div>
       <div class="datagrid-item"><span class="subheader">Encoding</span><span class="datagrid-content">{state.selected.encoding || '-'}</span></div>
       <div class="datagrid-item"><span class="subheader">Collate</span><span class="datagrid-content">{state.selected.collate || '-'}</span></div>
       <div class="datagrid-item"><span class="subheader">Connections</span><span class="datagrid-content">{state.selected.connections}</span></div>
-      <div class="datagrid-item"><span class="subheader">Commits</span><span class="datagrid-content">{number(state.selected.xact_commit)}</span></div>
-      <div class="datagrid-item"><span class="subheader">Rollbacks</span><span class="datagrid-content">{number(state.selected.xact_rollback)}</span></div>
-      <div class="datagrid-item"><span class="subheader">Deadlocks</span><span class="datagrid-content">{number(state.selected.deadlocks)}</span></div>
-      <div class="datagrid-item"><span class="subheader">Temp bytes</span><span class="datagrid-content">{bytes(state.selected.temp_bytes)}</span></div>
+      <div class="datagrid-item"><span class="subheader">Commits</span><span class="datagrid-content">{Human.number(state.selected.xact_commit)}</span></div>
+      <div class="datagrid-item"><span class="subheader">Rollbacks</span><span class="datagrid-content">{Human.number(state.selected.xact_rollback)}</span></div>
+      <div class="datagrid-item"><span class="subheader">Deadlocks</span><span class="datagrid-content">{Human.number(state.selected.deadlocks)}</span></div>
+      <div class="datagrid-item"><span class="subheader">Temp bytes</span><span class="datagrid-content">{Human.bytes(state.selected.temp_bytes)}</span></div>
     </div>
   </section>
 
@@ -516,10 +460,10 @@
     <div class="pg-backups">
       {#each backupsFor(state.selected.name) as entry}
         <div class="pg-backup-line">
-          <span class="pg-backup-when">{stamp(entry.time)}</span>
-          <span class="text-muted">{ago(entry.time) || '-'}</span>
+          <span class="pg-backup-when">{Human.stamp(entry.time)}</span>
+          <span class="text-muted">{Human.ago(entry.time) || '-'}</span>
           <span class="text-muted">·</span>
-          <span class="service-value">{bytes(entry.bytes)}</span>
+          <span class="service-value">{Human.bytes(entry.bytes)}</span>
           {#if entry.manual}
             <span class="badge">manual</span>
           {/if}
@@ -549,8 +493,8 @@
     </article>
     <article class="card stat-card">
       <span class="subheader">Uptime</span>
-      <strong class="stat-value">{duration(state.snapshot.server.uptime_seconds)}</strong>
-      <span class="text-muted">since {stamp(state.snapshot.server.started_at)}</span>
+      <strong class="stat-value">{Human.duration(state.snapshot.server.uptime_seconds)}</strong>
+      <span class="text-muted">since {Human.stamp(state.snapshot.server.started_at)}</span>
     </article>
     <article class="card stat-card">
       <span class="subheader">Connections</span>
@@ -559,8 +503,8 @@
     </article>
     <article class="card stat-card">
       <span class="subheader">Cache hit</span>
-      <strong class="stat-value">{percent(state.snapshot.server.cache_hit_ratio)}</strong>
-      <span class="text-muted">{state.snapshot.server.in_recovery ? 'standby' : 'primary'} · {number((state.snapshot.databases || []).length)} databases</span>
+      <strong class="stat-value">{Human.percent(state.snapshot.server.cache_hit_ratio)}</strong>
+      <span class="text-muted">{state.snapshot.server.in_recovery ? 'standby' : 'primary'} · {Human.number((state.snapshot.databases || []).length)} databases</span>
     </article>
   </section>
 
@@ -595,7 +539,7 @@
             <span class="service-name">{replica.client_addr}</span>
             <span class="sys-version">{replica.state}</span>
             <span class="sys-version">{replica.sync_state}</span>
-            <span class="service-value">{bytes(replica.lag_bytes)}</span>
+            <span class="service-value">{Human.bytes(replica.lag_bytes)}</span>
           </div>
         {/each}
       </div>
@@ -617,7 +561,7 @@
           <div class="sys-row pg-tablespace-row">
             <span class="service-name">{tablespace.name}</span>
             <span class="sys-version">{tablespace.location || '-'}</span>
-            <span class="service-value">{bytes(tablespace.size_bytes)}</span>
+            <span class="service-value">{Human.bytes(tablespace.size_bytes)}</span>
           </div>
         {/each}
       </div>
@@ -647,12 +591,12 @@
       {#each databases() as database}
         <div class="sys-row pg-row pg-row-click" class:pg-row-active={state.selected && state.selected.name === database.name} onclick="fez.openDatabase('{database.name}')">
           <span class="service-name">{database.name}</span>
-          <span class="service-value">{bytes(database.size_bytes)}</span>
+          <span class="service-value">{Human.bytes(database.size_bytes)}</span>
           <span class="sys-version">{database.owner}</span>
           <span class="service-value">{database.connections}</span>
           <span class="sys-version">
             {#if lastBackup(database.name)}
-              {stamp(lastBackup(database.name).time)} · {ago(lastBackup(database.name).time)}
+              {Human.stamp(lastBackup(database.name).time)} · {Human.ago(lastBackup(database.name).time)}
             {:else}
               <span class="text-muted">never</span>
             {/if}

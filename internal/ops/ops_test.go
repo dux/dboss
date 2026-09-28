@@ -268,6 +268,30 @@ func TestAppsAttachDiskUsage(t *testing.T) {
 	}
 }
 
+func TestAppsCarryWebURLs(t *testing.T) {
+	runtime := &fakeRuntime{snapshots: []supervisor.Snapshot{
+		{Name: "bun", WebProcesses: []supervisor.WebProcessSnapshot{
+			{Name: "web", Hosts: []string{"bun.lvh.me"}},
+			{Name: "admin", Hosts: []string{"*.bun.lvh.me"}},
+		}},
+		{Name: "job"},
+	}}
+	service := New(runtime, nil, nil, nil, nil, nil)
+	service.SetAppAddress("http", "3100")
+	apps := service.Apps()
+	if len(apps[0].URLs) != 1 || apps[0].URLs[0].Process != "web" || apps[0].URLs[0].URL != "http://bun.lvh.me:3100" {
+		t.Fatalf("bun urls = %+v", apps[0].URLs)
+	}
+	if len(apps[1].URLs) != 0 {
+		t.Fatalf("a worker-only app has no urls: %+v", apps[1].URLs)
+	}
+	// A session with no proxy listening has no scheme, so it adds no URLs.
+	plain := New(runtime, nil, nil, nil, nil, nil)
+	if got := plain.Apps()[0].URLs; len(got) != 0 {
+		t.Fatalf("no address should mean no urls: %+v", got)
+	}
+}
+
 func TestAppsWithoutADiskModule(t *testing.T) {
 	runtime := &fakeRuntime{snapshots: []supervisor.Snapshot{{Name: "sinatra"}}}
 	service := New(runtime, nil, nil, nil, nil, nil)

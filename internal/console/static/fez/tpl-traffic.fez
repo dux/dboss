@@ -67,7 +67,7 @@
         const total = bucket.s2 + bucket.s3 + bucket.s4 + bucket.s5
         return {
           style: `height: ${peak ? Math.max(total ? 2 : 0, (total / peak) * 100) : 0}%`,
-          title: `${this.bucketLabel(bucket.time, traffic.bucket)} · ${this.number(total)} requests · ${this.number(bucket.s5)} 5xx`,
+          title: `${this.bucketLabel(bucket.time, traffic.bucket)} · ${Human.number(total)} requests · ${Human.number(bucket.s5)} 5xx`,
           parts: ['s5', 's4', 's3', 's2'].filter((key) => bucket[key] > 0).map((key) => ({ key, style: `flex-grow: ${bucket[key]}` })),
         }
       })
@@ -89,26 +89,9 @@
       return this.bucketLabel(series[last ? series.length - 1 : 0].time, this.state.traffic.bucket)
     }
 
-    number(value) {
-      return new Intl.NumberFormat().format(Math.round(Number(value || 0)))
-    }
-
     ms(value) {
       const amount = Number(value || 0)
       return amount >= 1000 ? `${(amount / 1000).toFixed(amount >= 10000 ? 0 : 1)} s` : `${Math.round(amount)} ms`
-    }
-
-    bytes(value) {
-      let amount = Number(value || 0)
-      if (amount < 1024) return `${amount} B`
-      const units = ['KB', 'MB', 'GB', 'TB']
-      let unit = units[0]
-      amount /= 1024
-      for (let index = 1; amount >= 1024 && index < units.length; index += 1) {
-        amount /= 1024
-        unit = units[index]
-      }
-      return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${unit}`
     }
 
     errorRate() {
@@ -191,13 +174,13 @@
   <section class="stat-row" aria-label="Traffic summary">
     <article class="card stat-card">
       <span class="subheader">Requests</span>
-      <strong class="stat-value">{number(state.totals.count)}</strong>
-      <span class="text-muted">peak {number(state.peak)} per {state.traffic.bucket}</span>
+      <strong class="stat-value">{Human.number(state.totals.count)}</strong>
+      <span class="text-muted">peak {Human.number(state.peak)} per {state.traffic.bucket}</span>
     </article>
     <article class="card stat-card">
       <span class="subheader">Error rate</span>
       <strong class="stat-value" class:text-danger={errorLevel() === 'danger'}>{errorRate()}</strong>
-      <span class="text-muted">{number(state.totals.errors)} answers with 5xx</span>
+      <span class="text-muted">{Human.number(state.totals.errors)} answers with 5xx</span>
     </article>
     <article class="card stat-card">
       <span class="subheader">Latency p95</span>
@@ -206,7 +189,7 @@
     </article>
     <article class="card stat-card">
       <span class="subheader">Bytes out</span>
-      <strong class="stat-value">{bytes(state.totals.bytes_out)}</strong>
+      <strong class="stat-value">{Human.bytes(state.totals.bytes_out)}</strong>
       <span class="text-muted">response bodies sent</span>
     </article>
   </section>
@@ -258,8 +241,8 @@
         {#each state.traffic.paths as row}
           <div class="sys-row">
             <a class="service-name traffic-key" href={logsLink('q', row.path)} target="_blank" rel="noreferrer" title={row.path}>{row.path}</a>
-            <span class="num">{number(row.count)}</span>
-            <span class="num" class:text-danger={row.errors > 0}>{number(row.errors)}</span>
+            <span class="num">{Human.number(row.count)}</span>
+            <span class="num" class:text-danger={row.errors > 0}>{Human.number(row.errors)}</span>
             <span class="num">{ms(row.avg_ms)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>
@@ -284,7 +267,7 @@
         {#each state.traffic.slowest as row}
           <div class="sys-row">
             <a class="service-name traffic-key" href={logsLink('q', row.path)} target="_blank" rel="noreferrer" title={row.path}>{row.path}</a>
-            <span class="num">{number(row.count)}</span>
+            <span class="num">{Human.number(row.count)}</span>
             <span class="num">{ms(row.max_ms)}</span>
             <span class="num">{ms(row.avg_ms)}</span>
             <span class="meter" data-level="warn"><span style={slowShare(row.avg_ms)}></span></span>
@@ -303,7 +286,7 @@
         {#each state.traffic.statuses as row}
           <div class="sys-row">
             <a class="traffic-key" href={logsLink('status', row.key)} target="_blank" rel="noreferrer"><span class="log-status" data-status={statusClass(row.key)}>{row.key}</span></a>
-            <span class="num">{number(row.count)}</span>
+            <span class="num">{Human.number(row.count)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>
         {:else}
@@ -320,7 +303,7 @@
         {#each state.traffic.countries as row}
           <div class="sys-row">
             <span class="service-name">{row.key}</span>
-            <span class="num">{number(row.count)}</span>
+            <span class="num">{Human.number(row.count)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>
         {:else}
@@ -337,7 +320,7 @@
         {#each state.traffic.ips as row}
           <div class="sys-row">
             <a class="service-name traffic-key" href={logsLink('q', row.key)} target="_blank" rel="noreferrer">{row.key}</a>
-            <span class="num">{number(row.count)}</span>
+            <span class="num">{Human.number(row.count)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>
         {:else}
@@ -354,7 +337,7 @@
         {#each state.traffic.methods as row}
           <div class="sys-row">
             <a class="service-name traffic-key" href={logsLink('method', row.key)} target="_blank" rel="noreferrer">{row.key}</a>
-            <span class="num">{number(row.count)}</span>
+            <span class="num">{Human.number(row.count)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>
         {:else}

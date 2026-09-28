@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"dboss/internal/config"
 	"dboss/internal/diskusage"
 	"dboss/internal/logstore"
 	"dboss/internal/supervisor"
@@ -176,6 +177,13 @@ func (s *Service) decorate(snapshot *supervisor.Snapshot) {
 	if s.disk != nil {
 		if usage, ok := s.disk.Usage(snapshot.Name); ok {
 			snapshot.Disk = diskUsage(usage)
+		}
+	}
+	if s.appScheme != "" {
+		for _, web := range snapshot.WebProcesses {
+			if url := config.WebURL(s.appScheme, s.appPort, web.CanonicalHost, web.Hosts); url != "" {
+				snapshot.URLs = append(snapshot.URLs, supervisor.WebURL{Process: web.Name, URL: url})
+			}
 		}
 	}
 }

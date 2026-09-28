@@ -82,19 +82,6 @@
       }
     }
 
-    bytes(value) {
-      let amount = Number(value || 0)
-      if (amount < 1024) return `${amount} B`
-      const units = ['KB', 'MB', 'GB', 'TB']
-      let unit = units[0]
-      amount /= 1024
-      for (let index = 1; amount >= 1024 && index < units.length; index += 1) {
-        amount /= 1024
-        unit = units[index]
-      }
-      return `${amount >= 10 ? amount.toFixed(0) : amount.toFixed(1)} ${unit}`
-    }
-
     appLabel(name) {
       return name === '_dboss' ? 'Host (dboss)' : name
     }
@@ -176,7 +163,7 @@
     }
 
     decorate(row) {
-      row.timeLabel = new Date(row.time).toLocaleString()
+      row.timeLabel = Human.stamp(row.time)
       row.statusClass = row.status ? `s${Math.floor(row.status / 100)}` : ''
       row.levelLower = (row.level || '').toLowerCase()
       return row
@@ -318,7 +305,7 @@
       <div class="log-nav-group">
         <div class="log-nav-app" class:current={group.name === state.app}>
           <span class="log-nav-name">{appLabel(group.name)}</span>
-          <span class="log-nav-size">{bytes(group.bytes)}</span>
+          <span class="log-nav-size">{Human.bytes(group.bytes)}</span>
         </div>
         <div class="log-nav-logs">
           {#each group.channels as channel, channelIndex}

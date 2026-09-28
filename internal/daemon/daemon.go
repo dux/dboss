@@ -229,8 +229,9 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 			d.listen = append(d.listen, bound)
 		}
 	}
+	service.SetAppAddress(d.appLinkAddress())
 	if management != nil {
-		management.SetAppAddress(d.appAddress())
+		management.SetAppAddress(d.appLinkAddress())
 		listener, err := bind("management", managementAddress(managementPort), "ports")
 		if err != nil {
 			d.Close()

@@ -72,6 +72,19 @@ func PrimaryHost(canonical string, hosts []string) string {
 	return ""
 }
 
+// WebURL is the address to open for a web process: its primary host over scheme and port. A
+// process whose hosts are only wildcard patterns has no address of its own, so it gets "".
+func WebURL(scheme, port, canonical string, hosts []string) string {
+	host := PrimaryHost(canonical, hosts)
+	if host == "" {
+		return ""
+	}
+	if port != "" {
+		host = net.JoinHostPort(host, port)
+	}
+	return scheme + "://" + host
+}
+
 func hostAllowed(host string, patterns []string) bool {
 	_, ok := BestMatch(NormalizePattern(host), patterns)
 	return ok

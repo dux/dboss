@@ -38,9 +38,6 @@
 #     app file serves both. The value replaces the base key outright, so a block override names
 #     the leaf key it changes rather than restating the block. The suffix works at every depth
 #     and inside free-form maps, so procfile, env and headers entries take it too.
-#   - A _tauri suffix works the same way for `dboss build tauri` only: the desktop build takes
-#     the _tauri value and drops every _dev one, and every session drops the _tauri keys, so
-#     `js_tauri: bun run build` is a one-shot build that never runs as a process on the box.
 #     A dev session also gets the management console on a loopback port from ports, with no
 #     management block and no sign-in; see that block for what it costs.
 #

@@ -436,33 +436,6 @@ func ParseApp(data []byte, path string, defaults Defaults) (App, error) {
 	return app, nil
 }
 
-// LoadProfile reads the app file in dir with one variant profile applied: "" is the box view,
-// DevSuffix the dev session's and TauriSuffix what `dboss build tauri` packages. Host keys a
-// single-app file may carry are ignored, and so are the dev hosts: this is the app alone.
-func LoadProfile(dir, profile string) (App, string, error) {
-	path, err := FindInDir(dir)
-	if err != nil {
-		return App{}, "", err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return App{}, "", err
-	}
-	raw := file{Config: Default()}
-	keys, root, err := decode(data, path, &raw, profile)
-	if err != nil {
-		return App{}, "", err
-	}
-	if !keys["procfile"] {
-		return App{}, "", located(&Error{Message: "is not an app file (no procfile)", Hint: "run it inside an app folder"}, path, root)
-	}
-	app, err := buildApp(raw.appFile, raw.Defaults, false, "")
-	if err != nil {
-		return App{}, "", located(err, path, root)
-	}
-	return app, path, nil
-}
-
 func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error) {
 	if len(raw.Procfile) == 0 {
 		return App{}, &Error{Key: "procfile", Message: "must contain at least one process", Hint: "e.g. procfile:\n    web: bundle exec puma"}

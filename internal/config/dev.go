@@ -10,14 +10,6 @@ import (
 // keeps both values in one file, and the session picks one at load time.
 const DevSuffix = "_dev"
 
-// TauriSuffix marks the desktop build variant of a key, read only by `dboss build tauri`:
-// `js_tauri: bun run build` is the one-shot frontend build that never runs on the box.
-const TauriSuffix = "_tauri"
-
-// profileSuffixes are every variant suffix a document may carry. Loading picks at most one of
-// them; the pairs carrying any other are dropped.
-var profileSuffixes = []string{DevSuffix, TauriSuffix}
-
 // Dev reports whether this is a development session: the config dboss was pointed at is an app
 // (it has procfile:), so one app is being run from its own folder rather than a host serving an
 // apps directory. It is the one check every dev-only behavior reads.
@@ -25,7 +17,7 @@ func (c Config) Dev() bool { return c.App != nil }
 
 // applyProfile resolves the variant suffixes across a whole document, before the schema check turns
 // it into structs. Every `<key><active>` replaces `<key>` and creates it when it is absent; every
-// other variant is dropped, so an app file carries its dev and desktop values into a host unread.
+// other variant is dropped, so an app file carries its dev values into a host unread.
 // active is "" for the box, where every variant is dropped. The value replaces the base outright,
 // so a block override names the leaf key it changes rather than restating the block. It reports
 // whether the tree changed.
@@ -97,12 +89,7 @@ func isVariantKey(name string) bool {
 
 // variantOf is name without its profile suffix, or "" when it carries none.
 func variantOf(name string) string {
-	for _, suffix := range profileSuffixes {
-		if base := variantBase(name, suffix); base != "" {
-			return base
-		}
-	}
-	return ""
+	return variantBase(name, DevSuffix)
 }
 
 // hasTopKey reports whether the document's root mapping has name, so dev mode can be read off the

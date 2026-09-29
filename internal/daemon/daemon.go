@@ -52,6 +52,7 @@ type Daemon struct {
 	modules        *module.Manager
 	control        *ctl.Server
 	management     *console.Handler
+	appProxy       *proxy.Handler
 	notifier       *notify.Notifier
 	servers        []*http.Server
 	listen         []string
@@ -185,21 +186,23 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 		d.management = management
 	}
 	if cfg.Dev() {
-		edge, err := edgeHandler(cfg, flow, manager, logs, management, channels)
+		appProxy, edge, err := edgeHandler(cfg, flow, manager, logs, management, channels)
 		if err != nil {
 			d.Close()
 			return nil, err
 		}
+		d.appProxy = appProxy
 		if err := d.startDevProxy(edge, allocator, opts.HTTPS); err != nil {
 			d.Close()
 			return nil, err
 		}
 	} else if len(cfg.Proxy.Listen) > 0 {
-		edge, err := edgeHandler(cfg, flow, manager, logs, management, channels)
+		appProxy, edge, err := edgeHandler(cfg, flow, manager, logs, management, channels)
 		if err != nil {
 			d.Close()
 			return nil, err
 		}
+		d.appProxy = appProxy
 		var certs *proxy.ACME
 		if cfg.Proxy.TLS.Enabled() {
 			certs, err = proxy.NewACME(cfg, manager)
@@ -258,6 +261,9 @@ func (d *Daemon) Serve(ctx context.Context) error {
 	if err := d.modules.Start(ctx); err != nil {
 		return err
 	}
+	if d.appProxy != nil {
+		d.appProxy.Start(ctx)
+	}
 	if d.management != nil {
 		if d.cfg.Dev() || d.cfg.Local {
 			logx.Infof("management console: http://127.0.0.1:%d (open from this machine, no sign-in)", d.managementPort)
@@ -297,6 +303,9 @@ func (d *Daemon) Close() error {
 		_ = d.control.Close()
 	}
 	_ = d.modules.Close()
+	if d.appProxy != nil {
+		_ = d.appProxy.Close()
+	}
 	d.manager.Close()
 	if d.notifier != nil {
 		d.notifier.Close()
@@ -350,16 +359,16 @@ func managementAddress(port int) string { return "127.0.0.1:" + strconv.Itoa(por
 // edgeHandler is the single public listener: Cloudflare hands it the full request and the
 // host header picks the console or an app. Only the app proxy is affected by the trusted CIDRs.
 // A console with no management.host is left off the switch; it is reached on its own port.
-func edgeHandler(cfg config.Config, flow *authcog.Flow, manager *supervisor.Manager, logs proxy.Recorder, management *console.Handler, channels *pubsub.Service) (http.Handler, error) {
+func edgeHandler(cfg config.Config, flow *authcog.Flow, manager *supervisor.Manager, logs proxy.Recorder, management *console.Handler, channels *pubsub.Service) (*proxy.Handler, http.Handler, error) {
 	appProxy, err := proxy.New(cfg, flow, manager, logs, channels, channels.Filter)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var handler http.Handler = appProxy
 	if management != nil && cfg.Management.Enabled() {
 		handler = proxy.HostSwitch(cfg.Management.Host, management, appProxy)
 	}
-	return proxy.CloudflareOnly(cfg.Proxy.Cloudflare, handler), nil
+	return appProxy, proxy.CloudflareOnly(cfg.Proxy.Cloudflare, handler), nil
 }
 
 func startHTTPServer(name string, listener net.Listener, handler http.Handler) *http.Server {

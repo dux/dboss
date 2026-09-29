@@ -47,10 +47,11 @@ type Web struct {
 	AllowIPs         List              `yaml:"allow_ips" json:"allow_ips"`
 	// Deny refuses a request path with 403 before the app is contacted: *.ext matches a suffix
 	// and /path/* a subtree.
-	Deny    List              `yaml:"deny" json:"deny"`
-	Headers map[string]string `yaml:"headers" json:"headers"`
-	Alerts  Alerts            `yaml:"alerts" json:"alerts"`
-	Events  Events            `yaml:"events" json:"events"`
+	Deny      List              `yaml:"deny" json:"deny"`
+	Headers   map[string]string `yaml:"headers" json:"headers"`
+	Alerts    Alerts            `yaml:"alerts" json:"alerts"`
+	Events    Events            `yaml:"events" json:"events"`
+	RateLimit RateLimit         `yaml:"rate_limit" json:"rate_limit"`
 	// Auth puts an AuthCog sign-in in front of the app: exact addresses, *@domain patterns and a
 	// bare * for any account; an empty list leaves the app open.
 	Auth List `yaml:"auth" json:"auth"`
@@ -124,6 +125,22 @@ const (
 
 // Enabled reports whether any check is on.
 func (a Alerts) Enabled() bool { return a.ErrorRate > 0 || a.SlowP95 > 0 }
+
+// RateLimit is the proxy's per-client sliding-window request limit. Requests is the hard cap over
+// Window for requests that match both Paths and Methods; 0 disables. An empty Paths or Methods
+// list is a wildcard for that dimension, so paths: [/api/*] + methods: [POST] limits POST /api/*.
+type RateLimit struct {
+	Requests int      `yaml:"requests" json:"requests"`
+	Window   Duration `yaml:"window" json:"window"`
+	Paths    List     `yaml:"paths" json:"paths"`
+	Methods  List     `yaml:"methods" json:"methods"`
+}
+
+// Enabled reports whether the app limits any request.
+func (r RateLimit) Enabled() bool { return r.Requests > 0 }
+
+// WindowSeconds is the sliding window in whole seconds, the number of slots per client.
+func (r RateLimit) WindowSeconds() int { return int(r.Window.Value() / time.Second) }
 
 // Events is the app's analytics. Every <ns>.json.log under the app's ./log is an event namespace
 // dboss stores as Parquet instead of log rows. Retention bounds the raw events (0 stops ingest

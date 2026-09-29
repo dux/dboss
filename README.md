@@ -908,6 +908,18 @@ deny:
   - /server-status
 ```
 
+`rate_limit` caps requests per client IP over a sliding window, counting only requests that match both `methods` and `paths` (an empty list is a wildcard for that dimension); anything else is untouched. Over the cap the proxy answers `429` with `Retry-After`, and a browser GET gets the `rate_limited` page.
+
+```yaml
+rate_limit:
+  requests: 30             # per client IP over window; 0 (the default) disables it
+  window: 60s              # 1s to 24h
+  paths: ["/api/*"]        # deny-style patterns; empty means every path
+  methods: [POST]          # empty means every method
+```
+
+This is a second layer, not a replacement for Cloudflare, which still owns volumetric DDoS at the edge; it covers path- and method-scoped caps the edge cannot express. Counters live in the proxy process, so a multi-`count` web process shares one limit. Valid at the app top level and under host `defaults:`.
+
 `auth` puts an AuthCog sign-in in front of the app, the way Cloudflare Access does, for people instead of shared passwords.
 
 ```yaml
@@ -929,7 +941,7 @@ authcog: true   # or a path; true captures /authcog, which must match the realm'
 
 The app links to the path. dboss mints the challenge, sends the browser to `https://<authcog_realm>/d:<host>[/p:<port>][/s:http]` (the port only when it is not the scheme's default, the scheme only when the request was not https; it is read from TLS or the edge's `X-Forwarded-Proto`), and on the `?callback=` return exchanges the one-time hash server-side. It then forwards one request to the app's own route at that path with the profile in `X-Dboss-User` (`{"email","name","avatar","provider"}`). The app reads what it needs and creates its own session; dboss keeps no session. `X-Dboss-User` is removed from every inbound request, so only dboss can set it, and it is set only on that post-login request. Any AuthCog account is admitted, and logout is the app's job. `authcog` is independent of `auth`: its login path is never gated by `auth`.
 
-Each request walks the stages in this order: canonical redirect, `allow_ips`, `deny`, health endpoint, `authcog` login, `auth` sign-in, `basic_auth`, maintenance, static files, body buffer, then wake or forward.
+Each request walks the stages in this order: canonical redirect, `allow_ips`, `deny`, health endpoint, `rate_limit`, `authcog` login, `auth` sign-in, `basic_auth`, maintenance, static files, body buffer, then wake or forward.
 
 * A request with no or wrong credentials gets `401` at the auth stage and never reaches the wake stage, so a crawler or scanner cannot start a protected sleeping app. The first request with valid credentials wakes it.
 * With no `basic_auth` any request wakes a stopped app, except an `autostart: button` app, which only its start button's POST wakes.
@@ -961,6 +973,7 @@ Every page dboss answers with itself is built in and can be replaced, the server
 | `error` | 502/5xx | the app is unreachable, or answers 5xx (see below) |
 | `forbidden` | 403 | `allow_ips` turns the visitor away |
 | `blocked` | 403 | the `deny` list covers the path |
+| `rate_limited` | 429 | a client exceeds `rate_limit` |
 | `signed_out` | 200 | after `/.well-known/dboss/logout` |
 | `404` | 404 | a host no app owns (host only) |
 | `login` | 401 | the console without a session (host only) |

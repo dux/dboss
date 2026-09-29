@@ -25,6 +25,7 @@ const (
 	Error       Name = "error"
 	Forbidden   Name = "forbidden"
 	Blocked     Name = "blocked"
+	RateLimited Name = "rate_limited"
 	SignedOut   Name = "signed_out"
 	NotFound    Name = "404"
 	Login       Name = "login"
@@ -57,6 +58,7 @@ var Specs = []Spec{
 	{Name: Error, Status: http.StatusBadGateway, Title: "Something went wrong", Message: "The app could not answer this request. Try again in a moment.", When: "the app is unreachable or answers 5xx"},
 	{Name: Forbidden, Status: http.StatusForbidden, Title: "Access denied", Message: "Your address is not allowed to reach this site.", When: "allow_ips turns the visitor away"},
 	{Name: Blocked, Status: http.StatusForbidden, Title: "Access denied", Message: "This page is not available.", When: "the deny list blocks the path"},
+	{Name: RateLimited, Status: http.StatusTooManyRequests, Title: "%s is busy", Message: "Too many requests. Try again in a moment.", When: "the rate limit is exceeded"},
 	{Name: SignedOut, Status: http.StatusOK, Title: "Signed out", Message: "You have been signed out of %s.", When: "after sign-out"},
 	{Name: NotFound, Status: http.StatusNotFound, Title: "Nothing here", Message: "No site is configured for this address.", Host: true, When: "no app owns the host"},
 	{Name: Login, Status: http.StatusUnauthorized, Title: "Sign in from the command line", Message: "Run dboss login on this host and open the link it prints. The link works once and expires after 3 minutes.", Host: true, When: "the console is opened without a session"},

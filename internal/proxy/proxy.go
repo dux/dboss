@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -29,6 +30,7 @@ import (
 	"dboss/internal/authcog"
 	"dboss/internal/config"
 	"dboss/internal/logstore"
+	"dboss/internal/module"
 	"dboss/internal/pages"
 	"dboss/internal/supervisor"
 )
@@ -70,16 +72,26 @@ type Handler struct {
 	// hostConfig is the live host config, for the keys a rescan may change (pages, realm).
 	hostConfig func() config.Config
 	filters    []Filter
+	limiter    *rateLimiter
+	ticker     module.Ticker
 }
 
 // New builds the proxy. extra stages are inserted before the forward stage, which is where a
 // module hooks its own filter into the pipeline.
 func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, recorder Recorder, authorizer PublishAuthorizer, extra ...Filter) (*Handler, error) {
 	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: upstreamDialTimeout}).DialContext, ResponseHeaderTimeout: cfg.Proxy.Timeout.Value(), IdleConnTimeout: upstreamIdleTimeout, MaxIdleConnsPerHost: upstreamIdleConnsPerApp}
-	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig}
+	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter()}
 	h.initFilters(extra...)
 	return h, nil
 }
+
+// Start begins the rate limiter's background sweep. Nothing runs until it is called, so a Handler
+// built only for a test holds no goroutine. Close stops the sweep and waits for a pass in flight.
+func (h *Handler) Start(ctx context.Context) {
+	h.ticker.Run(ctx, rateSweepInterval, false, func(context.Context) { h.limiter.sweep(h.limiter.now()) })
+}
+
+func (h *Handler) Close() error { return h.ticker.Close() }
 
 // ServeHTTP resolves the app once and then walks the request through every proxy feature in a
 // fixed order. Everything the steps need comes from the snapshot, so a rescan changes behaviour

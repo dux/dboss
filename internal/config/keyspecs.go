@@ -82,15 +82,19 @@ var keySpecs = map[string]KeySpec{
 	"cpu_max":             {Block: "runtime", Name: "CPU limit", Description: "CPU limit in percent of one core, cgroup v2 hosts only; 0 unlimited", Example: "200"},
 
 	// --- Web ---
-	"health_endpoint":   {Block: "web", Name: "Health endpoint", Description: "public status path on the app's own hosts: 200 when running or asleep and wakeable, 503 otherwise; empty disables", Example: "/healthz"},
-	"static":            {Block: "web", Name: "Static directory", Description: "directory served straight from disk for GET and HEAD on every web process; true means ./public (the default), false disables serving", Example: "./public"},
-	"static_immutable":  {Block: "web", Name: "Immutable prefixes", Description: "path prefixes under the static directory cached as immutable for a year", Example: "[/assets/, /packs/]"},
-	"static_extensions": {Block: "web", Name: "Static extensions", Description: "file extensions served from the static directory, without the dot; empty serves any file", Example: "[css, js, png]"},
-	"max_body":          {Block: "web", Name: "Max body size", Description: "request body limit; 0 none"},
-	"basic_auth":        {Block: "web", Name: "Basic auth users", Description: "HTTP basic auth users to a plain password or a bcrypt hash from dboss password", Example: "{alice: \"$2a$10$...\"}", Secret: true},
-	"allow_ips":         {Block: "web", Name: "Allowed IPs", Description: "CIDRs allowed to reach the app; empty allows everyone", Example: "[10.0.0.0/8]"},
-	"deny":              {Block: "web", Name: "Denied paths", Description: "path patterns refused with 403 before the app is contacted: *.ext matches a suffix, /path/* a subtree and /path is exact; empty refuses nothing", Example: "[\"*.php\", /admin/*]"},
-	"headers":           {Block: "web", Name: "Response headers", Description: "response headers added to every response; an empty value removes one", Example: "{X-Frame-Options: DENY}"},
+	"health_endpoint":     {Block: "web", Name: "Health endpoint", Description: "public status path on the app's own hosts: 200 when running or asleep and wakeable, 503 otherwise; empty disables", Example: "/healthz"},
+	"static":              {Block: "web", Name: "Static directory", Description: "directory served straight from disk for GET and HEAD on every web process; true means ./public (the default), false disables serving", Example: "./public"},
+	"static_immutable":    {Block: "web", Name: "Immutable prefixes", Description: "path prefixes under the static directory cached as immutable for a year", Example: "[/assets/, /packs/]"},
+	"static_extensions":   {Block: "web", Name: "Static extensions", Description: "file extensions served from the static directory, without the dot; empty serves any file", Example: "[css, js, png]"},
+	"max_body":            {Block: "web", Name: "Max body size", Description: "request body limit; 0 none"},
+	"basic_auth":          {Block: "web", Name: "Basic auth users", Description: "HTTP basic auth users to a plain password or a bcrypt hash from dboss password", Example: "{alice: \"$2a$10$...\"}", Secret: true},
+	"allow_ips":           {Block: "web", Name: "Allowed IPs", Description: "CIDRs allowed to reach the app; empty allows everyone", Example: "[10.0.0.0/8]"},
+	"deny":                {Block: "web", Name: "Denied paths", Description: "path patterns refused with 403 before the app is contacted: *.ext matches a suffix, /path/* a subtree and /path is exact; empty refuses nothing", Example: "[\"*.php\", /admin/*]"},
+	"headers":             {Block: "web", Name: "Response headers", Description: "response headers added to every response; an empty value removes one", Example: "{X-Frame-Options: DENY}"},
+	"rate_limit.requests": {Block: "web", Name: "Rate limit", Description: "requests allowed over window per client IP for requests matching paths and methods; 0 disables", Example: "30"},
+	"rate_limit.window":   {Block: "web", Name: "Rate window", Description: "sliding window the limit is counted over", Example: "60s"},
+	"rate_limit.paths":    {Block: "web", Name: "Rate paths", Description: "path patterns the limit applies to (like deny); empty means every path", Example: "[\"/api/*\"]"},
+	"rate_limit.methods":  {Block: "web", Name: "Rate methods", Description: "request methods the limit applies to; empty means every method", Example: "[POST]"},
 
 	// --- Sign-in ---
 	"auth":        {Block: "auth", Name: "Allowed emails", Description: "emails and *@domain patterns let in through AuthCog, * for any account; empty leaves the app open", Example: "[ana@example.com, \"*@example.com\"]"},

@@ -34,20 +34,21 @@ type ProcessOverrides struct {
 }
 
 type WebOverrides struct {
-	HealthEndpoint   *string           `yaml:"health_endpoint,omitempty" json:"health_endpoint,omitempty"`
-	Static           *StaticPath       `yaml:"static,omitempty" json:"static,omitempty"`
-	StaticImmutable  List              `yaml:"static_immutable,omitempty" json:"static_immutable,omitempty"`
-	StaticExtensions List              `yaml:"static_extensions,omitempty" json:"static_extensions,omitempty"`
-	MaxBody          *Size             `yaml:"max_body,omitempty" json:"max_body,omitempty"`
-	BasicAuth        map[string]string `yaml:"basic_auth,omitempty" json:"-"`
-	AllowIPs         List              `yaml:"allow_ips,omitempty" json:"allow_ips,omitempty"`
-	Deny             List              `yaml:"deny,omitempty" json:"deny,omitempty"`
-	Headers          map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
-	Alerts           *AlertsOverrides  `yaml:"alerts,omitempty" json:"alerts,omitempty"`
-	Events           *EventsOverrides  `yaml:"events,omitempty" json:"events,omitempty"`
-	Auth             List              `yaml:"auth,omitempty" json:"auth,omitempty"`
-	SessionTTL       *Duration         `yaml:"session_ttl,omitempty" json:"session_ttl,omitempty"`
-	AuthCog          *AuthCogPath      `yaml:"authcog,omitempty" json:"authcog,omitempty"`
+	HealthEndpoint   *string             `yaml:"health_endpoint,omitempty" json:"health_endpoint,omitempty"`
+	Static           *StaticPath         `yaml:"static,omitempty" json:"static,omitempty"`
+	StaticImmutable  List                `yaml:"static_immutable,omitempty" json:"static_immutable,omitempty"`
+	StaticExtensions List                `yaml:"static_extensions,omitempty" json:"static_extensions,omitempty"`
+	MaxBody          *Size               `yaml:"max_body,omitempty" json:"max_body,omitempty"`
+	BasicAuth        map[string]string   `yaml:"basic_auth,omitempty" json:"-"`
+	AllowIPs         List                `yaml:"allow_ips,omitempty" json:"allow_ips,omitempty"`
+	Deny             List                `yaml:"deny,omitempty" json:"deny,omitempty"`
+	Headers          map[string]string   `yaml:"headers,omitempty" json:"headers,omitempty"`
+	Alerts           *AlertsOverrides    `yaml:"alerts,omitempty" json:"alerts,omitempty"`
+	Events           *EventsOverrides    `yaml:"events,omitempty" json:"events,omitempty"`
+	RateLimit        *RateLimitOverrides `yaml:"rate_limit,omitempty" json:"rate_limit,omitempty"`
+	Auth             List                `yaml:"auth,omitempty" json:"auth,omitempty"`
+	SessionTTL       *Duration           `yaml:"session_ttl,omitempty" json:"session_ttl,omitempty"`
+	AuthCog          *AuthCogPath        `yaml:"authcog,omitempty" json:"authcog,omitempty"`
 }
 
 // PubsubOverrides is the web process's pubsub mapping as pointers, so an app can set one key and
@@ -66,6 +67,14 @@ type PubsubOverrides struct {
 type AlertsOverrides struct {
 	ErrorRate *int      `yaml:"error_rate,omitempty" json:"error_rate,omitempty"`
 	SlowP95   *Duration `yaml:"slow_p95,omitempty" json:"slow_p95,omitempty"`
+}
+
+// RateLimitOverrides is the rate_limit block as pointers; a scalar sets the key, a list replaces it.
+type RateLimitOverrides struct {
+	Requests *int      `yaml:"requests,omitempty" json:"requests,omitempty"`
+	Window   *Duration `yaml:"window,omitempty" json:"window,omitempty"`
+	Paths    List      `yaml:"paths,omitempty" json:"paths,omitempty"`
+	Methods  List      `yaml:"methods,omitempty" json:"methods,omitempty"`
 }
 
 // EventsOverrides is the events block as pointers; views and funnels merge by name.

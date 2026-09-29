@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"net/mail"
 	"net/netip"
 	"net/url"
@@ -221,6 +222,9 @@ func validateWeb(w Web) error {
 	if err := validateDeny(w.Deny); err != nil {
 		return err
 	}
+	if err := validateRateLimit(w.RateLimit); err != nil {
+		return err
+	}
 	for user, password := range w.BasicAuth {
 		if user == "" || strings.ContainsAny(user, ": ") {
 			return keyErr("basic_auth", "invalid user %q", user)
@@ -312,6 +316,63 @@ func validateAlerts(a Alerts) error {
 	}
 	if a.SlowP95 < 0 {
 		return keyErr("alerts.slow_p95", "cannot be negative")
+	}
+	return nil
+}
+
+// rateMethods is the set of methods a rate_limit may name.
+var rateMethods = map[string]bool{
+	http.MethodGet: true, http.MethodHead: true, http.MethodPost: true,
+	http.MethodPut: true, http.MethodPatch: true, http.MethodDelete: true, http.MethodOptions: true,
+}
+
+// MaxRateWindow bounds the sliding window so per-client memory stays small (one uint32 slot per
+// second, per tracked client).
+const MaxRateWindow = 24 * time.Hour
+
+func validateRateLimit(r RateLimit) error {
+	if r.Requests < 0 {
+		return keyErr("rate_limit.requests", "cannot be negative")
+	}
+	if r.Window < 0 {
+		return keyErr("rate_limit.window", "cannot be negative")
+	}
+	if r.Enabled() {
+		if r.WindowSeconds() < 1 {
+			return keyErr("rate_limit.window", "must be at least 1s")
+		}
+		if r.Window.Value() > MaxRateWindow {
+			return keyErr("rate_limit.window", "must be at most %s", MaxRateWindow)
+		}
+		if r.Requests > 1_000_000 {
+			return keyErr("rate_limit.requests", "must be at most 1000000")
+		}
+	}
+	for _, method := range r.Methods {
+		if !rateMethods[strings.ToUpper(method)] {
+			return keyErr("rate_limit.methods", "invalid method %q", method)
+		}
+	}
+	for _, pattern := range r.Paths {
+		if pattern == "" || strings.ContainsAny(pattern, " \t") {
+			return keyErr("rate_limit.paths", "invalid pattern %q", pattern)
+		}
+		if suffix, ok := strings.CutPrefix(pattern, "*."); ok {
+			if suffix == "" || strings.ContainsAny(suffix, "*/") {
+				return keyErr("rate_limit.paths", "%q must be a *.extension", pattern)
+			}
+			continue
+		}
+		if !strings.HasPrefix(pattern, "/") {
+			return keyErr("rate_limit.paths", "%q must start with / or *.", pattern)
+		}
+		base := strings.TrimSuffix(pattern, "/*")
+		if strings.Contains(base, "*") {
+			return keyErr("rate_limit.paths", "%q may only use a trailing /* wildcard", pattern)
+		}
+		if base == "" || base == "/" {
+			return keyErr("rate_limit.paths", "%q is too broad, name a path", pattern)
+		}
 	}
 	return nil
 }

@@ -618,6 +618,29 @@ session_ttl: 24h
 # Valid at the app top level and under host `defaults:`.
 authcog: false
 
+# --- Rate limit: per-client request cap ----------------------------------------------------
+# A sliding-window cap on requests the proxy forwards, counted per client IP. It only counts a
+# request that matches both methods and paths, so paths: [/api/*] + methods: [POST] limits POSTs
+# under /api and leaves every other request untouched. An empty list is a wildcard for its
+# dimension. Over the cap the proxy answers 429 with Retry-After, and dboss can serve its own
+# rate_limited.html page. Off by default and independent of Cloudflare, which still owns
+# volumetric DDoS: this is a second layer for path- and method-scoped limits the edge cannot
+# express. The management console is never limited. Valid at the app top level and under host
+# `defaults:`, so a host can set a floor for every app.
+rate_limit:
+  # Requests allowed per client IP over window. 0 disables the limit.
+  requests: 0
+  #   30
+  # Sliding window the requests are counted over; at least 1s, at most 24h.
+  window: 60s
+  # Path patterns the limit applies to, like deny: *.ext is a suffix, /path/* a subtree and
+  # /path exact. Empty means every path.
+  paths: []
+  #   - /api/*
+  # Request methods the limit applies to, case-insensitive. Empty means every method.
+  methods: []
+  #   - POST
+
 # --- Alerts: request log checks ------------------------------------------------------------
 # Once a minute dboss looks at the app's last 5 minutes of requests (once there are at least 20)
 # and posts to the notify webhook: `error-rate` when the share of 5xx answers reaches error_rate,

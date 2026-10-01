@@ -81,6 +81,41 @@ func blockNote(scope config.Scope) string {
 	}
 }
 
+// printHosts lists one row per web process with every hostname it answers, the canonical one
+// first. Workers have no hosts and are not listed.
+func (c CLI) printHosts(snapshots []supervisor.Snapshot, app string) error {
+	type row struct{ app, process, hosts string }
+	var rows []row
+	for _, snapshot := range snapshots {
+		if app != "" && snapshot.Name != app {
+			continue
+		}
+		for _, web := range snapshot.WebProcesses {
+			hosts := slices.Clone(web.Hosts)
+			if web.CanonicalHost != "" {
+				hosts = slices.DeleteFunc(hosts, func(host string) bool { return host == web.CanonicalHost })
+				hosts = append([]string{web.CanonicalHost}, hosts...)
+			}
+			rows = append(rows, row{snapshot.Name, web.Name, strings.Join(hosts, ", ")})
+		}
+	}
+	if len(rows) == 0 {
+		switch {
+		case app != "":
+			fmt.Fprintf(c.Out, "app %q has no web processes\n", app)
+		default:
+			fmt.Fprintln(c.Out, "no web processes")
+		}
+		return nil
+	}
+	writer := tabwriter.NewWriter(c.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "APP\tPROCESS\tHOSTS")
+	for _, r := range rows {
+		fmt.Fprintf(writer, "%s\t%s\t%s\n", r.app, r.process, r.hosts)
+	}
+	return writer.Flush()
+}
+
 func (c CLI) printHuman(method string, data any) error {
 	switch method {
 	case ops.ActionList:

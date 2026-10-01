@@ -355,6 +355,34 @@ func TestPrintHumanHooksNamesTheMissingToken(t *testing.T) {
 	}
 }
 
+// hosts lists every host of each web process, canonical first, and skips workers.
+func TestPrintHostsListsResolvedHosts(t *testing.T) {
+	var out bytes.Buffer
+	c := CLI{Out: &out, Err: &out}
+	apps := []supervisor.Snapshot{{
+		Name: "sohotasks",
+		WebProcesses: []supervisor.WebProcessSnapshot{
+			{Name: "web", Hosts: []string{"*.sohotasks.com", "sohotasks.com"}},
+			{Name: "job", Hosts: []string{"job.sohotasks.com"}, CanonicalHost: "job.sohotasks.com"},
+		},
+	}}
+	if err := c.printHosts(apps, ""); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	for _, want := range []string{"APP", "PROCESS", "HOSTS", "sohotasks", "web", "*.sohotasks.com, sohotasks.com", "job.sohotasks.com"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("hosts output missing %q:\n%s", want, text)
+		}
+	}
+	if err := c.printHosts(apps, "missing"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `app "missing" has no web processes`) {
+		t.Errorf("empty filter should name the app:\n%s", out.String())
+	}
+}
+
 // ls lists one row per service with the app's URL, its own uptime and memory, and the app's last
 // activity once. A worker has a port but no URL.
 func TestPrintHumanListShowsServices(t *testing.T) {

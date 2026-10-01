@@ -152,6 +152,22 @@ func validHostPattern(pattern string) bool {
 	return validHostname(pattern)
 }
 
+// validHostPrefix accepts "*" (any subdomain), a label or dotted labels, or a "*."-led pattern,
+// that is prepended to a host. Examples: www, api, staging, *.staging.
+func validHostPrefix(prefix string) bool {
+	prefix = NormalizePattern(prefix)
+	if prefix == "" {
+		return false
+	}
+	if prefix == "*" {
+		return true
+	}
+	if rest, ok := strings.CutPrefix(prefix, "*."); ok {
+		prefix = rest
+	}
+	return validHostname(prefix)
+}
+
 func validHostname(value string) bool {
 	if value == "" || len(value) > 253 || strings.ContainsAny(value, "/: ") {
 		return false

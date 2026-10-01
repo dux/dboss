@@ -2,6 +2,22 @@ package supervisor
 
 import "testing"
 
+func TestWebForHostPrefersTheConcreteService(t *testing.T) {
+	snapshot := Snapshot{WebProcesses: []WebProcessSnapshot{
+		{Name: "tenant", Hosts: []string{"*.foo.com"}},
+		{Name: "admin", Hosts: []string{"baz.foo.com"}},
+	}}
+	for host, want := range map[string]string{
+		"baz.foo.com": "admin",
+		"qux.foo.com": "tenant",
+	} {
+		web, ok := snapshot.WebForHost(host)
+		if !ok || web.Name != want {
+			t.Fatalf("WebForHost(%q) = %q (%v), want %q", host, web.Name, ok, want)
+		}
+	}
+}
+
 func TestSnapshotServing(t *testing.T) {
 	cases := []struct {
 		name     string

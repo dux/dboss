@@ -29,9 +29,14 @@ const DevDomain = "lvh.me"
 // answers, its optional realtime hub, its readiness check and the canonical hostname. A scalar
 // value is the command alone, so a background process stays a one-liner; a mapping adds the rest.
 type ProcessSpec struct {
-	Command string      `yaml:"command" json:"command"`
-	Hosts   List        `yaml:"hosts,omitempty" json:"hosts,omitempty"`
-	Pubsub  *PubsubSpec `yaml:"pubsub,omitempty" json:"pubsub,omitempty"`
+	Command string `yaml:"command" json:"command"`
+	Hosts   List   `yaml:"hosts,omitempty" json:"hosts,omitempty"`
+	// HostPrefix is one label or wildcard pattern, or a list of them, prepended to each host the
+	// process serves; the app's base_host fills in when no hosts are declared. So an app on
+	// foo.bar whose web process sets host_prefix: [www, api] serves www.foo.bar, foo.bar and
+	// api.foo.bar (www always answers the bare host too).
+	HostPrefix List        `yaml:"host_prefix,omitempty" json:"host_prefix,omitempty"`
+	Pubsub     *PubsubSpec `yaml:"pubsub,omitempty" json:"pubsub,omitempty"`
 	// Health is the web process's readiness path, e.g. /up; empty means a TCP connect.
 	Health string `yaml:"health,omitempty" json:"health,omitempty"`
 	// CanonicalHost is the web process hostname every other host redirects to; it must be one
@@ -50,7 +55,7 @@ func (p ProcessSpec) Instances() int { return max(p.Count, 1) }
 
 // processSpecKeys are the keys of the mapping form, in the order the hints name them. They are
 // checked here because a custom decoder is a leaf as far as the schema walk is concerned.
-var processSpecKeys = []string{"command", "hosts", "pubsub", "health", "canonical_host", "count"}
+var processSpecKeys = []string{"command", "hosts", "host_prefix", "pubsub", "health", "canonical_host", "count"}
 
 // processSpecFields is ProcessSpec without its methods, so the mapping form decodes and encodes
 // through the struct tags instead of recursing into the custom marshalers.
@@ -75,7 +80,7 @@ func (p *ProcessSpec) UnmarshalYAML(node *yaml.Node) error {
 
 // commandOnly reports whether the process only runs a command, which marshals as a scalar.
 func (p ProcessSpec) commandOnly() bool {
-	return len(p.Hosts) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1
+	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1
 }
 
 // MarshalYAML writes a scalar command when the process only runs a command, else the full mapping,
@@ -232,6 +237,10 @@ type WebProcess struct {
 
 type App struct {
 	Procfile map[string]ProcessSpec `yaml:"procfile" json:"procfile"`
+	// BaseHost is the app's own domain, e.g. foo.bar. A web process that declares no hosts
+	// serves it, with each of its host_prefix values prepended. Empty leaves the hosts to the
+	// process hosts and host_prefix.
+	BaseHost string `yaml:"base_host" json:"base_host,omitempty"`
 	// WebProcesses and Hosts are derived from every procfile entry that declares hosts; they
 	// are never written back to YAML and exist for the supervisor and proxy.
 	WebProcesses []WebProcess       `yaml:"-" json:"-"`
@@ -268,10 +277,9 @@ func (a App) IsWeb(name string) bool {
 	return false
 }
 
-// deriveWeb builds one WebProcess per procfile entry that declares hosts, unions their hosts and
-// rejects a host pattern used by two processes of the same app.
+// deriveWeb builds one WebProcess per procfile entry that declares hosts or a host_prefix. The
+// final host list is resolved later, once host defaults and the app overrides have been applied.
 func (a *App) deriveWeb() error {
-	seen := map[string]string{}
 	for _, name := range processNames(a.Procfile) {
 		spec := a.Procfile[name]
 		if !jobName.MatchString(name) {
@@ -283,20 +291,73 @@ func (a *App) deriveWeb() error {
 		if spec.Count < 0 || spec.Count > MaxCount {
 			return keyErr("procfile."+name+".count", "must be between 1 and %d", MaxCount)
 		}
-		if len(spec.Hosts) == 0 {
-			continue
-		}
-		web := WebProcess{Name: name, Hosts: spec.Hosts, CanonicalHost: spec.CanonicalHost}
-		a.WebProcesses = append(a.WebProcesses, web)
 		for _, host := range spec.Hosts {
 			if !validHostPattern(host) {
 				return keyErr("procfile."+name+".hosts", "invalid host pattern %q", host)
 			}
+		}
+		for _, prefix := range spec.HostPrefix {
+			if !validHostPrefix(prefix) {
+				return keyErr("procfile."+name+".host_prefix", "invalid host prefix %q", prefix)
+			}
+		}
+		if len(spec.Hosts) == 0 && len(spec.HostPrefix) == 0 {
+			continue
+		}
+		a.WebProcesses = append(a.WebProcesses, WebProcess{Name: name, Hosts: spec.Hosts, CanonicalHost: spec.CanonicalHost})
+	}
+	// A base_host with no host-declaring process promotes the first one, so the app is served.
+	if a.BaseHost != "" && len(a.WebProcesses) == 0 && len(a.Procfile) > 0 {
+		name := "web"
+		if _, ok := a.Procfile["web"]; !ok {
+			name = processNames(a.Procfile)[0]
+		}
+		a.WebProcesses = []WebProcess{{Name: name}}
+	}
+	return nil
+}
+
+// resolveHosts builds each web process's final host list: every host with each host_prefix
+// prepended, or base_host when the process declares no hosts (lvh.me in a dev session with no
+// base_host). A "www" prefix also serves the bare host. It unions the result onto App.Hosts and
+// rejects a pattern two processes share.
+func (a *App) resolveHosts(dev bool) error {
+	seen := map[string]string{}
+	a.Hosts = nil
+	for index := range a.WebProcesses {
+		web := &a.WebProcesses[index]
+		hosts := web.Hosts
+		if len(hosts) == 0 {
+			base := a.BaseHost
+			if base == "" && dev {
+				base = DevDomain
+			}
+			if base == "" {
+				return &Error{Key: "procfile." + web.Name + ".host_prefix", Message: "needs hosts on the same process or a base_host on the app", Hint: "set base_host at the top level of the app file"}
+			}
+			hosts = List{base}
+		}
+		web.Hosts = prefixHosts(hosts, a.Procfile[web.Name].HostPrefix)
+		own := map[string]bool{}
+		kept := web.Hosts[:0]
+		for _, host := range web.Hosts {
+			normalized := NormalizePattern(host)
+			if own[normalized] {
+				continue
+			}
+			own[normalized] = true
+			kept = append(kept, host)
+		}
+		web.Hosts = kept
+		for _, host := range web.Hosts {
+			if !validHostPattern(host) {
+				return keyErr("procfile."+web.Name+".host_prefix", "produces invalid host pattern %q", host)
+			}
 			normalized := NormalizePattern(host)
 			if owner, ok := seen[normalized]; ok {
-				return &Error{Key: "procfile." + name + ".hosts", Message: fmt.Sprintf("host pattern %q is already used by process %q", host, owner)}
+				return &Error{Key: "procfile." + web.Name, Message: fmt.Sprintf("host pattern %q is already used by process %q", host, owner)}
 			}
-			seen[normalized] = name
+			seen[normalized] = web.Name
 			a.Hosts = append(a.Hosts, host)
 		}
 	}
@@ -383,7 +444,7 @@ func (a *App) resolveCanonical() error {
 // UseDevHosts binds the first process to <app>.lvh.me when no process declares hosts. It is
 // single-app mode only, so a host running a folder with no config still gets a hostname.
 func (a *App) UseDevHosts(app string) {
-	if len(a.Hosts) > 0 || len(a.Procfile) == 0 {
+	if len(a.Hosts) > 0 || len(a.WebProcesses) > 0 || len(a.Procfile) == 0 {
 		return
 	}
 	name := "web"
@@ -397,6 +458,7 @@ func (a *App) UseDevHosts(app string) {
 
 type appFile struct {
 	Procfile  map[string]ProcessSpec      `yaml:"procfile"`
+	BaseHost  string                      `yaml:"base_host"`
 	Autostart Autostart                   `yaml:"autostart"`
 	Deletable bool                        `yaml:"deletable"`
 	Cron      map[string]CronJob          `yaml:"cron"`
@@ -440,7 +502,7 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 	if len(raw.Procfile) == 0 {
 		return App{}, &Error{Key: "procfile", Message: "must contain at least one process", Hint: "e.g. procfile:\n    web: bundle exec puma"}
 	}
-	app := App{Procfile: raw.Procfile, Autostart: AutostartOn, Deletable: raw.Deletable, Cron: raw.Cron, Hooks: raw.Hooks, Lifecycle: raw.Lifecycle, Pages: DefaultPages, Defaults: defaults, Processes: raw.Processes}
+	app := App{Procfile: raw.Procfile, BaseHost: raw.BaseHost, Autostart: AutostartOn, Deletable: raw.Deletable, Cron: raw.Cron, Hooks: raw.Hooks, Lifecycle: raw.Lifecycle, Pages: DefaultPages, Defaults: defaults, Processes: raw.Processes}
 	if raw.Pages != "" {
 		app.Pages = raw.Pages
 	}
@@ -461,6 +523,9 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 	apply(&app.Defaults, raw.Overrides)
 	if dev {
 		app.UseDevHosts(name)
+	}
+	if err := app.resolveHosts(dev); err != nil {
+		return App{}, err
 	}
 	app.resolveStatic()
 	if err := app.resolveHealth(); err != nil {

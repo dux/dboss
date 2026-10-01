@@ -395,6 +395,16 @@ postgres:
 # ".myapp.com" means "myapp.com" and "*.myapp.com". Longest match wins.
 # In single mode (no hosts declared) the first process is bound to <app>.lvh.me for local dev.
 #
+# The app's own domain. A web process that declares no hosts serves this, and its host_prefix is
+# prepended to it: base_host foo.bar with host_prefix [www, api] serves www.foo.bar, foo.bar and
+# api.foo.bar. A dev session with no base_host uses lvh.me.
+base_host: myapp.com
+#
+# A web process may set `host_prefix`, one label or wildcard pattern or a list, prepended to
+# every host it serves. "www" and "*" also answer the bare host: "*" is the apex plus every
+# subdomain, and "www" is just the apex (so it never needs a redirect). A host written as a
+# pattern keeps its leading "*." or "." outermost.
+#
 # The static directory is an app key (see the Web keys above); every web process serves it.
 #
 # A web process may set `health`, the readiness path dboss polls until the start flips to
@@ -441,11 +451,10 @@ postgres:
 procfile:
   web:
     command: bundle exec puma -C config/puma.rb
-    hosts:
-      - ".myapp.com"
+    host_prefix: [www, api]
     pubsub: true
     health: /up
-    canonical_host: myapp.com
+    canonical_host: www.myapp.com
     count: 2
   worker: bundle exec lux jobs:work
   cron: bundle exec lux jobs:cron

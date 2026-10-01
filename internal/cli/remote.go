@@ -94,6 +94,9 @@ func (c CLI) remote(command string, args []string) error {
 		fmt.Fprintln(c.Out, string(encoded))
 		return nil
 	}
+	if command == "hosts" {
+		return c.printHosts(data.([]supervisor.Snapshot), request.App)
+	}
 	return c.printHuman(request.Method, data)
 }
 
@@ -103,9 +106,18 @@ func (c CLI) parseRemote(command string, opts *remoteOptions, here *workdir) (ct
 	request := ctl.Request{Method: command}
 	var err error
 	switch command {
-	case "ls", "rescan", "ports", ctl.LoginMethod:
-		if len(opts.rest) != 0 {
+	case "ls", "hosts", "rescan", "ports", ctl.LoginMethod:
+		if len(opts.rest) != 0 && command != "hosts" {
 			return request, fmt.Errorf("usage: dboss %s", command)
+		}
+		if command == "hosts" {
+			if len(opts.rest) > 1 {
+				return request, errors.New("usage: dboss hosts [app]")
+			}
+			request.Method = ops.ActionList
+			if len(opts.rest) == 1 {
+				request.App = opts.rest[0]
+			}
 		}
 	case "run", "stop", "restart", "destroy", "status":
 		if command == "run" {

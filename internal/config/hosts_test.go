@@ -38,6 +38,28 @@ func TestBestMatchPrefersTheMostSpecificPattern(t *testing.T) {
 	}
 }
 
+func TestConcreteHostAlwaysBeatsWildcard(t *testing.T) {
+	patterns := []string{"*.foo.com", "baz.foo.com"}
+	for _, host := range []string{"baz.foo.com", "qux.foo.com"} {
+		score, ok := BestMatch(host, patterns)
+		if !ok {
+			t.Fatalf("%s matched nothing", host)
+		}
+		concrete, concreteOK := MatchHost(host, "baz.foo.com")
+		wildcard, wildcardOK := MatchHost(host, "*.foo.com")
+		switch host {
+		case "baz.foo.com":
+			if !concreteOK || concrete != score || concrete <= wildcard {
+				t.Fatalf("baz.foo.com: score %d, concrete %d (%v), wildcard %d (%v)", score, concrete, concreteOK, wildcard, wildcardOK)
+			}
+		case "qux.foo.com":
+			if concreteOK || score != wildcard {
+				t.Fatalf("qux.foo.com: score %d, wildcard %d", score, wildcard)
+			}
+		}
+	}
+}
+
 func TestWebURL(t *testing.T) {
 	for _, test := range []struct {
 		name      string

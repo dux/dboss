@@ -52,6 +52,7 @@ var keySpecs = map[string]KeySpec{
 
 	// --- App ---
 	"procfile":  {Block: "app", Name: "Process commands", Description: "process commands by name; names match [a-z][a-z0-9_-]*. A scalar is a background process; every mapping that adds hosts is a web process (an app may have several, each with its own hosts, pubsub, health and canonical_host); count runs that many copies, balanced by the proxy for a web process", Example: "{web: {command: bundle exec puma -C config/puma.rb, hosts: [\".myapp.com\"], health: /up, canonical_host: myapp.com, count: 2}, worker: bundle exec lux jobs:work}", Required: true},
+	"base_host": {Block: "app", Name: "Base host", Description: "the app's own domain; a web process with no hosts serves it, and its host_prefix (a label, \"*\" or a list) is prepended to it", Example: "foo.bar"},
 	"autostart": {Block: "app", Name: "Start policy", Description: "start policy: true with the host, false on run/console/any request, button only on a POST to the wake page", Enum: []string{"true", "false", "button"}},
 	"deletable": {Block: "app", Name: "Allow destroy", Description: "allow operators to permanently remove this app through the console or dboss destroy"},
 	"pages":     {Block: "app", Name: "Pages", Description: "folder of the dboss pages served for the app (<name>.html, else template.html, else the host's, else built in); in the host file the fallback for every app", Example: "./public/errors"},

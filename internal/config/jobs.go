@@ -142,6 +142,11 @@ type Hook struct {
 	Template map[string]any `yaml:"template" json:"template,omitempty"`
 }
 
+// PullHook fast-forwards the current branch and restarts after a successful pull.
+func PullHook() Hook {
+	return Hook{Command: pullCommand, Restart: true, Pull: true}
+}
+
 // LifecycleCommand is one lifecycle step: create runs once before the app's first start, start
 // before every start, destroy after the app is stopped and detached, before its folder goes.
 // A scalar is the command alone; a zero Timeout means DefaultLifecycleTimeout.
@@ -182,9 +187,7 @@ func (h *Hook) UnmarshalYAML(node *yaml.Node) error {
 		if node.Tag != "!!bool" || node.Value != "true" {
 			return &Error{Line: node.Line, Key: "hooks", Message: "must be true or a mapping", Hint: "delete the hook or write disabled: true"}
 		}
-		h.Command = pullCommand
-		h.Restart = true
-		h.Pull = true
+		*h = PullHook()
 		return nil
 	case yaml.MappingNode:
 		for i := 0; i+1 < len(node.Content); i += 2 {

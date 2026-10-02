@@ -25,10 +25,11 @@ func AuthEnv(env map[string]string, token string) {
 	env["GIT_CONFIG_VALUE_0"] = `!f() { if [ "$1" = get ]; then printf 'username=x-access-token\npassword=%s\n' "$GITHUB_TOKEN"; fi; }; f`
 }
 
-// runner returns a git invocation with the token helper in its environment. An ssh remote never
+// commandEnv carries the token helper without prompting. An ssh remote never
 // prompts: an unknown host key is accepted once and a missing key fails instead of asking.
-func runner(token string) func(args ...string) error {
+func commandEnv(token string) []string {
 	env := os.Environ()
+	env = append(env, "GIT_TERMINAL_PROMPT=0")
 	if token != "" {
 		auth := map[string]string{}
 		AuthEnv(auth, token)
@@ -39,6 +40,11 @@ func runner(token string) func(args ...string) error {
 	if os.Getenv("GIT_SSH_COMMAND") == "" {
 		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new")
 	}
+	return env
+}
+
+func runner(token string) func(args ...string) error {
+	env := commandEnv(token)
 	return func(args ...string) error {
 		cmd := exec.Command("git", args...)
 		cmd.Env = env

@@ -1189,6 +1189,23 @@ input[type="radio"] {
   margin: 16px 20px 0;
 }
 
+.deploy-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 20px;
+}
+
+.deploy-output {
+  margin: 12px 20px;
+}
+
+.deploy-output summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
 .error-log-label {
   display: block;
   margin-top: 10px;

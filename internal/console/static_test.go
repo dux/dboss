@@ -89,6 +89,19 @@ func TestButtonComponentIsLoaded(t *testing.T) {
 	}
 }
 
+func TestRedeployDialogIsLoaded(t *testing.T) {
+	index, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), `fez="/assets/fez/db-redeploy-dialog.fez"`) {
+		t.Error("index.html must load the Redeploy confirmation dialog")
+	}
+	if _, err := assets.ReadFile("static/fez/db-redeploy-dialog.fez"); err != nil {
+		t.Fatalf("Redeploy dialog is not embedded: %v", err)
+	}
+}
+
 // The console renders one size, count and age through the shared Human global, so a component
 // that grows its own copy would drift from the CLI and the other pages. Guard the lib and the
 // names it owns.

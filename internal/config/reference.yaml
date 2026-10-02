@@ -554,6 +554,8 @@ cron:
 # tokens.dboss from the host file: ?token=<token> in the URL, Authorization: Bearer <token>,
 # X-Gitlab-Token: <token>, or a GitHub X-Hub-Signature-256 HMAC over the raw body. Without the
 # token every ping answers 401; `dboss hooks` prints the full URL.
+# A Git checkout with a remote gets `deploy: true` automatically when no deploy hook is
+# configured. An explicit deploy hook replaces it, including one with disabled: true.
 hooks:
   # A bare true is shorthand for `git pull --ff-only` in the app folder (git discovers the
   # repository upward) plus restart on exit 0: `deploy: true`. `dboss deploy git <url>` pings

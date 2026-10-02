@@ -1050,7 +1050,13 @@ management console: https://dboss.example.com (AuthCog sign-in)
 `dboss start --login` also prints a one-time loopback sign-in link on stdout (never in the daemon log); `make demo` uses it.
 The browser tab reads `<hostname> | dboss`, so consoles of several boxes stay apart.
 It shows every app with state, uptime, memory, last activity and request rate, offers start, restart, stop and maintenance controls, and adds a typed-confirmation destroy action when the app sets `deletable: true`.
-Next to an app's name a gray `git:<branch>` label names the branch it runs and links to it on the git host: the branch and `origin` remote of the checkout in its folder, or `GIT_BRANCH` and `GIT_REPO` from its `.env` for a packed release without `.git` (lux-deploy writes both).
+Next to an app's name a gray `git:<branch>` label names the branch it runs and links to it on the git host: the branch and its tracking remote (or `origin`) of the checkout in its folder, or `GIT_BRANCH` and `GIT_REPO` from its `.env` for a packed release without `.git` (lux-deploy writes both).
+Git-connected apps also show **Redeploy** beside Restart, which opens a confirmation dialog with local and freshly fetched remote HEADs, commit subjects and the number of commits ahead and behind the current branch's upstream.
+Confirming runs the app's `deploy` hook immediately and shows progress, the result and the last output; cancelling leaves the app unchanged.
+Git checkouts with a remote automatically get a deploy action that pulls the current branch with `git pull --ff-only` and restarts on success; no `hooks` config is required.
+The dialog enables confirmation only after the remote has been read successfully.
+A configured `deploy` hook takes precedence over the automatic action, including `disabled: true`.
+The button stays disabled without a Git checkout, when explicitly disabled, while a deployment or its restart is running, and while the app is starting, stopping or rolling.
 It links to the process logs and edits the host and app `dboss.yaml` files in place with validation, conflict detection and a "restart required" notice for host keys that only apply on the next start.
 The **Config** view has two modes: **YAML** edits the raw file, and **Form** offers a visual editor built from recipes (PubSub channels, Web, Health and runtime for an app; Notifications and the PostgreSQL connection for the host).
 Each field shows a friendly label, its key, the description from the key reference and the default as a placeholder; a blank field means "use the default", so the key is removed from the file.

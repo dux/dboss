@@ -1,15 +1,82 @@
 package supervisor
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"dboss/internal/config"
+	"dboss/internal/git"
 	"dboss/internal/ports"
 )
+
+func TestAutomaticDeployPullsAndRestartsWithoutHooksConfig(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	cfg := hookConfig(t, [2]int{32940, 32960}, "procfile:\n  worker: /bin/sleep 30\nautostart: false\n")
+	checkout := filepath.Join(cfg.Apps, "demo")
+	root := t.TempDir()
+	remote, author := filepath.Join(root, "remote.git"), filepath.Join(root, "author")
+	run := func(dir string, args ...string) {
+		t.Helper()
+		args = append([]string{"-C", dir, "-c", "user.name=test", "-c", "user.email=t@t"}, args...)
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run(checkout, "init", "-q", "-b", "main")
+	run(checkout, "add", config.FileName)
+	run(checkout, "commit", "-q", "-m", "Initial app")
+	run(root, "clone", "-q", "--bare", checkout, remote)
+	run(checkout, "remote", "add", "origin", remote)
+	run(checkout, "fetch", "-q", "origin")
+	run(checkout, "branch", "--set-upstream-to=origin/main")
+	run(root, "clone", "-q", remote, author)
+	if err := os.WriteFile(filepath.Join(author, "release.txt"), []byte("new release\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	run(author, "add", "release.txt")
+	run(author, "commit", "-q", "-m", "New release")
+	run(author, "push", "-q")
+	manager, _, err := New(cfg, ports.New(cfg.Ports), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close()
+	infos, err := manager.Hooks("demo")
+	if err != nil || len(infos) != 1 || infos[0].Command != "git pull --ff-only" || !infos[0].Restart || infos[0].Disabled {
+		t.Fatalf("automatic deploy = %+v, %v", infos, err)
+	}
+	preview, err := git.Compare(context.Background(), checkout, "")
+	if err != nil || preview.Behind != 1 {
+		t.Fatalf("preview = %+v, %v", preview, err)
+	}
+	if err := manager.RunHook("demo", "deploy"); err != nil {
+		t.Fatal(err)
+	}
+	state := waitForHookEnd(t, manager, "demo", "deploy")
+	if state.LastExit != 0 || state.LastError != "" {
+		t.Fatalf("automatic deploy failed: %+v", state)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, _ := manager.Snapshot("demo")
+		if len(snapshot.Processes) == 1 && snapshot.Processes[0].PID != 0 && !snapshot.Hooks[0].Restarting {
+			data, err := os.ReadFile(filepath.Join(checkout, "release.txt"))
+			if err != nil || string(data) != "new release\n" {
+				t.Fatalf("checkout did not update: %s, %v", data, err)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("automatic deploy did not restart the app")
+}
 
 // hookConfig writes a full app config so a test can pick its own procfile command.
 func hookConfig(t *testing.T, portRange [2]int, appYAML string) config.Config {
@@ -105,6 +172,41 @@ func TestHookURLNeedsTheToken(t *testing.T) {
 	infos, _ := manager.Hooks("demo")
 	if len(infos) != 1 || infos[0].URL != "" {
 		t.Fatalf("a hook without tokens.dboss must have no URL: %+v", infos)
+	}
+}
+
+func TestHookRefusesAnotherRunDuringItsRestart(t *testing.T) {
+	for _, overlap := range []bool{false, true} {
+		state := &jobState{kind: "hook", name: "deploy", restarting: true, overlap: overlap}
+		runtime := &appRuntime{hooks: map[string]*jobState{"deploy": state}}
+		if err := runtime.runHook("deploy", time.Now()); err == nil || !strings.Contains(err.Error(), "still running") {
+			t.Fatalf("overlap %v: run during restart = %v", overlap, err)
+		}
+	}
+}
+
+func TestSnapshotReportsGitConnectionWithoutABranchURL(t *testing.T) {
+	cfg := hookConfig(t, [2]int{32920, 32940}, "procfile:\n  web: /usr/bin/true\nautostart: false\nhooks:\n  deploy: true\n")
+	gitDir := filepath.Join(cfg.Apps, "demo", ".git")
+	if err := os.Mkdir(gitDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range map[string]string{
+		"HEAD":   "4f2a9c0d\n",
+		"config": "[remote \"origin\"]\n\turl = /srv/git/app.git\n",
+	} {
+		if err := os.WriteFile(filepath.Join(gitDir, name), []byte(contents), 0o640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager, _, err := New(cfg, ports.New(cfg.Ports), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close()
+	snapshot, err := manager.Snapshot("demo")
+	if err != nil || !snapshot.GitConnected || snapshot.BranchURL != "" {
+		t.Fatalf("git snapshot = %+v, %v", snapshot, err)
 	}
 }
 

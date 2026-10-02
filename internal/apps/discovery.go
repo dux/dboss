@@ -40,6 +40,8 @@ type App struct {
 	// when unknown (see gitSource).
 	Branch    string `json:"branch,omitempty"`
 	BranchURL string `json:"branch_url,omitempty"`
+	// GitConnected reports a checkout remote or packed release repository, even without a branch URL.
+	GitConnected bool `json:"git_connected,omitempty"`
 }
 
 // CronJob is one scheduled command with its schedule parsed once at load time.
@@ -226,8 +228,14 @@ func buildApp(name, dir string, appCfg config.App) (*App, error) {
 		}
 		merge(fileEnv, values)
 	}
-	branch, branchURL := gitSource(dir, fileEnv)
-	return &App{Name: name, Dir: dir, Commands: commands, Cron: cron, Hooks: buildHooks(appCfg.Hooks), Lifecycle: buildLifecycle(appCfg.Lifecycle), Env: env, FileEnv: fileEnv, Config: appCfg, Branch: branch, BranchURL: branchURL}, nil
+	branch, branchURL, gitConnected := gitSource(dir, fileEnv)
+	hooks := buildHooks(appCfg.Hooks)
+	if _, configured := hooks["deploy"]; !configured && gitConnected {
+		if _, checkout := findGitDir(dir); checkout {
+			hooks["deploy"] = buildHook("deploy", config.PullHook())
+		}
+	}
+	return &App{Name: name, Dir: dir, Commands: commands, Cron: cron, Hooks: hooks, Lifecycle: buildLifecycle(appCfg.Lifecycle), Env: env, FileEnv: fileEnv, Config: appCfg, Branch: branch, BranchURL: branchURL, GitConnected: gitConnected}, nil
 }
 
 // newCommand is one config command line, run through /bin/sh -c; config has already refused an
@@ -259,16 +267,20 @@ func buildCron(jobs map[string]config.CronJob) (map[string]CronJob, error) {
 func buildHooks(hooks map[string]config.Hook) map[string]Hook {
 	result := make(map[string]Hook, len(hooks))
 	for name, hook := range hooks {
-		result[name] = Hook{
-			Command:  newCommand(name, hook.Command),
-			Timeout:  hook.Timeout.Value(),
-			Restart:  hook.Restart,
-			Overlap:  hook.Overlap,
-			Disabled: hook.Disabled,
-			Pull:     hook.Pull,
-		}
+		result[name] = buildHook(name, hook)
 	}
 	return result
+}
+
+func buildHook(name string, hook config.Hook) Hook {
+	return Hook{
+		Command:  newCommand(name, hook.Command),
+		Timeout:  hook.Timeout.Value(),
+		Restart:  hook.Restart,
+		Overlap:  hook.Overlap,
+		Disabled: hook.Disabled,
+		Pull:     hook.Pull,
+	}
 }
 
 // buildLifecycle parses each step once and applies the default timeout.

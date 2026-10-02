@@ -77,6 +77,7 @@ func (h *Handler) routes() *http.ServeMux {
 	session("POST /ui/action", h.action)
 	session("POST /ui/rescan", h.rescan)
 	session("POST /ui/apps/add", h.addApp)
+	signedIn("GET /ui/apps/deploy-preview", h.deployPreview)
 	session("POST /ui/logout", h.logout)
 	signedIn("GET /ui/config", h.configFiles)
 	signedIn("GET /ui/config/file", h.configFile)

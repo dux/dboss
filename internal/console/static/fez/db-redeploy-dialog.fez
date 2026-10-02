@@ -1,0 +1,176 @@
+<script>
+  class {
+    NAME = 'dialog'
+    MOUNT = true
+    GLOBAL = 'RedeployDialog'
+
+    init() {
+      this.state.app = ''
+      this.state.preview = null
+      this.state.loading = false
+      this.state.error = ''
+      this.state.request = null
+      this.state.resolve = null
+    }
+
+    onMount() {
+      this.root.setAttribute('aria-labelledby', 'redeploy-dialog-title')
+      this.on(this.root, 'cancel', (event) => {
+        event.preventDefault()
+        this.finish(false)
+      })
+      this.on(this.root, 'keydown', (event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        this.finish(false)
+      })
+      this.on(this.root, 'click', (event) => {
+        if (event.target !== this.root) return
+        const box = this.root.getBoundingClientRect()
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) this.finish(false)
+      })
+    }
+
+    onDestroy() {
+      this.finish(false)
+    }
+
+    confirm(app) {
+      if (this.root.open) return Promise.resolve(false)
+      this.state.app = app
+      this.state.preview = null
+      this.state.error = ''
+      return new Promise((resolve) => {
+        this.state.resolve = resolve
+        this.root.showModal()
+        this.load()
+      })
+    }
+
+    async load() {
+      this.state.request?.abort()
+      const request = new AbortController()
+      this.state.request = request
+      this.state.loading = true
+      this.state.preview = null
+      this.state.error = ''
+      try {
+        const data = await Dboss.api(`/ui/apps/deploy-preview?app=${encodeURIComponent(this.state.app)}`, { signal: request.signal })
+        if (!request.signal.aborted) this.state.preview = data
+      } catch (error) {
+        if (!request.signal.aborted) this.state.error = error.message
+      } finally {
+        if (this.state.request === request) this.state.loading = false
+      }
+    }
+
+    finish(confirmed) {
+      if (confirmed && (this.state.loading || !this.state.preview)) return
+      this.state.request?.abort()
+      const resolve = this.state.resolve
+      this.state.resolve = null
+      this.root.close()
+      resolve?.(confirmed)
+    }
+
+    submit(event) {
+      event.preventDefault()
+      this.finish(true)
+    }
+  }
+</script>
+
+<style>
+  width: min(560px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+
+  &::backdrop {
+    background: rgb(24 36 51 / 32%);
+  }
+
+  .modal {
+    width: 100%;
+  }
+
+  .modal-body p {
+    margin: 0;
+  }
+
+  .commit {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  .commit code {
+    display: block;
+    margin: 8px 0;
+  }
+
+  .commit p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+</style>
+
+<form class="modal card" onsubmit="fez.submit(event)">
+  <div class="modal-head">
+    <strong id="redeploy-dialog-title">Redeploy {state.app}?</strong>
+    <button class="btn btn-ghost btn-icon" type="button" onclick="fez.finish(false)" aria-label="Close">
+      <svg class="icon"><use href="#i-x"></use></svg>
+    </button>
+  </div>
+  <div class="modal-body" aria-live="polite">
+    {#if state.loading}
+      <p class="text-muted">Checking the latest remote commit...</p>
+    {:else if state.preview}
+      <p><strong>{state.preview.branch}</strong> tracks <strong>{state.preview.upstream}</strong>.</p>
+      <div class="modal-row">
+        <div class="commit">
+          <strong>Local HEAD</strong>
+          <code title={state.preview.local.hash}>{state.preview.local.hash.slice(0, 12)}</code>
+          <p>{state.preview.local.subject}</p>
+        </div>
+        <div class="commit">
+          <strong>Remote HEAD</strong>
+          <code title={state.preview.remote.hash}>{state.preview.remote.hash.slice(0, 12)}</code>
+          <p>{state.preview.remote.subject}</p>
+        </div>
+      </div>
+      <p><strong>{state.preview.ahead + state.preview.behind} commits differ</strong>: {state.preview.behind} on remote, {state.preview.ahead} only local.</p>
+      {#if !state.preview.ahead && !state.preview.behind}
+        <p class="text-muted">Local and remote are up to date. You can still redeploy.</p>
+      {/if}
+      {#if state.preview.ahead && state.preview.behind}
+        <p class="text-danger">The branches have diverged. A fast-forward deploy will fail.</p>
+      {/if}
+      {#if state.preview.dirty}
+        <p class="text-muted">The working tree has uncommitted changes.</p>
+      {/if}
+      <p class="text-muted">Confirm to redeploy this app.</p>
+    {/if}
+    {#if state.error}
+      <p class="text-danger">{state.error}</p>
+    {/if}
+  </div>
+  <div class="modal-foot">
+    {#if state.error}
+      <button class="btn" type="button" onclick="fez.load()">Retry</button>
+    {/if}
+    <button class="btn" type="button" onclick="fez.finish(false)" autofocus>Cancel</button>
+    <button class="btn btn-primary" type="submit" disabled={state.loading || !state.preview}>
+      <svg class="icon"><use href="#i-rotate"></use></svg>
+      Confirm redeploy
+    </button>
+  </div>
+</form>

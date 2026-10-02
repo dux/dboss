@@ -7,20 +7,46 @@
     init() {
       this.state.hookMeta = {}
       this.state.pending = false
+      this.state.hookVersion = 0
+      this.state.hookTimer = null
+      this.state.hookError = ''
+      this.state.deployWatching = false
+      this.state.deployConfirming = false
     }
 
     onMount() {
       this.loadHooks()
     }
 
+    onRefresh() {
+      if (this.props.app.hooks?.length || this.state.deployWatching) this.loadHooks()
+    }
+
     async loadHooks() {
+      if (this.state.pending) return
+      clearTimeout(this.state.hookTimer)
+      const version = ++this.state.hookVersion
       try {
         const data = await Dboss.api(`/ui/hooks?app=${encodeURIComponent(this.props.app.name)}`)
+        if (version !== this.state.hookVersion || !this.isConnected) return
         const meta = {}
         for (const hook of data.hooks || []) meta[hook.name] = hook
         this.state.hookMeta = meta
+        this.state.hookError = ''
+        const deploy = meta.deploy
+        if (this.state.deployWatching && !deploy?.running && !deploy?.restarting) {
+          this.state.deployWatching = false
+          const error = !deploy ? 'deploy hook is no longer configured' : deploy.last_error || (deploy.last_exit ? `exit ${deploy.last_exit}` : '')
+          Toast.show(`${this.props.app.name}: ${error ? 'redeploy failed: ' + error : 'redeployed'}`, Boolean(error))
+          await Dboss.reload({ quiet: true })
+        }
       } catch (error) {
-        this.state.hookMeta = {}
+        if (version === this.state.hookVersion) this.state.hookError = error.message
+      } finally {
+        const deploy = this.state.hookMeta.deploy
+        if (version === this.state.hookVersion && this.isConnected && (this.state.deployWatching || deploy?.running || deploy?.restarting)) {
+          this.state.hookTimer = this.setTimeout(() => this.loadHooks(), 1000)
+        }
       }
     }
 
@@ -39,7 +65,10 @@
       const hubs = (app.web_processes || []).filter((web) => web.pubsub && web.pubsub.path)
       this.state.pubsub = hubs.map((web) => `${web.name} ${web.pubsub.path}`)
       this.state.cron = app.cron || []
-      this.state.hooks = (app.hooks || []).map((hook) => ({ ...hook, url: this.state.hookMeta[hook.name]?.url || '' }))
+      this.state.hooks = (app.hooks || []).map((hook) => ({ ...hook, ...this.state.hookMeta[hook.name] }))
+      this.state.deploy = this.state.hooks.find((hook) => hook.name === 'deploy')
+      this.state.deployBusy = this.state.deployWatching || Boolean(this.state.deploy?.running || this.state.deploy?.restarting)
+      this.state.redeployDisabled = Boolean(this.state.pending || this.state.changing || app.rolling || this.state.deployBusy || !this.state.deploy || this.state.deploy.disabled)
       this.state.errorLog = (app.error_log || []).join('\n')
     }
 
@@ -103,6 +132,7 @@
     }
 
     lastRun(job) {
+      if (job.restarting) return 'restarting'
       if (job.running) return 'running'
       if (job.last_error) return job.last_error
       if (Human.hasTime(job.last_end)) return `exit ${job.last_exit} ${this.clock(job.last_end)}`
@@ -114,13 +144,41 @@
     }
 
     async runHook(hook) {
+      if (this.state.pending || hook.running || hook.restarting || hook.disabled) return
+      this.state.pending = true
+      // Invalidate any status request started before this run was accepted.
+      ++this.state.hookVersion
+      clearTimeout(this.state.hookTimer)
+      let started = false
       try {
         await Dboss.api('/ui/hooks/run', { method: 'POST', body: JSON.stringify({ app: this.props.app.name, hook: hook.name }) })
         Toast.show(`${this.props.app.name}: ${hook.name} started`)
-        this.loadHooks()
+        started = true
       } catch (error) {
         Toast.show(error.message, true)
+      } finally {
+        this.state.pending = false
       }
+      if (started && hook.name === 'deploy') this.state.deployWatching = true
+      await this.loadHooks()
+    }
+
+    async redeploy() {
+      if (!this.props.app.git_connected || this.state.redeployDisabled || this.state.deployConfirming) return
+      this.state.deployConfirming = true
+      try {
+        if (!await RedeployDialog.confirm(this.props.app.name)) return
+        if (!this.isConnected || this.state.redeployDisabled) return
+        await this.runHook(this.state.deploy)
+      } finally {
+        this.state.deployConfirming = false
+      }
+    }
+
+    redeployTitle() {
+      if (!this.state.deploy) return 'Redeploy needs a Git checkout with a remote'
+      if (this.state.deploy.disabled) return 'Redeploy is disabled in the app config'
+      return 'Compare local and remote commits, then confirm redeploy'
     }
 
     async copy(value) {
@@ -175,11 +233,14 @@
       <ui-btn class="btn-sm" icon="i-settings" label="Config" href="#/config?id=app:{props.app.name}" title="Edit this app's dboss.yaml" />
       <ui-btn class="btn-sm {props.app.maintenance ? 'btn-warning' : ''}" icon="i-tool" label={props.app.maintenance ? 'End maintenance' : 'Maintenance'} onclick="fez.act('{props.app.maintenance ? 'maintenance-off' : 'maintenance-on'}')" disabled={state.pending} title={props.app.maintenance ? 'Serve the app again' : 'Answer every request with the maintenance page'} />
       <span class="app-actions-sep" aria-hidden="true">&sdot;</span>
-      <ui-btn class="btn-sm" icon="i-play" label="Start" onclick="fez.act('start')" disabled={state.pending || props.app.state === 'running' || props.app.state === 'starting'} />
-      <ui-btn class="btn-sm" icon="i-rotate" label="Restart" onclick="fez.act('restart')" disabled={state.pending || state.changing || props.app.state === 'stopped'} />
-      <ui-btn class="btn-sm btn-outline-danger" icon="i-stop" label="Stop" onclick="fez.act('stop')" disabled={state.pending || state.changing || props.app.state === 'stopped'} />
+      <ui-btn class="btn-sm" icon="i-play" label="Start" onclick="fez.act('start')" disabled={state.pending || state.deployBusy || props.app.state === 'running' || props.app.state === 'starting'} />
+      <ui-btn class="btn-sm" icon="i-rotate" label="Restart" onclick="fez.act('restart')" disabled={state.pending || state.deployBusy || state.changing || props.app.state === 'stopped'} />
+      {#if props.app.git_connected}
+        <ui-btn class="btn-sm" icon="i-rotate" label={state.deployBusy ? 'Redeploying...' : 'Redeploy'} onclick="fez.redeploy()" disabled={state.redeployDisabled || state.deployConfirming} title={redeployTitle()} />
+      {/if}
+      <ui-btn class="btn-sm btn-outline-danger" icon="i-stop" label="Stop" onclick="fez.act('stop')" disabled={state.pending || state.deployBusy || state.changing || props.app.state === 'stopped'} />
       {#if props.app.deletable}
-        <ui-btn class="btn-sm btn-outline-danger" icon="i-trash" label="Destroy" onclick="fez.act('destroy')" disabled={state.pending || state.changing} title="Permanently remove this app from dboss and disk" />
+        <ui-btn class="btn-sm btn-outline-danger" icon="i-trash" label="Destroy" onclick="fez.act('destroy')" disabled={state.pending || state.deployBusy || state.changing} title="Permanently remove this app from dboss and disk" />
       {/if}
     </div>
   </div>
@@ -191,6 +252,23 @@
     last activity: <b>{Human.hasTime(props.app.last_activity) ? Human.ago(props.app.last_activity) : 'No traffic'}</b> &sdot;
     requests / hour: <b>{Human.number(props.app.request_rates?.last_hour)}</b>
   </div>
+
+  {#if props.app.git_connected}
+    {#if state.deploy && (state.deployBusy || Human.hasTime(state.deploy.last_start))}
+      <div class="deploy-status" role="status">
+        <strong>Deployment</strong>
+        <span class="badge {state.deployBusy ? 'badge-warning' : state.deploy.last_error || state.deploy.last_exit ? 'badge-danger' : 'badge-success'}">{state.deploy.restarting ? 'Restarting app' : state.deployBusy ? 'Deploying' : state.deploy.last_error || state.deploy.last_exit ? 'Failed' : 'Succeeded'}</span>
+        {#if state.deploy.last_error}<span>{state.deploy.last_error}</span>{/if}
+        {#if state.hookError}<span class="text-muted">Status unavailable: {state.hookError}</span>{/if}
+      </div>
+      {#if state.deploy.output}
+        <details class="deploy-output">
+          <summary>Deployment output</summary>
+          <pre class="error-log">{state.deploy.output}</pre>
+        </details>
+      {/if}
+    {/if}
+  {/if}
 
   {#if props.app.error}
     <div class="alert alert-danger app-error">
@@ -276,7 +354,7 @@
               <svg class="icon"><use href="#i-copy"></use></svg>
               Copy
             </button>
-            <button class="btn btn-sm" type="button" onclick={() => fez.runHook(hook)} disabled={hook.running || hook.disabled} title="Run this hook now">
+            <button class="btn btn-sm" type="button" onclick={() => hook.name === 'deploy' && props.app.git_connected ? fez.redeploy() : fez.runHook(hook)} disabled={state.pending || state.deployConfirming || hook.running || hook.restarting || hook.disabled} title="Run this hook now">
               <svg class="icon"><use href="#i-play"></use></svg>
               Run
             </button>

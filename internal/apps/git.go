@@ -9,27 +9,29 @@ import (
 )
 
 // gitSource is the branch an app runs and that branch's page on its git host. A git checkout
-// answers from .git; a packed release (lux-deploy) has none, so the deploy writes GIT_BRANCH and
+// answers from .git; connected reports its tracking remote (or origin) even without a branch page.
+// A packed release (lux-deploy) has none, so the deploy writes GIT_BRANCH and
 // GIT_REPO to its .env instead. A detached HEAD has no branch, and a remote that is not an
 // http(s) or ssh URL has no page, so either may come back empty.
-func gitSource(dir string, fileEnv map[string]string) (branch, branchURL string) {
+func gitSource(dir string, fileEnv map[string]string) (branch, branchURL string, connected bool) {
 	repo := ""
 	if gitDir, ok := findGitDir(dir); ok {
 		branch = headBranch(gitDir)
-		repo = originURL(gitDir)
+		repo = remoteURL(gitDir, branch)
 	} else {
 		branch = strings.TrimSpace(fileEnv["GIT_BRANCH"])
 		repo = strings.TrimSpace(fileEnv["GIT_REPO"])
 	}
 	web := repoWebURL(repo)
+	connected = repo != ""
 	if branch == "" || web == "" {
-		return branch, ""
+		return branch, "", connected
 	}
 	segments := strings.Split(branch, "/")
 	for i, segment := range segments {
 		segments[i] = url.PathEscape(segment)
 	}
-	return branch, web + "/tree/" + strings.Join(segments, "/")
+	return branch, web + "/tree/" + strings.Join(segments, "/"), connected
 }
 
 // findGitDir resolves dir/.git, following the "gitdir:" file a worktree or submodule has.
@@ -67,9 +69,9 @@ func headBranch(gitDir string) string {
 	return ""
 }
 
-// originURL reads remote.origin.url from the repository config; a worktree keeps it in the
+// remoteURL reads the tracking remote's URL, or origin, from the config; a worktree keeps it in the
 // common dir its commondir file names.
-func originURL(gitDir string) string {
+func remoteURL(gitDir, branch string) string {
 	configDir := gitDir
 	if common, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
 		configDir = strings.TrimSpace(string(common))
@@ -82,19 +84,31 @@ func originURL(gitDir string) string {
 		return ""
 	}
 	defer file.Close()
-	inOrigin := false
+	section, tracking := "", ""
+	remotes := map[string]string{}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "[") {
-			inOrigin = line == `[remote "origin"]`
+			section = line
 			continue
 		}
-		if key, value, ok := strings.Cut(line, "="); ok && inOrigin && strings.TrimSpace(key) == "url" {
-			return strings.TrimSpace(value)
+		if key, value, ok := strings.Cut(line, "="); ok {
+			key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+			if section == `[branch "`+branch+`"]` && key == "remote" {
+				tracking = value
+			}
+			if name, ok := strings.CutPrefix(section, `[remote "`); ok && key == "url" {
+				if name, ok = strings.CutSuffix(name, `"]`); ok {
+					remotes[name] = value
+				}
+			}
 		}
 	}
-	return ""
+	if remote := remotes[tracking]; remote != "" {
+		return remote
+	}
+	return remotes["origin"]
 }
 
 // repoWebURL turns a clone URL into the repository's https page: scp-style and ssh:// remotes

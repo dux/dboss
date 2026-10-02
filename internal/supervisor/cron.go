@@ -224,7 +224,7 @@ func (a *appRuntime) runHook(name string, now time.Time) error {
 }
 
 func (a *appRuntime) startJob(state *jobState, now time.Time, manual bool) error {
-	if len(state.runs) > 0 && !state.overlap {
+	if len(state.runs) > 0 && !state.overlap || state.restarting {
 		if manual {
 			return fmt.Errorf("%s %q is still running", state.kind, state.name)
 		}

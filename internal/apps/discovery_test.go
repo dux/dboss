@@ -88,6 +88,58 @@ func writeTestFile(t *testing.T, path, contents string) {
 	}
 }
 
+func TestDiscoverAutomaticDeploy(t *testing.T) {
+	for _, tc := range []struct {
+		name, hooks, command             string
+		checkout, remote, disabled, pull bool
+	}{
+		{name: "automatic", checkout: true, remote: true, command: "git pull --ff-only", pull: true},
+		{name: "custom", checkout: true, remote: true, hooks: "hooks:\n  deploy: {command: ./release, restart: true}\n", command: "./release"},
+		{name: "disabled", checkout: true, remote: true, hooks: "hooks:\n  deploy: {command: ./release, disabled: true}\n", command: "./release", disabled: true},
+		{name: "no remote", checkout: true},
+		{name: "no checkout"},
+		{name: "packed release", remote: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, config.FileName)
+			contents := "procfile:\n  web: ./server\n" + tc.hooks
+			writeTestFile(t, path, contents)
+			if tc.checkout {
+				gitDir := filepath.Join(dir, ".git")
+				if err := os.Mkdir(gitDir, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				writeTestFile(t, filepath.Join(gitDir, "HEAD"), "ref: refs/heads/main\n")
+				if tc.remote {
+					writeTestFile(t, filepath.Join(gitDir, "config"), "[remote \"origin\"]\n\turl = /srv/git/app.git\n")
+				}
+			} else if tc.remote {
+				writeTestFile(t, filepath.Join(dir, ".env"), "GIT_REPO=https://github.com/team/app.git\nGIT_BRANCH=main\n")
+			}
+			cfg, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found, invalid, err := Discover(cfg)
+			if err != nil || len(invalid) != 0 || len(found) != 1 {
+				t.Fatalf("discover = %v %v %v", found, invalid, err)
+			}
+			deploy, exists := found[0].Hooks["deploy"]
+			if exists != (tc.command != "") || deploy.Command.Line != tc.command || deploy.Disabled != tc.disabled || deploy.Pull != tc.pull || tc.pull && !deploy.Restart {
+				t.Fatalf("deploy = %+v, exists %v", deploy, exists)
+			}
+			if tc.hooks == "" && len(found[0].Config.Hooks) != 0 {
+				t.Fatal("automatic deploy changed resolved YAML config")
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != contents {
+				t.Fatalf("discovery changed config on disk: %s, %v", data, err)
+			}
+		})
+	}
+}
+
 func TestDiscoverFindsAppFileUnderConfig(t *testing.T) {
 	root := t.TempDir()
 	appsDir := filepath.Join(root, "apps")

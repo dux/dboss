@@ -2778,7 +2778,7 @@ textarea.sql-editor {
 /* The Exceptions tab sits below its stat cards. */
 .exceptions-table { margin-top: 16px; }
 
-.exceptions-status { text-align: right; white-space: nowrap; }
+.log-table .exceptions-status { width: 1%; text-align: right; white-space: nowrap; }
 
 .log-row-resolved { opacity: 0.55; }
 

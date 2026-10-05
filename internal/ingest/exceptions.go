@@ -27,14 +27,17 @@ func IsExceptionLog(name string) bool { return strings.HasSuffix(name, Exception
 // exceptionLine is one JSON record as the Lux ExceptionWriter emits it. The optional strings are
 // pointers so a number or object where a string belongs is rejected rather than coerced.
 type exceptionLine struct {
-	ExpUID      string   `json:"uid"`
-	Message     *string  `json:"message"`
-	Dump        *string  `json:"dump"`
-	User        *string  `json:"user"`
-	IP          *string  `json:"ip"`
-	Tags        []string `json:"tags"`
-	Description *string  `json:"description"`
-	TS          *string  `json:"ts"`
+	ExpUID      string            `json:"uid"`
+	Message     *string           `json:"message"`
+	Dump        *string           `json:"dump"`
+	User        *string           `json:"user"`
+	IP          *string           `json:"ip"`
+	Tags        []string          `json:"tags"`
+	Description *string           `json:"description"`
+	Method      *string           `json:"method"`
+	URL         *string           `json:"url"`
+	Headers     map[string]string `json:"headers"`
+	TS          *string           `json:"ts"`
 }
 
 // exceptionRecord is a parsed occurrence: the fingerprint plus the fields that fold into a
@@ -48,6 +51,9 @@ type exceptionRecord struct {
 	Description string
 	User        string
 	IP          string
+	Method      string
+	URL         string
+	Headers     map[string]string
 }
 
 // parseException reads one line. uid must be a nonempty string and message a string; the
@@ -80,6 +86,9 @@ func parseException(line []byte, now time.Time) (exceptionRecord, error) {
 		Description: stringValue(fields.Description),
 		User:        stringValue(fields.User),
 		IP:          stringValue(fields.IP),
+		Method:      stringValue(fields.Method),
+		URL:         stringValue(fields.URL),
+		Headers:     fields.Headers,
 	}, nil
 }
 
@@ -134,6 +143,9 @@ func (a *exceptionAggregator) add(record exceptionRecord) {
 			Message:     record.Message,
 			Tags:        record.Tags,
 			Description: record.Description,
+			Method:      record.Method,
+			URL:         record.URL,
+			Headers:     record.Headers,
 		})
 		index = len(group.Minutes) - 1
 	}

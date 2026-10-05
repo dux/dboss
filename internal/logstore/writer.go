@@ -120,6 +120,9 @@ func (s *Store) writer(app string) (*appWriter, error) {
 	_, _ = db.Exec(`ALTER TABLE requests ADD COLUMN country TEXT NOT NULL DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE exceptions ADD COLUMN is_resolved INTEGER NOT NULL DEFAULT 0`)
 	_, _ = db.Exec(`ALTER TABLE exceptions ADD COLUMN is_ignored INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE exception_logs ADD COLUMN method TEXT`)
+	_, _ = db.Exec(`ALTER TABLE exception_logs ADD COLUMN url TEXT`)
+	_, _ = db.Exec(`ALTER TABLE exception_logs ADD COLUMN headers TEXT`)
 	_, _ = db.Exec(`ALTER TABLE tail_offsets ADD COLUMN base INTEGER NOT NULL DEFAULT 0`)
 	w := &appWriter{db: db, entries: make(chan entry, queueSize), stop: make(chan struct{}), done: make(chan struct{})}
 	s.apps[app] = w
@@ -160,7 +163,7 @@ var schema = []string{
 	`CREATE INDEX IF NOT EXISTS audit_ts ON audit(ts)`,
 	`CREATE TABLE IF NOT EXISTS blocked (path TEXT PRIMARY KEY, count INTEGER NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS exceptions (exp_uid TEXT PRIMARY KEY, dump TEXT, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, count INTEGER NOT NULL, is_resolved INTEGER NOT NULL DEFAULT 0, is_ignored INTEGER NOT NULL DEFAULT 0)`,
-	`CREATE TABLE IF NOT EXISTS exception_logs (exp_uid TEXT NOT NULL REFERENCES exceptions(exp_uid), minute_at INTEGER NOT NULL, count INTEGER NOT NULL, message TEXT NOT NULL, users TEXT, tags TEXT, description TEXT, ips TEXT, PRIMARY KEY (exp_uid, minute_at))`,
+	`CREATE TABLE IF NOT EXISTS exception_logs (exp_uid TEXT NOT NULL REFERENCES exceptions(exp_uid), minute_at INTEGER NOT NULL, count INTEGER NOT NULL, message TEXT NOT NULL, users TEXT, tags TEXT, description TEXT, ips TEXT, method TEXT, url TEXT, headers TEXT, PRIMARY KEY (exp_uid, minute_at))`,
 	`CREATE INDEX IF NOT EXISTS exception_logs_minute ON exception_logs(minute_at)`,
 	`CREATE VIRTUAL TABLE IF NOT EXISTS logs_fts USING fts5(message, raw, content='logs', content_rowid='rowid')`,
 	`CREATE TRIGGER IF NOT EXISTS logs_ai AFTER INSERT ON logs BEGIN INSERT INTO logs_fts(rowid, message, raw) VALUES (new.rowid, new.message, new.raw); END`,

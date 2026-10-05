@@ -42,13 +42,16 @@ type ExceptionSummary struct {
 
 // ExceptionMinuteRow is one minute of a group: how often it happened and who it happened to.
 type ExceptionMinuteRow struct {
-	MinuteAt    time.Time `json:"minute_at"`
-	Count       int64     `json:"count"`
-	Message     string    `json:"message"`
-	Users       []string  `json:"users,omitempty"`
-	IPs         []string  `json:"ips,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	Description string    `json:"description,omitempty"`
+	MinuteAt    time.Time         `json:"minute_at"`
+	Count       int64             `json:"count"`
+	Message     string            `json:"message"`
+	Users       []string          `json:"users,omitempty"`
+	IPs         []string          `json:"ips,omitempty"`
+	Tags        []string          `json:"tags,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Method      string            `json:"method,omitempty"`
+	URL         string            `json:"url,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
 }
 
 // Exceptions lists an app's groups whose last occurrence is newer than filter.Since, newest
@@ -138,7 +141,7 @@ func attachExceptionMinutes(db *sql.DB, summaries []ExceptionSummary, index map[
 	}
 	// Only the most recent ExceptionMinuteLimit minutes per group travel to the console; a
 	// window function keeps that bounded per group instead of truncating after the fact.
-	query := `SELECT exp_uid, minute_at, count, message, users, tags, description, ips FROM (
+	query := `SELECT exp_uid, minute_at, count, message, users, tags, description, ips, method, url, headers FROM (
 		SELECT *, ROW_NUMBER() OVER (PARTITION BY exp_uid ORDER BY minute_at DESC) AS rn
 		FROM exception_logs WHERE exp_uid IN (` + placeholders + `)
 	) WHERE rn <= ? ORDER BY minute_at DESC`
@@ -155,8 +158,8 @@ func attachExceptionMinutes(db *sql.DB, summaries []ExceptionSummary, index map[
 		var uid string
 		var minuteAt int64
 		var minute ExceptionMinuteRow
-		var users, tags, description, ips sql.NullString
-		if err := rows.Scan(&uid, &minuteAt, &minute.Count, &minute.Message, &users, &tags, &description, &ips); err != nil {
+		var users, tags, description, ips, method, url, headers sql.NullString
+		if err := rows.Scan(&uid, &minuteAt, &minute.Count, &minute.Message, &users, &tags, &description, &ips, &method, &url, &headers); err != nil {
 			return err
 		}
 		minute.MinuteAt = time.UnixMilli(minuteAt).UTC()
@@ -164,6 +167,9 @@ func attachExceptionMinutes(db *sql.DB, summaries []ExceptionSummary, index map[
 		minute.Tags = decodeList(tags)
 		minute.IPs = decodeList(ips)
 		minute.Description = description.String
+		minute.Method = method.String
+		minute.URL = url.String
+		minute.Headers = decodeMap(headers)
 		if i, ok := index[uid]; ok {
 			summaries[i].Minutes = append(summaries[i].Minutes, minute)
 		}
@@ -172,13 +178,16 @@ func attachExceptionMinutes(db *sql.DB, summaries []ExceptionSummary, index map[
 }
 
 // ExceptionMinute is one UTC minute of an exception group: how many times it happened, the
-// metadata of the first occurrence in that minute, and the distinct users and IPs seen.
+// metadata and request of the first occurrence in that minute, and the distinct users and IPs seen.
 type ExceptionMinute struct {
 	MinuteAt    time.Time
 	Count       int
 	Message     string
 	Tags        []string
 	Description string
+	Method      string
+	URL         string
+	Headers     map[string]string
 	Users       []string
 	IPs         []string
 }
@@ -265,7 +274,7 @@ func saveExceptionGroups(tx *sql.Tx, groups []ExceptionGroup) error {
 
 // saveExceptionMinute inserts a minute row or, when it exists, adds the count and merges the
 // distinct users and IPs. Metadata is written only on insert, so the first occurrence in the
-// minute owns the row's message, tags and description.
+// minute owns the row's message, tags, description and request.
 func saveExceptionMinute(tx *sql.Tx, expUID string, minute ExceptionMinute) error {
 	minuteAt := minute.MinuteAt.UnixMilli()
 	var (
@@ -276,8 +285,9 @@ func saveExceptionMinute(tx *sql.Tx, expUID string, minute ExceptionMinute) erro
 	err := tx.QueryRow(`SELECT count, users, ips FROM exception_logs WHERE exp_uid = ? AND minute_at = ?`, expUID, minuteAt).Scan(&existingCount, &existingUsers, &existingIPs)
 	switch {
 	case err == sql.ErrNoRows:
-		_, err = tx.Exec(`INSERT INTO exception_logs (exp_uid, minute_at, count, message, tags, description, users, ips) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			expUID, minuteAt, minute.Count, minute.Message, encodeList(minute.Tags), nullString(minute.Description), encodeList(minute.Users), encodeList(minute.IPs))
+		_, err = tx.Exec(`INSERT INTO exception_logs (exp_uid, minute_at, count, message, tags, description, users, ips, method, url, headers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			expUID, minuteAt, minute.Count, minute.Message, encodeList(minute.Tags), nullString(minute.Description), encodeList(minute.Users), encodeList(minute.IPs),
+			nullString(minute.Method), nullString(minute.URL), encodeMap(minute.Headers))
 		return err
 	case err != nil:
 		return err
@@ -370,6 +380,28 @@ func decodeList(value sql.NullString) []string {
 		return nil
 	}
 	var out []string
+	if json.Unmarshal([]byte(value.String), &out) != nil {
+		return nil
+	}
+	return out
+}
+
+func encodeMap(values map[string]string) any {
+	if len(values) == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return nil
+	}
+	return string(encoded)
+}
+
+func decodeMap(value sql.NullString) map[string]string {
+	if !value.Valid || value.String == "" {
+		return nil
+	}
+	var out map[string]string
 	if json.Unmarshal([]byte(value.String), &out) != nil {
 		return nil
 	}

@@ -137,11 +137,33 @@ func TestParseExceptionValidates(t *testing.T) {
 		"bad message": `{"uid":"e","message":5}`,
 		"bad user":    `{"uid":"e","message":"m","user":42}`,
 		"bad tags":    `{"uid":"e","message":"m","tags":[1]}`,
+		"bad url":     `{"uid":"e","message":"m","url":1}`,
+		"bad headers": `{"uid":"e","message":"m","headers":{"User-Agent":1}}`,
 		"bad ts":      `{"uid":"e","message":"m","ts":"nope"}`,
 		"not json":    `nope`,
 	} {
 		if _, err := parseException([]byte(line), now); err == nil {
 			t.Fatalf("%s: expected an error", name)
 		}
+	}
+}
+
+func TestExceptionFirstRequestInMinuteWins(t *testing.T) {
+	dir := t.TempDir()
+	content := strings.Join([]string{
+		`{"uid":"e","message":"m","user":"ana@example.com","method":"POST","url":"https://x.test/a","headers":{"User-Agent":"UA1"},"ts":"2026-09-26T10:00:10Z"}`,
+		`{"uid":"e","message":"m","method":"GET","url":"https://x.test/b","headers":{"User-Agent":"UA2"},"ts":"2026-09-26T10:00:20Z"}`,
+	}, "\n") + "\n"
+	writeAppLog(t, dir, "app.exceptions.log", content)
+	sink := &memorySink{}
+	exceptionModule(dir, sink).runOnce()
+
+	minutes := sink.exceptions[0].Groups[0].Minutes
+	if len(minutes) != 1 {
+		t.Fatalf("minutes = %+v", minutes)
+	}
+	minute := minutes[0]
+	if minute.Method != "POST" || minute.URL != "https://x.test/a" || minute.Headers["User-Agent"] != "UA1" || strings.Join(minute.Users, ",") != "ana@example.com" {
+		t.Fatalf("minute = %+v", minute)
 	}
 }

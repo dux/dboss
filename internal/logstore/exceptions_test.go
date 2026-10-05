@@ -353,6 +353,31 @@ func TestExceptionsFilterByUID(t *testing.T) {
 	}
 }
 
+func TestExceptionRequestRoundTripFirstWins(t *testing.T) {
+	store := openExceptionStore(t)
+	minute := time.Now().UTC().Truncate(time.Minute)
+	batch := func(method, url, agent string) ExceptionBatch {
+		return ExceptionBatch{Groups: []ExceptionGroup{{ExpUID: "e", FirstAt: minute, LastAt: minute, Count: 1, Minutes: []ExceptionMinute{{
+			MinuteAt: minute, Count: 1, Message: "m", Method: method, URL: url, Headers: map[string]string{"User-Agent": agent},
+		}}}}}
+	}
+	if err := store.AppendExceptions("demo", batch("POST", "https://x.test/a", "UA1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendExceptions("demo", batch("GET", "https://x.test/b", "UA2")); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.Exceptions("demo", ExceptionFilter{ExpUID: "e"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rows[0].Minutes[0]
+	if got.Count != 2 || got.Method != "POST" || got.URL != "https://x.test/a" || got.Headers["User-Agent"] != "UA1" {
+		t.Fatalf("minute = %+v", got)
+	}
+}
+
 func TestUnresolvedExceptionCount(t *testing.T) {
 	store := openExceptionStore(t)
 	minute := time.Now().UTC().Truncate(time.Minute)

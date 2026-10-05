@@ -442,16 +442,17 @@ channel. The Lux `web_common` plugin's `ExceptionWriter` writes it, one compact 
 line, but any producer may append the same shape:
 
 ```json
-{"uid":"<sha256>","dump":"<full message>","message":"boom","user":"u_42","ip":"203.0.113.7","tags":["checkout"],"description":"Confirming an order","ts":"2026-09-26T10:00:30.123Z"}
+{"uid":"<sha256>","dump":"<full message>","message":"boom","user":"ana@example.com","ip":"203.0.113.7","tags":["checkout"],"description":"Confirming an order","method":"POST","url":"https://shop.example.com/checkout","headers":{"User-Agent":"Mozilla/5.0 ...","Referer":"https://shop.example.com/cart"},"ts":"2026-09-26T10:00:30.123Z"}
 ```
 
-* `uid` (required, nonempty) is the fingerprint that groups occurrences; `message` is required. `dump`, `user`, `ip`, `tags` and `description` are optional and type-checked; `ts` is RFC3339 UTC and falls back to the time dboss reads the line. A malformed line becomes a `warn` row on the file's channel, like an event.
+* `uid` (required, nonempty) is the fingerprint that groups occurrences; `message` is required. `dump`, `user`, `ip`, `tags`, `description`, `method`, `url` and `headers` (an object of string values) are optional and type-checked; `ts` is RFC3339 UTC and falls back to the time dboss reads the line. A malformed line becomes a `warn` row on the file's channel, like an event.
+* The Lux writer fills `user` with the signed-in user's email and `method`, `url` and a fixed set of browser headers (never `Cookie` or `Authorization`) from the current request.
 * dboss tails the file every 5 seconds by byte offset, keeps a trailing partial line for the next pass, and cuts the stored head off the file like any app log file.
 
 Two tables hold the stream:
 
 * `exceptions` - one row per `uid`: the first nonempty `dump`, `first_at`/`last_at`, the total `count`, `is_resolved` and `is_ignored`. Summaries and dumps are never pruned.
-* `exception_logs` - one row per `uid` per UTC minute: `count`, the `message`/`tags`/`description` of the first occurrence in that minute, and the distinct `users` and `ips` seen (each a JSON array, capped at 5). Later occurrences only raise the count and add new users/IPs, so a thousand lines in one minute are a single row.
+* `exception_logs` - one row per `uid` per UTC minute: `count`, the `message`/`tags`/`description` and the request (`method`, `url`, `headers` as a JSON object) of the first occurrence in that minute, and the distinct `users` and `ips` seen (each a JSON array, capped at 5). Later occurrences only raise the count and add new users/IPs, so a thousand lines in one minute are a single row.
 
 Timestamps are UTC Unix milliseconds. `log_retention` prunes old `exception_logs` minute rows;
 `log_retention: 0` stops ingesting the stream. `dboss check` is not affected; the tables are
@@ -459,7 +460,7 @@ created on first write.
 
 The console's **Exceptions** tab (`#/exceptions?app=<name>&range=`) lists one app's groups for
 the last hour, 24 hours, 7 days or 30 days, newest first. Clicking a group shows its full dump
-and the last 50 minute rows (counts, users, IPs). **Resolve** sets `is_resolved` (audited); the next
+the most recent request with its headers, and the last 50 minute rows (counts, request, users, IPs). **Resolve** sets `is_resolved` (audited); the next
 occurrence clears it. **Ignore** sets `is_resolved` and `is_ignored`, and a later occurrence leaves
 both set. **Reopen** clears both, and **Unignore** clears only `is_ignored`. Listing is read-only
 and writes no audit row.

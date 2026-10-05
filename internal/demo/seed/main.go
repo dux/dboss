@@ -160,17 +160,26 @@ func seedApp(store *logstore.Store, rng *rand.Rand, app, host string, now time.T
 }
 
 // seedException is one fingerprint the demo can write: a realistic class, message and origin,
-// plus the users and IPs it was reported for.
+// the request it failed in, plus the users and IPs it was reported for.
 type seedException struct {
 	klass, message, origin, description string
+	method, path                        string
 	users, ips                          []string
+}
+
+// seedExceptionHeaders is the browser header set the Lux writer keeps for a request.
+var seedExceptionHeaders = map[string]string{
+	"User-Agent":      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+	"Referer":         "https://demo.lvh.me/cart",
+	"Accept-Language": "en-US,en;q=0.9",
+	"Accept":          "text/html,application/xhtml+xml",
 }
 
 // seedExceptionPool is the two fingerprints written for the first seeded app. The other apps
 // stay empty so the Exceptions tab is one app's list.
 var seedExceptionPool = []seedException{
-	{"PG::ConnectionBad", "PG::ConnectionBad: connection refused", "app/controllers/checkout_controller.rb:42:in `create'", "confirming an order", []string{"u_1024", "u_2048"}, []string{"203.0.113.7", "198.51.100.4"}},
-	{"NoMethodError", "NoMethodError: undefined method `total' for nil", "app/services/report.rb:88:in `build'", "building the monthly report", []string{"u_7"}, []string{"192.0.2.55"}},
+	{"PG::ConnectionBad", "PG::ConnectionBad: connection refused", "app/controllers/checkout_controller.rb:42:in `create'", "confirming an order", "POST", "/checkout?step=confirm", []string{"ana@example.com", "ben@example.com"}, []string{"203.0.113.7", "198.51.100.4"}},
+	{"NoMethodError", "NoMethodError: undefined method `total' for nil", "app/services/report.rb:88:in `build'", "building the monthly report", "GET", "/reports/monthly", []string{"ops@example.com"}, []string{"192.0.2.55"}},
 }
 
 // seedExceptions writes two fingerprints for one app, each with a busy minute and a quiet one,
@@ -194,6 +203,9 @@ func seedExceptions(store *logstore.Store, rng *rand.Rand, app string, now time.
 				Message:     fp.message,
 				Tags:        []string{strings.ToLower(strings.SplitN(fp.klass, "::", 2)[0])},
 				Description: fp.description,
+				Method:      fp.method,
+				URL:         "https://demo.lvh.me" + fp.path,
+				Headers:     seedExceptionHeaders,
 				Users:       fp.users,
 				IPs:         fp.ips,
 			})

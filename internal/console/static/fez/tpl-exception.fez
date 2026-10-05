@@ -7,6 +7,7 @@
       this.state.loaded = false
       this.state.busy = false
       this.state.error = ''
+      this.state.openMinute = -1
     }
 
     onMount() {
@@ -44,6 +45,7 @@
         for (const ip of minute.ips || []) ips.add(ip)
       }
       const described = minutes.find((minute) => minute.description)
+      const requested = minutes.find((minute) => minute.url)
       return {
         exp_uid: raw.exp_uid,
         short: (raw.exp_uid || '').slice(0, 12),
@@ -56,11 +58,22 @@
         firstLabel: this.time(raw.first_at),
         lastLabel: this.time(raw.last_at),
         clients: users.size + ips.size,
+        latest: requested ? {
+          time: this.time(requested.minute_at),
+          method: requested.method || '',
+          url: requested.url,
+          usersLabel: (requested.users || []).join(', '),
+          ipsLabel: (requested.ips || []).join(', '),
+          headers: Object.entries(requested.headers || {}),
+        } : null,
         minutes: minutes.map((minute) => ({
           time: this.time(minute.minute_at),
           countLabel: Human.number(minute.count),
           usersLabel: (minute.users || []).join(', '),
           ips: minute.ips || [],
+          method: minute.method || '',
+          url: minute.url || '',
+          headers: Object.entries(minute.headers || {}),
         })),
       }
     }
@@ -99,6 +112,10 @@
       } finally {
         this.state.busy = false
       }
+    }
+
+    toggleMinute(index) {
+      this.state.openMinute = this.state.openMinute === index ? -1 : index
     }
 
     async copy(value, label) {
@@ -208,6 +225,31 @@
     </div>
   </section>
 
+  {#if state.row.latest}
+    <div class="section-head">
+      <h2>Last request</h2>
+      <span class="text-muted">First occurrence of the most recent minute, {state.row.latest.time}</span>
+    </div>
+    <section class="card">
+      <div class="card-body">
+        <p class="exception-request">
+          {#if state.row.latest.method}<span class="badge">{state.row.latest.method}</span>{/if}
+          <a href={state.row.latest.url} target="_blank" rel="noreferrer">{state.row.latest.url}</a>
+        </p>
+        <dl class="exception-headers">
+          <dt>User</dt>
+          <dd>{state.row.latest.usersLabel || '-'}</dd>
+          <dt>IP</dt>
+          <dd>{state.row.latest.ipsLabel || '-'}</dd>
+          {#each state.row.latest.headers as header}
+            <dt>{header[0]}</dt>
+            <dd>{header[1]}</dd>
+          {/each}
+        </dl>
+      </div>
+    </section>
+  {/if}
+
   <div class="section-head">
     <h2>Stacktrace</h2>
     <button class="btn btn-sm" type="button" onclick="fez.copy(state.row.dump || state.row.message, 'Stacktrace')" disabled={!state.row.dump && !state.row.message}>
@@ -231,27 +273,52 @@
             <tr>
               <th>Time</th>
               <th class="num">Count</th>
-              <th>Users</th>
-              <th>IPs</th>
+              <th>Client</th>
             </tr>
           </thead>
           <tbody>
-            {#each state.row.minutes as minute}
-              <tr>
+            {#each state.row.minutes as minute, i}
+              <tr class="exception-occurrence" class:active={state.openMinute === i} onclick="fez.toggleMinute({i})">
                 <td class="log-time">{minute.time}</td>
                 <td class="num">{minute.countLabel}</td>
-                <td class="log-ip">{minute.usersLabel || '-'}</td>
-                <td class="log-ip">
-                  {#each minute.ips as ip, i}
-                    <a href={'https://ip-api.com/#' + ip} target="_blank" rel="noreferrer">{ip}</a>{#if i < minute.ips.length - 1}, {/if}
-                  {:else}
-                    -
-                  {/each}
+                <td>
+                  <div class="exception-client">
+                    <span class="log-ip">{minute.ips[0] || '-'}{minute.ips.length > 1 ? ' +' + (minute.ips.length - 1) : ''}</span>
+                    {#if minute.url}
+                      <span class="exception-request-line" title={minute.url}>{minute.method} {minute.url}</span>
+                    {/if}
+                  </div>
                 </td>
               </tr>
+              {#if state.openMinute === i}
+                <tr class="exception-occurrence-detail">
+                  <td colspan="3">
+                    <dl class="exception-headers">
+                      {#if minute.url}
+                        <dt>Request</dt>
+                        <dd>{minute.method} <a href={minute.url} target="_blank" rel="noreferrer">{minute.url}</a></dd>
+                      {/if}
+                      <dt>Users</dt>
+                      <dd>{minute.usersLabel || '-'}</dd>
+                      <dt>IPs</dt>
+                      <dd>
+                        {#each minute.ips as ip, n}
+                          <a href={'https://ip-api.com/#' + ip} target="_blank" rel="noreferrer">{ip}</a>{#if n < minute.ips.length - 1}, {/if}
+                        {:else}
+                          -
+                        {/each}
+                      </dd>
+                      {#each minute.headers as header}
+                        <dt>{header[0]}</dt>
+                        <dd>{header[1]}</dd>
+                      {/each}
+                    </dl>
+                  </td>
+                </tr>
+              {/if}
             {:else}
               <tr>
-                <td colspan="4" class="text-muted log-empty">No minute rows in the store.</td>
+                <td colspan="3" class="text-muted log-empty">No minute rows in the store.</td>
               </tr>
             {/each}
           </tbody>

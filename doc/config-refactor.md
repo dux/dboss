@@ -152,7 +152,7 @@ The `/api/config/keys` JSON shape changes with the new `Key`, so `db-config-keys
 * `make check` for vet and tests.
 * `TestKeySpecsCoverStructs` enforces coverage in both directions.
 * `TestReferenceCoversKeys` keeps the reference complete.
-* `bun ~/dev/gems/fez/bin/fez compile 'internal/console/static/fez/*.fez'` and a browser look at the config form and keys view.
+* `bun ~/dev/libs/fez/bin/fez compile 'internal/console/static/fez/*.fez'` and a browser look at the config form and keys view.
 
 ## Phases
 

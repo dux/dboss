@@ -1181,7 +1181,7 @@ e2e/                  end-to-end suite: the built binary on a copy of demo/ (bui
 make check                                   # go vet + staticcheck + go test ./... (unit tests)
 make e2e                                     # end-to-end suite, about 90s
 go test ./internal/console/                  # console API and auth, including dboss login
-bun ~/dev/gems/fez/bin/fez compile 'internal/console/static/fez/*.fez'   # component syntax check
+bun ~/dev/libs/fez/bin/fez compile 'internal/console/static/fez/*.fez'   # component syntax check
 ```
 
 Unit tests sit next to the package they cover and never start a real process tree.

@@ -25,27 +25,23 @@
       if (root.tagName === 'SPAN') {
         root.setAttribute('role', 'button')
       }
-      this.paint()
     }
 
     // The placeholder carries a compiler key, so the differ preserves this instance and never
-    // syncs the new attributes onto the root; the parent's values are re-applied here.
-    onRefresh() {
-      this.paint()
+    // syncs the new attributes onto the root; the parent's values are re-applied here. changed is
+    // every prop at mount and only the differing ones later, so the five second poll does not
+    // rebuild a button that did not change.
+    onRefresh(props, changed) {
+      if (Object.keys(changed).length) this.paint()
     }
 
     // One writer for everything the props put in the DOM, onclick included: it is rewritten to
     // Fez(<parent uid>).method(<args>) on every parent render, so a preserved button that only
-    // repainted its label would keep calling the previous render's arguments. The signature
-    // keeps the five second poll from rebuilding a button that did not change.
+    // repainted its label would keep calling the previous render's arguments.
     paint() {
       const root = this.root
       const props = this.props
       const disabled = Boolean(props.disabled)
-      const signature = [props.class, props.icon, props.label, disabled, ...this.PLAIN.map((name) => props[name])].join('|')
-      if (this.state.painted === signature) return
-      this.state.painted = signature
-
       // copy() skips an undefined prop, so an attribute that went away is removed here
       for (const name of this.PLAIN) {
         if (props[name] === undefined) root.removeAttribute(name)

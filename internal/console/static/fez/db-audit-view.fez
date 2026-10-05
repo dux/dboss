@@ -10,20 +10,14 @@
       this.state.row = null
       this.state.loading = false
       this.state.error = ''
-      this.state.shown = 0
-    }
-
-    onMount() {
-      this.load()
     }
 
     // The parent swaps rows without remounting, so a new id has to refetch.
-    onRefresh(props) {
-      if (props.id !== this.state.shown) this.load()
+    onRefresh(props, changed) {
+      if ('id' in changed) this.load()
     }
 
     async load() {
-      this.state.shown = this.props.id
       this.state.loading = true
       try {
         const data = await Dboss.api(`/ui/audit?row=${this.props.id}`)

@@ -38,7 +38,19 @@ func TestInstancesShareTheLoad(t *testing.T) {
 }
 
 func TestSecondWebProcessOwnsItsHost(t *testing.T) {
-	expectBody(t, serving(t, "admin.bun.lvh.me", "/"), "PROC_TYPE=admin")
+	expectBody(t, servingCall(t, call{host: "admin.bun.lvh.me", path: "/", header: passwordLogin(t, "admin.bun.lvh.me", "demo")}), "PROC_TYPE=admin")
+}
+
+// Only the admin web process sets a password; the app's other web process stays open.
+func TestPasswordGuardsOneWebProcess(t *testing.T) {
+	page := html(t, "admin.bun.lvh.me", "/")
+	expectStatus(t, page, http.StatusUnauthorized)
+	expectBody(t, page, "bun is protected", `name="password"`)
+	expectStatus(t, get(t, "admin.bun.lvh.me", "/"), http.StatusUnauthorized)
+	wrong := passwordPost(t, "admin.bun.lvh.me", "nope")
+	expectStatus(t, wrong, http.StatusUnauthorized)
+	expectBody(t, wrong, "Wrong password.")
+	expectBody(t, serving(t, "bun.lvh.me", "/"), "PROC_TYPE=web")
 }
 
 func TestUnknownHostGetsNotFoundPage(t *testing.T) {

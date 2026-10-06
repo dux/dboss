@@ -137,6 +137,9 @@ func unknownKey(keyNode *yaml.Node, fields map[string]reflect.StructField, prefi
 	sort.Strings(names)
 	if _, isWebKey := schemaFields(reflect.TypeOf(Web{}))[keyNode.Value]; isWebKey && strings.HasPrefix(prefix, "processes.") {
 		err.Hint = "web keys apply to the whole app; move it to the top level of the app file"
+		if keyNode.Value == "basic_auth" || keyNode.Value == "password" {
+			err.Hint = "move it to the top level of the app file, or onto the web process's procfile entry"
+		}
 	} else if best := closest(keyNode.Value, names); best != "" {
 		err.Hint = fmt.Sprintf("did you mean %q?", best)
 	} else if len(names) <= 12 {

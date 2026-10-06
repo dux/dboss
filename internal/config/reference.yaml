@@ -264,10 +264,12 @@ defaults:
 
   # --- Web keys: what nginx or Caddy did in front of the app. Shared by every web process. ----
   # Set here for every app, or at the top level of one app's file to override it there. The
-  # per-process web keys (hosts, pubsub, health, canonical_host) live on the procfile entry.
+  # per-process web keys (hosts, pubsub, health, canonical_host) live on the procfile entry, and
+  # a web procfile entry may set its own basic_auth and password to replace the app's.
   # Cloudflare owns TLS, compression, caching, WAF and rate limiting, so those are not here.
-  # Order per request: canonical redirect -> allow_ips -> deny -> auth -> basic_auth -> maintenance
-  # -> static -> max_body/body buffer -> wake or forward -> headers.
+  # Order per request: canonical redirect -> allow_ips -> deny -> health endpoint -> rate_limit
+  # -> authcog login -> auth -> basic_auth -> password -> maintenance -> static
+  # -> max_body/body buffer -> wake or forward -> headers.
 
   # Directory served straight from disk for GET and HEAD on every web process, relative to the
   # app folder. true means ./public (the default), a path sets another directory, false disables
@@ -301,6 +303,15 @@ defaults:
   basic_auth: {}
   #   alice: "$2a$10$..."
   #   bob: secret
+
+  # One shared password, plain or a bcrypt hash from `dboss password`, asked on a dboss page (the
+  # `password` page, replaceable like the others) instead of the browser's basic auth dialog. The
+  # right password sets a signed, host-only cookie lasting session_ttl; changing the password signs
+  # everyone out. Checks from one client IP are spaced 3s apart (in memory, across every app) and
+  # past 30s of queue answer 429, so guessing is slow. A request that does not accept text/html
+  # gets 401. Empty leaves the app open.
+  # When basic_auth is set too, both must pass. Applies to static files too.
+  password: ""
 
   # CIDRs allowed to reach the app; empty = everyone. Behind proxy.cloudflare the client address
   # is CF-Connecting-IP, not the Cloudflare edge address.
@@ -439,6 +450,10 @@ base_host: myapp.com
 # publish POST with the secret. Channels are one path segment; client.js, _test and _selftest are
 # reserved. `dboss pubsub help` prints a copy-paste guide.
 #
+# A web process may set `basic_auth` and `password`, which replace the app-level values for that
+# process only, so an app's admin process can ask for a password while its public one stays open.
+# An empty value (`basic_auth: {}`, `password: ""`) turns the gate off for that process.
+#
 # `count` runs that many copies of one entry (default 1, at most 64), each with its own PORT and
 # PROC_INSTANCE (1..count). Copies are named <name>.1 .. <name>.<count> in logs, the console and
 # metrics; a single copy keeps the bare name. The proxy sends each request to the ready copy of a
@@ -456,6 +471,10 @@ procfile:
     health: /up
     canonical_host: www.myapp.com
     count: 2
+  admin:
+    command: bundle exec puma -C config/admin.rb
+    hosts: [admin.myapp.com]
+    password: $ADMIN_PASSWORD
   worker: bundle exec lux jobs:work
   cron: bundle exec lux jobs:cron
 
@@ -468,10 +487,10 @@ autostart: true
 # Folder of the pages dboss serves for this app instead of forwarding: starting (waking up),
 # waiting (a hand-run start still waits for ENTER), stopped (a button app, with the start
 # button), crashed, maintenance, error (the proxy's own 502s and the app's 5xx) and forbidden
-# (allow_ips), plus signed_out. For each one dboss reads
+# (allow_ips), plus password (the password form) and signed_out. For each one dboss reads
 # <name>.html here, else template.html here, else the same two in the host's pages folder, else
 # the built-in page, on every request. Every page fills {{status}}, {{title}}, {{message}},
-# {{action}} (the start button or sign-in link dboss builds), {{app}} and {{dboss_logo}} (the
+# {{action}} (the start button, password form or sign-in link dboss builds), {{app}} and {{dboss_logo}} (the
 # dboss mark at /.well-known/dboss/logo.svg); any other {{...}} is left alone, so one
 # template.html covers every page. An app 5xx body is only replaced when this folder has
 # error.html or template.html. `dboss pages [app]` lists which file serves each page and
@@ -511,9 +530,9 @@ headers:
 # An app that ignores PORT and binds its own port will not be reachable
 # through the proxy. Read the allocation with `dboss ports`.
 
-# Per-proctype overrides. Process keys only (stop, restart, logs, env,
-# resources); a web key here is an error, and `health`/`canonical_host`/`pubsub` live on the web
-# procfile entry while the rest are app keys.
+# Per-proctype overrides. Process keys only (stop, restart, logs, env, resources); a web key here
+# is an error: `health`/`canonical_host`/`pubsub`/`basic_auth`/`password` live on the web procfile
+# entry while the rest are app keys.
 # Useful for a worker that needs a longer stop_timeout than the web process it runs next to.
 processes:
   worker:

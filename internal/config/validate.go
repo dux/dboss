@@ -228,6 +228,18 @@ func validateProcess(d Process) error {
 	return nil
 }
 
+func validateBasicAuth(users map[string]string, key string) error {
+	for user, password := range users {
+		if user == "" || strings.ContainsAny(user, ": ") {
+			return keyErr(key, "invalid user %q", user)
+		}
+		if password == "" {
+			return &Error{Key: key + "." + user, Message: "password is empty"}
+		}
+	}
+	return nil
+}
+
 func validateWeb(w Web) error {
 	if w.HealthEndpoint != "" && !strings.HasPrefix(w.HealthEndpoint, "/") {
 		return keyErr("health_endpoint", "must start with /")
@@ -241,13 +253,8 @@ func validateWeb(w Web) error {
 	if err := validateRateLimit(w.RateLimit); err != nil {
 		return err
 	}
-	for user, password := range w.BasicAuth {
-		if user == "" || strings.ContainsAny(user, ": ") {
-			return keyErr("basic_auth", "invalid user %q", user)
-		}
-		if password == "" {
-			return &Error{Key: "basic_auth." + user, Message: "password is empty"}
-		}
+	if err := validateBasicAuth(w.BasicAuth, "basic_auth"); err != nil {
+		return err
 	}
 	for name := range w.Headers {
 		if name == "" || strings.ContainsAny(name, ": \t") {

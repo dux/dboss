@@ -116,6 +116,7 @@ var recipeSpecs = []recipeSpec{
 			{path: "deny"},
 			{path: "headers"},
 			{path: "basic_auth"},
+			{path: "password"},
 		},
 	},
 	{

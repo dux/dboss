@@ -7,12 +7,14 @@ procfile:
     # Two copies, web.1 and web.2, each on its own port; the proxy sends a request to the one with
     # fewer in flight, so reloading / shows both PROC_INSTANCE values.
     count: 2
-  # A second web process in the same app: its own port, host and health check.
+  # A second web process in the same app: its own port, host and health check, and its own
+  # password: the browser gets a dboss page asking for "demo", while bun.lvh.me stays open.
   admin:
     command: ./start.sh
     hosts:
       - admin.bun.lvh.me
     health: /up
+    password: demo
 
 # Every web process serves ./public straight from disk at the same URL, so public/dboss.svg
 # answers /dboss.svg without waking the app. ./public is the default; false disables it.

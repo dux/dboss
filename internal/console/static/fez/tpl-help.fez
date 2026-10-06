@@ -17,7 +17,7 @@
         { id: 'scaling', title: 'Rolling restart & scaling', summary: 'Restarts a running app without dropping a request, and runs several copies of a process.' },
         { id: 'idle', title: 'Idle stop & wake', summary: 'Stops apps nobody uses and starts them again on the next request.' },
         { id: 'routing', title: 'Routing', summary: 'Sends each hostname to the right app, with redirects, headers and maintenance mode.' },
-        { id: 'access', title: 'Access control', summary: 'AuthCog sign-in, basic auth, IP allow lists and a Cloudflare-only origin.' },
+        { id: 'access', title: 'Access control', summary: 'AuthCog sign-in, basic auth, a shared password page, IP allow lists, per-client rate limits and a Cloudflare-only origin.' },
         { id: 'static', title: 'Static files', summary: 'Serves CSS, JS, images and fonts from a folder on disk, at the same URL, without waking the app.' },
         { id: 'pages', title: 'Error pages', summary: 'Replaces server errors and every page dboss answers with, from one HTML template you can replace.' },
         { id: 'cron', title: 'Scheduled jobs', summary: 'One-shot commands on an interval or a cron expression.' },
@@ -127,11 +127,22 @@
     basic_auth:
       alice: "$2a$10$..."   # dboss password
       bob: secret           # plain password
+    password: secret        # or a bcrypt hash; asked on a dboss page
+    procfile:
+      admin:
+        command: ./start.sh
+        hosts: [admin.example.com]
+        basic_auth: {}      # admin: only the password page
     allow_ips:
       - 10.0.0.0/8
     deny:
       - "*.php"
       - /admin/*
+    rate_limit:
+      requests: 10          # per client IP
+      window: 60s
+      paths: [/login]
+      methods: [POST]
 
     # host file
     proxy:
@@ -546,25 +557,27 @@
         <p>A leading <code>*.</code> matches subdomains only; a leading <code>.</code> matches the bare domain and every subdomain, so <code>hosts: .example.com</code> is <code>example.com</code> plus <code>*.example.com</code>. A single value is accepted like a list, and in single-app dev mode a process with no hosts is bound to <code>&#60;app&#62;.lvh.me</code>.</p>
         <p>Instead of writing hosts, an app can set <code>base_host</code> and give each web process a <code>host_prefix</code> (a label or wildcard pattern, or a list) prepended to it. <code>www</code> and <code>*</code> also answer the bare host, so <code>base_host: foo.bar</code> with <code>host_prefix: [www, api]</code> serves <code>www.foo.bar</code>, <code>foo.bar</code> and <code>api.foo.bar</code>, and <code>host_prefix: "*"</code> serves the apex plus every subdomain.</p>
         <p><code>maintenance on</code> answers every request with the maintenance page while the app keeps running. A stopped app gets the starting page, then the real response once it is healthy. A host no app matches gets the host's <code>404</code> page.</p>
-        <p>Each request walks the stages in this order: canonical redirect, <code>allow_ips</code>, <code>deny</code>, health endpoint, <code>auth</code> sign-in, <code>basic_auth</code>, maintenance, static files, body buffer, then wake or forward. Forwarded headers (<code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>, <code>X-Real-IP</code>) are added only when missing, so Cloudflare's values win.</p>
+        <p>Each request walks the stages in this order: canonical redirect, <code>allow_ips</code>, <code>deny</code>, health endpoint, <code>rate_limit</code>, <code>authcog</code> login, <code>auth</code> sign-in, <code>basic_auth</code>, <code>password</code>, maintenance, static files, body buffer, then wake or forward. Forwarded headers (<code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>, <code>X-Real-IP</code>) are added only when missing, so Cloudflare's values win.</p>
       </section>
     {/if}
 
     {#if state.topic === 'access'}
       <section>
         <h2>Access control</h2>
-        <p>Three app-level gates, <code>auth</code>, <code>basic_auth</code> and <code>allow_ips</code>, run in the proxy before the app sees a request. One host key, <code>proxy.cloudflare</code>, makes sure the origin only talks to Cloudflare and reads the real client IP from it. A fourth app-level feature, <code>authcog</code>, runs the AuthCog sign-in for an app that has no auth code of its own.</p>
+        <p>Four app-level gates, <code>auth</code>, <code>basic_auth</code>, <code>password</code> and <code>allow_ips</code>, run in the proxy before the app sees a request. One host key, <code>proxy.cloudflare</code>, makes sure the origin only talks to Cloudflare and reads the real client IP from it. Two more app-level features sit next to them: <code>authcog</code> runs the AuthCog sign-in for an app that has no auth code of its own, and <code>rate_limit</code> caps requests per client IP.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>Letting only named people into an app: <code>auth</code> asks for an AuthCog sign-in and admits the listed emails, the way Cloudflare Access does.</li>
           <li>Giving an app a sign-in it does not implement: <code>authcog</code> runs the whole AuthCog round trip and hands the app the profile once.</li>
           <li>Putting a password in front of a whole staging box with one <code>basic_auth</code> block under <code>defaults:</code>.</li>
+          <li>Locking only the admin web process of an app behind a shared <code>password</code>, asked on a dboss page, while the public one stays open.</li>
           <li>Limiting an admin or internal app to office and VPN addresses.</li>
           <li>Making sure nobody bypasses Cloudflare's WAF and rate limits by hitting the origin directly.</li>
+          <li>Slowing a login or signup form down per client with <code>rate_limit</code>, a path- and method-scoped cap Cloudflare cannot express.</li>
           <li>Keeping protected sleeping apps asleep: a request without valid credentials never wakes them.</li>
         </ul>
         <h3>Config keys</h3>
-        <div fez:keep="keys-access"><db-config-keys paths="auth,session_ttl,authcog,authcog_realm,basic_auth,allow_ips,deny,proxy.cloudflare" /></div>
+        <div fez:keep="keys-access"><db-config-keys paths="auth,session_ttl,authcog,authcog_realm,basic_auth,password,allow_ips,deny,rate_limit.requests,rate_limit.window,rate_limit.paths,rate_limit.methods,proxy.cloudflare" /></div>
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.access" />
         <h3>Details</h3>
@@ -574,13 +587,14 @@
           <li>The app receives the signed-in email as <code>X-Dboss-User</code>. dboss removes that header from every inbound request, so the app can trust it.</li>
           <li>A request that does not accept <code>text/html</code> gets <code>401</code> instead of a redirect.</li>
           <li>A session is issued for one app: it opens neither another app nor the console.</li>
-          <li><code>basic_auth</code> is independent: when both are set, both must pass.</li>
+          <li><code>basic_auth</code> and <code>password</code> are independent: when more than one is set, all must pass.</li>
         </ul>
-        <p><code>basic_auth</code> puts HTTP basic auth in front of the whole app, static files included. It maps a user to a plain password or a bcrypt hash printed by <code>dboss password</code>. <code>allow_ips</code> limits the app to a list of CIDRs (address ranges such as <code>10.0.0.0/8</code>), matched against the client address. <code>deny</code> refuses paths with <code>403</code> before the app is contacted: <code>*.php</code> matches any path ending in <code>.php</code>, <code>/admin/*</code> the path and its subtree, and a plain <code>/path</code> is exact, all case-insensitive.</p>
+        <p><code>basic_auth</code> puts HTTP basic auth in front of the whole app, static files included. It maps a user to a plain password or a bcrypt hash printed by <code>dboss password</code>. <code>password</code> is one shared password, plain or a bcrypt hash, asked on the dboss <code>password</code> page; the right one sets a signed cookie lasting <code>session_ttl</code>, and changing it signs everyone out. Checks from one client IP are spaced 3 seconds apart, so guessing is slow; past 30 seconds of queue the form answers <code>429</code>. A web procfile entry may set its own <code>basic_auth</code> or <code>password</code> to replace the app's for that process only, and an empty value turns the gate off there. <code>allow_ips</code> limits the app to a list of CIDRs (address ranges such as <code>10.0.0.0/8</code>), matched against the client address. <code>deny</code> refuses paths with <code>403</code> before the app is contacted: <code>*.php</code> matches any path ending in <code>.php</code>, <code>/admin/*</code> the path and its subtree, and a plain <code>/path</code> is exact, all case-insensitive.</p>
+        <p><code>rate_limit</code> counts requests per client IP over a sliding <code>window</code> and only counts a request that matches both <code>methods</code> and <code>paths</code> (patterns like <code>deny</code>); an empty list matches everything for its dimension, and <code>requests: 0</code> turns it off. Over the cap the proxy answers <code>429</code> with <code>Retry-After</code>, and a browser GET gets the <code>rate_limited</code> page. The management console is never limited.</p>
         <p><code>proxy.cloudflare: true</code> accepts connections only from Cloudflare's published ranges, built into dboss, and from the box itself; anything else gets <code>403</code>. The client address then comes from <code>CF-Connecting-IP</code>, which only Cloudflare can set. Without it the client address is the connection's own.</p>
         <ul>
           <li>A request with no or wrong credentials, or without a sign-in session, stops at the auth stage and never reaches the wake stage, so a crawler or scanner cannot start a protected sleeping app. The first request with valid credentials wakes it.</li>
-          <li>With no <code>basic_auth</code> any request wakes a stopped app, except an <code>autostart: button</code> app, which only its start button's POST wakes.</li>
+          <li>With no <code>basic_auth</code> or <code>password</code> any request wakes a stopped app, except an <code>autostart: button</code> app, which only its start button's POST wakes.</li>
           <li>The health endpoint answers before auth, so a Cloudflare health check works on a protected app. It never wakes the app.</li>
           <li>A pubsub publisher presenting the app's publish secret passes without the basic-auth credentials or a sign-in session.</li>
         </ul>
@@ -609,7 +623,7 @@
           <li>A missing file, a directory, an <code>.html</code> page, a dotfile or an extensionless path reaches the app, so a route always wins over a stray file. No index lookup.</li>
           <li>Lookups stay inside the folder, so <code>..</code> cannot escape it. A release symlink swap is picked up on the next request.</li>
           <li>Paths under <code>static_immutable</code> (default <code>/assets/</code>) get <code>Cache-Control: public, max-age=31536000, immutable</code>; everything else gets an hour.</li>
-          <li>Static files sit behind <code>auth</code>, <code>basic_auth</code>, <code>allow_ips</code> and <code>deny</code>, so a protected app protects its assets too.</li>
+          <li>Static files sit behind <code>auth</code>, <code>basic_auth</code>, <code>password</code>, <code>allow_ips</code> and <code>deny</code>, so a protected app protects its assets too.</li>
           <li>For the pages dboss serves, including server errors, see <a href="#/help?topic=pages">Error pages</a>.</li>
         </ul>
       </section>
@@ -618,7 +632,7 @@
     {#if state.topic === 'pages'}
       <section>
         <h2>Error pages</h2>
-        <p>Every page dboss answers with itself is built in and can be replaced with your own HTML: the server error page for a <code>502</code> and for an app's own <code>5xx</code>, plus starting, stopped, crashed, maintenance, forbidden, blocked, signed out, and on the host the <code>404</code> and the console login.</p>
+        <p>Every page dboss answers with itself is built in and can be replaced with your own HTML: the server error page for a <code>502</code> and for an app's own <code>5xx</code>, plus starting, waiting, stopped, crashed, maintenance, forbidden, blocked, rate limited, password, signed out, and on the host the <code>404</code> and the console login.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>One branded server error page instead of a bare <code>502</code> or the app's own error body.</li>
@@ -851,6 +865,7 @@
         <ul>
           <li>Deploying from a Git host webhook (GitHub, GitLab) without giving it shell access.</li>
           <li>Rolling the app after the command succeeds: <code>restart: true</code> restarts (or starts) it after a clean exit.</li>
+          <li>Redeploying a Git checkout from the console after seeing which commits the pull brings in.</li>
           <li>Running migrations or a console one-liner in the app's exact environment with <code>dboss exec</code>.</li>
         </ul>
         <h3>Config keys</h3>
@@ -859,6 +874,7 @@
         <db-preview-yaml :text="state.examples.hooks" />
         <h3>Details</h3>
         <p>Every ping presents <code>tokens.dboss</code> from the host file, a value you choose: <code>?token=</code> in the URL, <code>Authorization: Bearer</code>, <code>X-Gitlab-Token</code> (GitLab's Secret token field), or a GitHub <code>X-Hub-Signature-256</code> HMAC over the raw body (GitHub's Secret field). Without it every ping answers <code>401</code>. <code>dboss hooks</code> prints the ready-made URL; to change the token, edit it and run <code>dboss rescan</code>.</p>
+        <p>A Git checkout with a remote gets <code>deploy: true</code> (<code>git pull --ff-only</code>, then restart) automatically when the app file declares no <code>deploy</code> hook; a declared one replaces it, including one with <code>disabled: true</code>. The app card's <strong>Redeploy</strong> button then opens a dialog that fetches the branch's upstream and shows the local and remote commits and how many are ahead and behind. Confirm is enabled only once the remote was read, runs the <code>deploy</code> hook and shows its progress, result and last output; cancel changes nothing. The button stays disabled while a deploy or its restart runs and while the app is starting, stopping or rolling.</p>
         <p><code>dboss exec shop bundle exec rails runner ...</code> runs a one-off command in the same environment and prints its combined output; options like <code>--timeout</code> come before the command. Both hooks and cron write to their own log channel.</p>
       </section>
     {/if}
@@ -909,7 +925,7 @@
           <li>A host is written into a <code>dboss.local.yaml</code> next to the app's file, a full copy with the single web process's <code>hosts</code> set and its <code>canonical_host</code> dropped. It needs exactly one web process.</li>
           <li>A host another app already serves is refused before the rescan, so a running app never loses its host.</li>
           <li>When anything fails after the clone the folder is removed again, and the reason stays in the dialog. The action is audited as <code>add</code> with the URL.</li>
-          <li>Secrets are not in the repository: put <code>.env</code> or <code>dboss.local.yaml</code> in the app folder and restart when the first start needs them. With <code>hooks: &#123;deploy: true&#125;</code>, <code>dboss deploy git</code> updates the app afterwards.</li>
+          <li>Secrets are not in the repository: put <code>.env</code> or <code>dboss.local.yaml</code> in the app folder and restart when the first start needs them. The clone gets the automatic <code>deploy</code> hook, so <code>dboss deploy git</code> and the card's <strong>Redeploy</strong> update the app afterwards.</li>
         </ul>
       </section>
     {/if}

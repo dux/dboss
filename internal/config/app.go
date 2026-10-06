@@ -45,6 +45,10 @@ type ProcessSpec struct {
 	// Count is how many copies of the process run; 0 means one. Copies of a web process share
 	// its hosts and the proxy balances between them.
 	Count int `yaml:"count,omitempty" json:"count,omitempty"`
+	// BasicAuth and Password replace the app-level values for this web process only; nil
+	// inherits, an empty value turns the gate off here.
+	BasicAuth map[string]string `yaml:"basic_auth,omitempty" json:"-"`
+	Password  *string           `yaml:"password,omitempty" json:"-"`
 }
 
 // MaxCount bounds procfile count, so one typo cannot claim the whole port range.
@@ -55,7 +59,7 @@ func (p ProcessSpec) Instances() int { return max(p.Count, 1) }
 
 // processSpecKeys are the keys of the mapping form, in the order the hints name them. They are
 // checked here because a custom decoder is a leaf as far as the schema walk is concerned.
-var processSpecKeys = []string{"command", "hosts", "host_prefix", "pubsub", "health", "canonical_host", "count"}
+var processSpecKeys = []string{"command", "hosts", "host_prefix", "pubsub", "health", "canonical_host", "count", "basic_auth", "password"}
 
 // processSpecFields is ProcessSpec without its methods, so the mapping form decodes and encodes
 // through the struct tags instead of recursing into the custom marshalers.
@@ -80,7 +84,7 @@ func (p *ProcessSpec) UnmarshalYAML(node *yaml.Node) error {
 
 // commandOnly reports whether the process only runs a command, which marshals as a scalar.
 func (p ProcessSpec) commandOnly() bool {
-	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1
+	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.BasicAuth == nil && p.Password == nil
 }
 
 // MarshalYAML writes a scalar command when the process only runs a command, else the full mapping,
@@ -233,6 +237,9 @@ type WebProcess struct {
 	Pubsub        Pubsub
 	// Static is the directory served straight from disk; empty disables it.
 	Static string
+	// BasicAuth and Password are the app-level gates with the process's own values applied.
+	BasicAuth map[string]string
+	Password  string
 }
 
 type App struct {
@@ -370,6 +377,34 @@ func (a *App) resolveStatic() {
 	for index := range a.WebProcesses {
 		a.WebProcesses[index].Static = string(a.Web.Static)
 	}
+}
+
+// resolveAccess gives every web process the app-level basic_auth and password, replaced by the
+// procfile entry's own value when it sets one, so two web processes of one app can differ.
+func (a *App) resolveAccess() error {
+	for index := range a.WebProcesses {
+		web := &a.WebProcesses[index]
+		spec := a.Procfile[web.Name]
+		web.BasicAuth, web.Password = a.Web.BasicAuth, a.Web.Password
+		if spec.BasicAuth != nil {
+			if err := validateBasicAuth(spec.BasicAuth, "procfile."+web.Name+".basic_auth"); err != nil {
+				return err
+			}
+			web.BasicAuth = spec.BasicAuth
+		}
+		if spec.Password != nil {
+			web.Password = *spec.Password
+		}
+	}
+	for _, name := range processNames(a.Procfile) {
+		spec := a.Procfile[name]
+		for key, set := range map[string]bool{"basic_auth": spec.BasicAuth != nil, "password": spec.Password != nil} {
+			if set && !a.IsWeb(name) {
+				return &Error{Key: "procfile." + name + "." + key, Message: key + " is only valid on a web process", Hint: "declare hosts on this process, or set " + key + " at the top level of the app file"}
+			}
+		}
+	}
+	return nil
 }
 
 // resolveHealth moves each web process's health path onto its process keys. Only a web process may
@@ -528,6 +563,9 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 		return App{}, err
 	}
 	app.resolveStatic()
+	if err := app.resolveAccess(); err != nil {
+		return App{}, err
+	}
 	if err := app.resolveHealth(); err != nil {
 		return App{}, err
 	}

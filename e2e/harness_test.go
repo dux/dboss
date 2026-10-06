@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os/exec"
 	"strings"
 	"sync"
@@ -136,19 +137,43 @@ func eventually(t *testing.T, timeout time.Duration, check func() error) {
 // serving waits until the path answers 200 through the proxy; a stopped app wakes on it.
 func serving(t *testing.T, hostname, path string) reply {
 	t.Helper()
+	return servingCall(t, call{host: hostname, path: path})
+}
+
+// servingCall is serving for a request that carries its own headers, such as a session cookie.
+func servingCall(t *testing.T, c call) reply {
+	t.Helper()
 	var last reply
 	eventually(t, 60*time.Second, func() error {
-		r, err := call{host: hostname, path: path}.try()
+		r, err := c.try()
 		if err != nil {
 			return err
 		}
 		last = r
 		if r.Status != http.StatusOK {
-			return fmt.Errorf("%s%s answered %d", hostname, path, r.Status)
+			return fmt.Errorf("%s%s answered %d", c.host, c.path, r.Status)
 		}
 		return nil
 	})
 	return last
+}
+
+// passwordLogin posts the demo password page and returns the session cookie as a request header.
+func passwordLogin(t *testing.T, hostname, password string) map[string]string {
+	t.Helper()
+	r := passwordPost(t, hostname, password)
+	expectStatus(t, r, http.StatusSeeOther)
+	cookie, _, _ := strings.Cut(r.Header.Get("Set-Cookie"), ";")
+	if !strings.HasPrefix(cookie, "dboss_password=") {
+		t.Fatalf("password login set %q", r.Header.Get("Set-Cookie"))
+	}
+	return map[string]string{"Cookie": cookie}
+}
+
+func passwordPost(t *testing.T, hostname, password string) reply {
+	t.Helper()
+	form := url.Values{"password": {password}, "to": {"/"}}
+	return call{method: http.MethodPost, host: hostname, path: "/.well-known/dboss/password", body: []byte(form.Encode()), header: map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Accept": "text/html"}}.do(t)
 }
 
 // apiEnvelope is the HTTP API's one answer shape.

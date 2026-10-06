@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"dboss/internal/authcog"
 	"dboss/internal/config"
 	"dboss/internal/logstore"
 	"dboss/internal/supervisor"
@@ -28,7 +29,7 @@ func (f *fakeRecorder) RecordBlocked(path string) error {
 
 // featureHandler has no manager: every step before forwarding must answer on its own.
 func featureHandler() *Handler {
-	handler := &Handler{cfg: config.Default(), hostConfig: config.Default}
+	handler := &Handler{cfg: config.Default(), hostConfig: config.Default, signin: authcog.NewWithKey([]byte("01234567890123456789012345678901")), passwords: newPasswordThrottle()}
 	handler.initFilters()
 	return handler
 }

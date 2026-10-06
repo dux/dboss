@@ -73,6 +73,7 @@ type Handler struct {
 	hostConfig func() config.Config
 	filters    []Filter
 	limiter    *rateLimiter
+	passwords  *passwordThrottle
 	ticker     module.Ticker
 }
 
@@ -80,7 +81,7 @@ type Handler struct {
 // module hooks its own filter into the pipeline.
 func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, recorder Recorder, authorizer PublishAuthorizer, extra ...Filter) (*Handler, error) {
 	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: upstreamDialTimeout}).DialContext, ResponseHeaderTimeout: cfg.Proxy.Timeout.Value(), IdleConnTimeout: upstreamIdleTimeout, MaxIdleConnsPerHost: upstreamIdleConnsPerApp}
-	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter()}
+	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter(), passwords: newPasswordThrottle()}
 	h.initFilters(extra...)
 	return h, nil
 }
@@ -88,7 +89,10 @@ func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, r
 // Start begins the rate limiter's background sweep. Nothing runs until it is called, so a Handler
 // built only for a test holds no goroutine. Close stops the sweep and waits for a pass in flight.
 func (h *Handler) Start(ctx context.Context) {
-	h.ticker.Run(ctx, rateSweepInterval, false, func(context.Context) { h.limiter.sweep(h.limiter.now()) })
+	h.ticker.Run(ctx, rateSweepInterval, false, func(context.Context) {
+		h.limiter.sweep(h.limiter.now())
+		h.passwords.sweep()
+	})
 }
 
 func (h *Handler) Close() error { return h.ticker.Close() }
@@ -161,26 +165,38 @@ func denied(requestPath string, patterns []string) bool {
 	return false
 }
 
+// gates returns the basic_auth users and the password of the web process the request host
+// matched, falling back to the app-level values so a host no web process claims never runs open.
+func gates(r *http.Request, app supervisor.Snapshot) (web string, users map[string]string, password string) {
+	if process, ok := app.WebForHost(r.Host); ok {
+		return process.Name, process.BasicAuth, process.Password
+	}
+	return "", app.Web.BasicAuth, app.Web.Password
+}
+
 // authorized checks basic_auth. The user lookup is a plain map hit because the user list is not
-// secret. A value bcrypt can parse is a hash and goes through bcrypt's compare; anything else is a
-// plain password, compared in constant time over sha256 digests so its length does not leak.
-func authorized(r *http.Request, snapshot supervisor.Snapshot) bool {
-	if len(snapshot.Web.BasicAuth) == 0 {
+// secret.
+func authorized(r *http.Request, users map[string]string) bool {
+	if len(users) == 0 {
 		return true
 	}
 	user, password, ok := r.BasicAuth()
 	if !ok {
 		return false
 	}
-	want, found := snapshot.Web.BasicAuth[user]
-	if !found {
-		return false
-	}
+	want, found := users[user]
+	return found && secretMatches(want, password)
+}
+
+// secretMatches compares a configured password with the one given. A value bcrypt can parse is a
+// hash and goes through bcrypt's compare; anything else is a plain password, compared in constant
+// time over sha256 digests so its length does not leak.
+func secretMatches(want, got string) bool {
 	if _, err := bcrypt.Cost([]byte(want)); err == nil {
-		return bcrypt.CompareHashAndPassword([]byte(want), []byte(password)) == nil
+		return bcrypt.CompareHashAndPassword([]byte(want), []byte(got)) == nil
 	}
-	got, expected := sha256.Sum256([]byte(password)), sha256.Sum256([]byte(want))
-	return subtle.ConstantTimeCompare(got[:], expected[:]) == 1
+	gotSum, wantSum := sha256.Sum256([]byte(got)), sha256.Sum256([]byte(want))
+	return subtle.ConstantTimeCompare(gotSum[:], wantSum[:]) == 1
 }
 
 // serveStatic answers GET and HEAD for files under the static directory. Missing files and

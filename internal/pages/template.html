@@ -15,6 +15,7 @@
   --muted: #667382;
   --primary: #0054a6;
   --primary-hover: #004a92;
+  --danger: #d63939;
   --shadow: 0 8px 24px rgb(4 32 69 / 10%);
 }
 @media (prefers-color-scheme: dark) {
@@ -26,6 +27,7 @@
     --muted: #9aa7b6;
     --primary: #4a90d9;
     --primary-hover: #5e9fe2;
+    --danger: #ef7676;
     --shadow: 0 8px 24px rgb(0 0 0 / 30%);
   }
 }
@@ -78,6 +80,20 @@ p { margin: 0; color: var(--muted); }
 }
 .action button:hover,
 .action a:hover { border-color: var(--primary-hover); background: var(--primary-hover); }
+.action .password { display: flex; flex-direction: column; gap: 12px; }
+.action .password button { width: 100%; }
+.action input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+.action input:focus { border-color: var(--primary); outline: 2px solid var(--primary); outline-offset: -1px; }
+.action .error { color: var(--danger); font-size: 14px; }
 footer { color: var(--muted); font-size: 13px; }
 </style>
 </head>

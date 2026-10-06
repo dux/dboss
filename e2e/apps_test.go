@@ -86,7 +86,7 @@ func TestProcessStopAndStart(t *testing.T) {
 	// The rest of the app keeps serving.
 	expectStatus(t, get(t, "bun.lvh.me", "/up"), http.StatusOK)
 	api(t, "start", map[string]any{"app": "bun", "process": "admin"}, nil)
-	expectBody(t, serving(t, "admin.bun.lvh.me", "/"), "PROC_TYPE=admin")
+	expectBody(t, servingCall(t, call{host: "admin.bun.lvh.me", path: "/", header: passwordLogin(t, "admin.bun.lvh.me", "demo")}), "PROC_TYPE=admin")
 }
 
 func TestIdleStopAndWake(t *testing.T) {

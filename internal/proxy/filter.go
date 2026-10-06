@@ -30,7 +30,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, app supervisor.S
 // initFilters assembles the pipeline: built-ins, then extra module filters, then the forward
 // stage that ends every request.
 func (h *Handler) initFilters(extra ...Filter) {
-	h.filters = append(h.filters[:0], h.canonical, h.allow, h.block, h.publicHealth, h.rateLimit, h.authCog, h.signIn, h.authorize, h.maintain, h.staticFiles, h.bufferBody)
+	h.filters = append(h.filters[:0], h.canonical, h.allow, h.block, h.publicHealth, h.rateLimit, h.authCog, h.signIn, h.authorize, h.passwordGate, h.maintain, h.staticFiles, h.bufferBody)
 	h.filters = append(h.filters, extra...)
 	h.filters = append(h.filters, func(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, _ func()) {
 		h.forward(w, r, app)
@@ -67,7 +67,7 @@ func (h *Handler) block(w http.ResponseWriter, r *http.Request, app supervisor.S
 }
 
 func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
-	if authorized(r, app) || h.exempt(r, app) {
+	if _, users, _ := gates(r, app); authorized(r, users) || h.exempt(r, app) {
 		next()
 		return
 	}
@@ -75,7 +75,7 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, app supervis
 	http.Error(w, "authentication required", http.StatusUnauthorized)
 }
 
-// exempt reports whether a request passes basic_auth and the sign-in gate on its own terms: the
+// exempt reports whether a request passes basic_auth, the password and the sign-in gate on its own terms: the
 // app owns its authcog login namespace, where dboss hands the identity over, and a module can
 // vouch for a request, e.g. a pubsub publisher presenting its own secret.
 func (h *Handler) exempt(r *http.Request, app supervisor.Snapshot) bool {

@@ -35,8 +35,9 @@ type Process struct {
 	CPUMax             int               `yaml:"cpu_max" json:"cpu_max"`
 }
 
-// Web drives the proxy in front of the app. BasicAuth never leaves the process as JSON so the
-// hashes stay out of the console and `dboss status --json`.
+// Web drives the proxy in front of the app. BasicAuth and Password (the one shared password
+// asked on a dboss page) never leave the process as JSON so the hashes stay out of the console
+// and `dboss status --json`.
 type Web struct {
 	HealthEndpoint   string            `yaml:"health_endpoint" json:"health_endpoint"`
 	Static           StaticPath        `yaml:"static" json:"static"`
@@ -44,6 +45,7 @@ type Web struct {
 	StaticExtensions List              `yaml:"static_extensions" json:"static_extensions"`
 	MaxBody          Size              `yaml:"max_body" json:"max_body"`
 	BasicAuth        map[string]string `yaml:"basic_auth" json:"-"`
+	Password         string            `yaml:"password" json:"-"`
 	AllowIPs         List              `yaml:"allow_ips" json:"allow_ips"`
 	// Deny refuses a request path with 403 before the app is contacted: *.ext matches a suffix
 	// and /path/* a subtree.

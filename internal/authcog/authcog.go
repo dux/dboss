@@ -121,7 +121,7 @@ func (f *Flow) Start(w http.ResponseWriter, r *http.Request, gate Gate) {
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
-	redirectTo := safeRedirect(r.URL.RequestURI(), gate.CallbackPath)
+	redirectTo := SafeRedirect(r.URL.RequestURI(), gate.CallbackPath)
 	now := time.Now()
 	f.mu.Lock()
 	for key, pending := range f.challenges {
@@ -328,7 +328,9 @@ func Destination(rawHost, scheme string, hosts func(string) bool) (string, error
 
 var defaultPorts = map[string]string{"http": "80", "https": "443"}
 
-func safeRedirect(target, callbackPath string) string {
+// SafeRedirect keeps a post-sign-in target on the same site: a local path that is not the gate's
+// own endpoint, else "/".
+func SafeRedirect(target, callbackPath string) string {
 	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") || strings.Contains(target, "\\") || strings.HasPrefix(target, callbackPath) {
 		return "/"
 	}

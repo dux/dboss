@@ -445,6 +445,34 @@ func TestWebHealthPath(t *testing.T) {
 	}
 }
 
+// Each web process starts from the app's basic_auth and password; its own value replaces them,
+// and an empty one turns the gate off for that process only.
+func TestWebProcessAccessOverrides(t *testing.T) {
+	defaults := Default().Defaults
+	defaults.Password = "host"
+	data := "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    password: \"\"\n  admin:\n    command: ./server\n    hosts: [admin.demo.test]\n    password: admin\n    basic_auth:\n      ops: x\n  api:\n    command: ./server\n    hosts: [api.demo.test]\n    basic_auth: {}\n  job: ./job\nbasic_auth:\n  alice: secret\n"
+	app, err := ParseApp([]byte(data), "app/dboss.yaml", defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	webs := map[string]WebProcess{}
+	for _, web := range app.WebProcesses {
+		webs[web.Name] = web
+	}
+	if web := webs["web"]; web.Password != "" || web.BasicAuth["alice"] != "secret" {
+		t.Errorf("web = %q %v", web.Password, web.BasicAuth)
+	}
+	if admin := webs["admin"]; admin.Password != "admin" || len(admin.BasicAuth) != 1 || admin.BasicAuth["ops"] != "x" {
+		t.Errorf("admin = %q %v", admin.Password, admin.BasicAuth)
+	}
+	if api := webs["api"]; api.Password != "host" || len(api.BasicAuth) != 0 {
+		t.Errorf("api = %q %v", api.Password, api.BasicAuth)
+	}
+	if app.Web.Password != "host" || app.Web.BasicAuth["alice"] != "secret" {
+		t.Errorf("app-level values changed: %q %v", app.Web.Password, app.Web.BasicAuth)
+	}
+}
+
 func TestAppRejectsInvalidWebKeys(t *testing.T) {
 	defaults := Default().Defaults
 	for _, test := range []struct{ name, data, want string }{
@@ -457,6 +485,8 @@ func TestAppRejectsInvalidWebKeys(t *testing.T) {
 		{"deny root", "procfile:\n  web: ./server\ndeny: [/]\n", "deny"},
 		{"deny trailing star", "procfile:\n  web: ./server\ndeny: [/admin*]\n", "deny"},
 		{"basic auth", "procfile:\n  web: ./server\nbasic_auth:\n  alice: \"\"\n", "password is empty"},
+		{"process basic auth", "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    basic_auth:\n      alice: \"\"\n", "procfile.web.basic_auth.alice: password is empty"},
+		{"password on a worker", "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  job:\n    command: ./job\n    password: x\n", "procfile.job.password: password is only valid on a web process"},
 		{"header name", "procfile:\n  web: ./server\nheaders:\n  \"X Y\": z\n", "headers"},
 		{"auth email", "procfile:\n  web: ./server\nauth: [not-an-email]\n", "auth: invalid entry"},
 		{"auth domain pattern", "procfile:\n  web: ./server\nauth: [\"*@bad domain\"]\n", "auth: invalid domain"},

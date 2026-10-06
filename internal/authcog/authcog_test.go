@@ -191,11 +191,11 @@ func TestDestinationCarriesSchemeAndNonDefaultPort(t *testing.T) {
 
 func TestSafeRedirectRejectsAuthorityAndCallbackPaths(t *testing.T) {
 	for _, target := range []string{"https://example.com", "//example.com", `/\\example.com`, "/authcog?callback=value"} {
-		if got := safeRedirect(target, "/authcog"); got != "/" {
-			t.Fatalf("safeRedirect(%q) = %q", target, got)
+		if got := SafeRedirect(target, "/authcog"); got != "/" {
+			t.Fatalf("SafeRedirect(%q) = %q", target, got)
 		}
 	}
-	if got := safeRedirect("/apps?state=running", "/authcog"); got != "/apps?state=running" {
+	if got := SafeRedirect("/apps?state=running", "/authcog"); got != "/apps?state=running" {
 		t.Fatalf("safe path changed to %q", got)
 	}
 }

@@ -47,7 +47,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Events** - JSON event lines stored as Parquet, with filters, saved views, funnels and DuckDB SQL.
 * **Deploys** - `dboss deploy sync` over ssh, `dboss deploy git`, or a signed GitHub/GitLab webhook.
 * **Scheduled jobs** - per-app cron that runs even while the app is stopped.
-* **Access control** - basic auth, IP allowlists or SSO sign-in in front of any app, no app code changes.
+* **Access control** - basic auth, a shared password page, IP allowlists or SSO sign-in in front of any app, no app code changes.
 * **Web console** - live state, start/stop, log search, config editing with history, and an audit row for every action.
 * **PostgreSQL** - inspection, SQL prompt, scheduled backups, rotation and restore.
 * **PubSub** - realtime channels over WebSocket or SSE.
@@ -174,7 +174,7 @@ The startup banner names the address every app ended up on, so when the demo fal
 
 * http://dboss.lvh.me - management console
 * http://sinatra.lvh.me - Ruby app (`autostart: false`, wakes on first request; needs the Ruby from `./demo/apps/sinatra/mise.toml` and `bundle install`): a worker with a file log, events, custom dboss pages, `/raise` for the exception stream and `/boom` and `/slow` for the alerts
-* http://bun.lvh.me - Bun app: two copies of `web` (`count: 2`), a second web process on http://admin.bun.lvh.me, static files, cron, a deploy hook, lifecycle steps, events and the AuthCog login at `/authcog`
+* http://bun.lvh.me - Bun app: two copies of `web` (`count: 2`), a second web process on http://admin.bun.lvh.me behind its own `password` (`demo`), static files, cron, a deploy hook, lifecycle steps, events and the AuthCog login at `/authcog`
 * http://button.lvh.me - Bun app with `autostart: button`; it serves a start button and only its POST brings it up, so a crawler or favicon request never starts it (stop it in the console to see the page again); behind `auth` with a pubsub chat at `/chat`
 * http://scratch.lvh.me - `deletable` throwaway app behind `basic_auth` (`demo` / `demo`) and `allow_ips`; destroy it to see the destroy step, `git checkout demo/apps/scratch` brings it back
 
@@ -616,7 +616,7 @@ It needs exactly one web process.
 dboss clones, validates the file against the host `defaults`, refuses a host another app already serves (a rescan would otherwise hand the host to whichever app sorts first), rescans and starts the app, so its `lifecycle.create` step runs.
 When anything fails after the clone, the folder is removed again and the reason is shown; the action is audited as `add` with the URL.
 Secrets are not in the repository: put `.env` or `dboss.local.yaml` in the folder and restart when the first start needs them.
-With `hooks: {deploy: true}` in the app file, `dboss deploy git` updates the app from then on.
+The clone has a remote, so it gets the automatic `deploy` hook and `dboss deploy git` updates the app from then on.
 
 ## Deploying
 
@@ -637,7 +637,7 @@ rsync's own `--delete` is not used on purpose: openrsync, the macOS default, rem
 It needs `git`, `rsync` and `ssh` locally, and `rsync` plus `dboss` on the ssh user's `PATH` on the box; ssh in as the service user.
 
 `git` needs no ssh.
-It posts to the app's `deploy` hook (`hooks: {deploy: true}`, see below) with `tokens.dboss` as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
+It posts to the app's `deploy` hook (automatic for a Git checkout with a remote, else `hooks: {deploy: true}`, see below) with `tokens.dboss` as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
 A failed pull prints git's answer and exits with its code; an app without the hook gets the line to add.
 
 ## Deploy hooks
@@ -654,6 +654,9 @@ hooks:
 ```
 
 A hook can also be written as the bare boolean `deploy: true`, shorthand for `git pull --ff-only` in the app folder plus `restart: true`; `git` must be on the service user's `PATH`, and a non-fast-forward update or a dirty tree fails the hook without restarting. `dboss hooks [app]` shows the resolved command.
+A Git checkout with a remote gets `deploy: true` automatically when the app file declares no `deploy` hook.
+A declared `deploy` hook replaces it, including one with `disabled: true`.
+A packed release without `.git` gets no automatic hook.
 
 For a private repo, set `tokens.github` (a PAT) in the host file; write `$GITHUB_TOKEN` to keep it out of the file. dboss hands it to the pull through the environment only, via a credential helper (git 2.31+), so it never lands in argv, the repo's config or the app's processes; with no token the pull stays anonymous.
 
@@ -892,6 +895,10 @@ procfile:
 
 `basic_auth` puts HTTP basic auth in front of the whole app, static files included.
 It maps a user to a plain password or a bcrypt hash printed by `dboss password`; set it under `defaults:` in the host file to protect every app on a staging box with one block.
+`password` is the lighter gate: one shared password, plain or a bcrypt hash, asked on a dboss page (the `password` page, replaceable like the others) instead of the browser's basic-auth dialog.
+The right password sets a signed, host-only cookie lasting `session_ttl`, changing the password signs everyone out, and a request that does not accept `text/html` gets `401`.
+Password checks from one client IP are spaced 3 seconds apart, across every app and kept in memory only; parallel guesses queue, and past 30 seconds of queue the check answers `429` at once.
+Both keys are app keys, and a web procfile entry may set its own `basic_auth` or `password` to replace the app's for that web process only; an empty value (`basic_auth: {}`, `password: ""`) turns the gate off there.
 `allow_ips` limits the app to a list of CIDRs (address ranges such as `10.0.0.0/8`), matched against the client address.
 `deny` refuses paths with `403` before the app is contacted: `*.php` matches any path ending in `.php`, `/admin/*` the path and everything under it, and a plain `/path` is exact, all case-insensitive.
 Each blocked path is counted once in the reserved host database (`log/_dboss/dboss.sqlite`, table `blocked`: `path`, `count`), aggregated across apps and over time.
@@ -908,6 +915,17 @@ deny:
   - "*.php"
   - /admin/*
   - /server-status
+```
+
+```yaml
+procfile:
+  web:
+    command: ./start.sh
+    hosts: [myapp.com]            # open
+  admin:
+    command: ./start.sh
+    hosts: [admin.myapp.com]
+    password: $ADMIN_PASSWORD     # only admin asks, on a dboss page
 ```
 
 `rate_limit` caps requests per client IP over a sliding window, counting only requests that match both `methods` and `paths` (an empty list is a wildcard for that dimension); anything else is untouched. Over the cap the proxy answers `429` with `Retry-After`, and a browser GET gets the `rate_limited` page.
@@ -933,7 +951,7 @@ A visitor without a session is sent to AuthCog (`authcog_realm` in the host file
 Only the listed emails and `*@domain` patterns get in (`"*"` admits any AuthCog account), and the list is checked on every request, so removing an entry ends that session on the next `dboss rescan`.
 The app receives the signed-in email as `X-Dboss-User`; dboss strips that header from every inbound request, so the app can trust it.
 A request that does not accept `text/html` gets `401` instead of a redirect.
-`basic_auth` and `auth` are independent: when both are set, both must pass.
+`basic_auth`, `password` and `auth` are independent: when more than one is set, all must pass.
 
 `authcog` is the app-level login service: dboss runs the whole AuthCog round trip so the app needs no AuthCog code of its own.
 
@@ -943,10 +961,10 @@ authcog: true   # or a path; true captures /authcog, which must match the realm'
 
 The app links to the path. dboss mints the challenge, sends the browser to `https://<authcog_realm>/d:<host>[/p:<port>][/s:http]` (the port only when it is not the scheme's default, the scheme only when the request was not https; it is read from TLS or the edge's `X-Forwarded-Proto`), and on the `?callback=` return exchanges the one-time hash server-side. It then forwards one request to the app's own route at that path with the profile in `X-Dboss-User` (`{"email","name","avatar","provider"}`). The app reads what it needs and creates its own session; dboss keeps no session. `X-Dboss-User` is removed from every inbound request, so only dboss can set it, and it is set only on that post-login request. Any AuthCog account is admitted, and logout is the app's job. `authcog` is independent of `auth`: its login path is never gated by `auth`.
 
-Each request walks the stages in this order: canonical redirect, `allow_ips`, `deny`, health endpoint, `rate_limit`, `authcog` login, `auth` sign-in, `basic_auth`, maintenance, static files, body buffer, then wake or forward.
+Each request walks the stages in this order: canonical redirect, `allow_ips`, `deny`, health endpoint, `rate_limit`, `authcog` login, `auth` sign-in, `basic_auth`, `password`, maintenance, static files, body buffer, then wake or forward.
 
 * A request with no or wrong credentials gets `401` at the auth stage and never reaches the wake stage, so a crawler or scanner cannot start a protected sleeping app. The first request with valid credentials wakes it.
-* With no `basic_auth` any request wakes a stopped app, except an `autostart: button` app, which only its start button's POST wakes.
+* With no `basic_auth` or `password` any request wakes a stopped app, except an `autostart: button` app, which only its start button's POST wakes.
 * The health endpoint answers before auth, so a Cloudflare health check works on a protected app. It never wakes the app.
 * A pubsub publisher presenting the app's publish secret passes without the basic-auth credentials or a sign-in session.
 * The same holds for `auth`: no session means no wake, the health endpoint stays open, and static files are protected.
@@ -976,6 +994,7 @@ Every page dboss answers with itself is built in and can be replaced, the server
 | `forbidden` | 403 | `allow_ips` turns the visitor away |
 | `blocked` | 403 | the `deny` list covers the path |
 | `rate_limited` | 429 | a client exceeds `rate_limit` |
+| `password` | 401 | the web process has a `password`; it carries the password form |
 | `signed_out` | 200 | after `/.well-known/dboss/logout` |
 | `404` | 404 | a host no app owns (host only) |
 | `login` | 401 | the console without a session (host only) |

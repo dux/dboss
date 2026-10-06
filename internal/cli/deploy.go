@@ -99,6 +99,9 @@ func (c CLI) deploySync(args []string) error {
 	if cfg.App == nil {
 		return fmt.Errorf("%s is a host config; run deploy sync inside an app folder", configFile)
 	}
+	if err := checkBranch(cfg.Dir, cfg.App.Branch); err != nil {
+		return err
+	}
 	files, untracked, err := syncManifest(cfg.Dir)
 	if err != nil {
 		return err
@@ -178,6 +181,21 @@ func syncManifest(dir string) ([]string, int, error) {
 		return nil, 0, err
 	}
 	return files, len(untracked), nil
+}
+
+// checkBranch refuses to ship a checkout that is not on the app's `branch`.
+func checkBranch(dir, branch string) error {
+	if branch == "" {
+		return nil
+	}
+	current, err := gitList(dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil || len(current) != 1 {
+		return fmt.Errorf("branch: %s requires a checkout on branch %q, this one has none", filepath.Join(dir, config.FileName), branch)
+	}
+	if got := strings.TrimSpace(current[0]); got != branch {
+		return fmt.Errorf("branch: this checkout is on %q, the app requires %q; switch branches first", got, branch)
+	}
+	return nil
 }
 
 func gitList(dir string, args ...string) ([]string, error) {

@@ -658,6 +658,12 @@ A Git checkout with a remote gets `deploy: true` automatically when the app file
 A declared `deploy` hook replaces it, including one with `disabled: true`.
 A packed release without `.git` gets no automatic hook.
 
+`branch: main` in the app file pins the app's own checkout (a folder holding its own `.git`) to that branch.
+Every start outside a dev session first checks it: on any other branch or a detached HEAD, dboss runs `git stash push --include-untracked` (ignored files such as `.env` stay) and `git checkout main`, logged in the `lifecycle-branch` channel.
+A failed stash or checkout fails the start.
+After a switch dboss rescans, so the rest of the start runs that branch's `dboss.yaml`.
+The pull hook, the console's **Redeploy** and `dboss deploy sync` refuse a checkout on any other branch.
+
 For a private repo, set `tokens.github` (a PAT) in the host file; write `$GITHUB_TOKEN` to keep it out of the file. dboss hands it to the pull through the environment only, via a credential helper (git 2.31+), so it never lands in argv, the repo's config or the app's processes; with no token the pull stays anonymous.
 
 The ping URL is `https://<management.host>/hooks/<app>/<hook>`. Every ping presents `tokens.dboss` from the host file, a value you choose (for example `openssl rand -hex 32`) and paste into the sender: `?token=<token>` in the URL, `Authorization: Bearer`, `X-Gitlab-Token` (GitLab's Secret token field), or a GitHub `X-Hub-Signature-256` HMAC over the raw body (GitHub's Secret field). Without the token every ping answers `401`. `X-GitHub-Event: ping` (sent when the webhook is created) is acknowledged without running anything.

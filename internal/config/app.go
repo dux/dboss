@@ -248,6 +248,9 @@ type App struct {
 	// serves it, with each of its host_prefix values prepended. Empty leaves the hosts to the
 	// process hosts and host_prefix.
 	BaseHost string `yaml:"base_host" json:"base_host,omitempty"`
+	// Branch is the git branch the app's checkout must be on: a start switches to it, a pull
+	// deploy refuses any other. Empty leaves the checkout alone.
+	Branch string `yaml:"branch" json:"branch,omitempty"`
 	// WebProcesses and Hosts are derived from every procfile entry that declares hosts; they
 	// are never written back to YAML and exist for the supervisor and proxy.
 	WebProcesses []WebProcess       `yaml:"-" json:"-"`
@@ -494,6 +497,7 @@ func (a *App) UseDevHosts(app string) {
 type appFile struct {
 	Procfile  map[string]ProcessSpec      `yaml:"procfile"`
 	BaseHost  string                      `yaml:"base_host"`
+	Branch    string                      `yaml:"branch"`
 	Autostart Autostart                   `yaml:"autostart"`
 	Deletable bool                        `yaml:"deletable"`
 	Cron      map[string]CronJob          `yaml:"cron"`
@@ -537,7 +541,7 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 	if len(raw.Procfile) == 0 {
 		return App{}, &Error{Key: "procfile", Message: "must contain at least one process", Hint: "e.g. procfile:\n    web: bundle exec puma"}
 	}
-	app := App{Procfile: raw.Procfile, BaseHost: raw.BaseHost, Autostart: AutostartOn, Deletable: raw.Deletable, Cron: raw.Cron, Hooks: raw.Hooks, Lifecycle: raw.Lifecycle, Pages: DefaultPages, Defaults: defaults, Processes: raw.Processes}
+	app := App{Procfile: raw.Procfile, BaseHost: raw.BaseHost, Branch: raw.Branch, Autostart: AutostartOn, Deletable: raw.Deletable, Cron: raw.Cron, Hooks: raw.Hooks, Lifecycle: raw.Lifecycle, Pages: DefaultPages, Defaults: defaults, Processes: raw.Processes}
 	if raw.Pages != "" {
 		app.Pages = raw.Pages
 	}
@@ -590,6 +594,9 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 		return App{}, err
 	}
 	if err := validateLifecycle(app.Lifecycle); err != nil {
+		return App{}, err
+	}
+	if err := validateBranch(app.Branch); err != nil {
 		return App{}, err
 	}
 	app.allowPrefixes, _ = parsePrefixes(app.AllowIPs)

@@ -29,7 +29,8 @@ type App struct {
 	Commands map[string]Command `json:"commands"`
 	Cron     map[string]CronJob `json:"cron"`
 	Hooks    map[string]Hook    `json:"hooks"`
-	// Lifecycle holds the create, start and destroy steps that are set.
+	// Lifecycle holds the create, start and destroy steps that are set, plus dboss's own branch
+	// step when the app sets `branch` and its folder is a checkout of its own.
 	Lifecycle map[string]Step `json:"lifecycle"`
 	// Env is the daemon environment plus mise; FileEnv is .env overlaid by .env.local. Config
 	// env sits between them at process start, so it is applied when the process env is built.
@@ -229,13 +230,17 @@ func buildApp(name, dir string, appCfg config.App) (*App, error) {
 		merge(fileEnv, values)
 	}
 	branch, branchURL, gitConnected := gitSource(dir, fileEnv)
-	hooks := buildHooks(appCfg.Hooks)
-	if _, configured := hooks["deploy"]; !configured && gitConnected {
-		if _, checkout := findGitDir(dir); checkout {
-			hooks["deploy"] = buildHook("deploy", config.PullHook())
-		}
+	_, checkout := findGitDir(dir)
+	hooks := buildHooks(appCfg.Hooks, appCfg.Branch)
+	if _, configured := hooks["deploy"]; !configured && gitConnected && checkout {
+		hooks["deploy"] = buildHook("deploy", config.PullHook(), appCfg.Branch)
 	}
-	return &App{Name: name, Dir: dir, Commands: commands, Cron: cron, Hooks: hooks, Lifecycle: buildLifecycle(appCfg.Lifecycle), Env: env, FileEnv: fileEnv, Config: appCfg, Branch: branch, BranchURL: branchURL, GitConnected: gitConnected}, nil
+	lifecycle := buildLifecycle(appCfg.Lifecycle)
+	// Only a checkout of its own: an app inside a larger repository never stashes or switches it.
+	if appCfg.Branch != "" && checkout {
+		lifecycle["branch"] = Step{Command: newCommand("branch", config.BranchCommand(appCfg.Branch)), Timeout: config.DefaultLifecycleTimeout}
+	}
+	return &App{Name: name, Dir: dir, Commands: commands, Cron: cron, Hooks: hooks, Lifecycle: lifecycle, Env: env, FileEnv: fileEnv, Config: appCfg, Branch: branch, BranchURL: branchURL, GitConnected: gitConnected}, nil
 }
 
 // newCommand is one config command line, run through /bin/sh -c; config has already refused an
@@ -264,15 +269,19 @@ func buildCron(jobs map[string]config.CronJob) (map[string]CronJob, error) {
 }
 
 // buildHooks parses every hook command once; hooks have no schedule, they only fire on a ping.
-func buildHooks(hooks map[string]config.Hook) map[string]Hook {
+// branch is the app's `branch`, which a pull hook refuses to pull on another one.
+func buildHooks(hooks map[string]config.Hook, branch string) map[string]Hook {
 	result := make(map[string]Hook, len(hooks))
 	for name, hook := range hooks {
-		result[name] = buildHook(name, hook)
+		result[name] = buildHook(name, hook, branch)
 	}
 	return result
 }
 
-func buildHook(name string, hook config.Hook) Hook {
+func buildHook(name string, hook config.Hook, branch string) Hook {
+	if hook.Pull {
+		hook.Command = config.PullCommand(branch)
+	}
 	return Hook{
 		Command:  newCommand(name, hook.Command),
 		Timeout:  hook.Timeout.Value(),

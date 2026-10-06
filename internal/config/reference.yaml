@@ -411,6 +411,17 @@ postgres:
 # api.foo.bar. A dev session with no base_host uses lvh.me.
 base_host: myapp.com
 #
+# The git branch the app's checkout must run. Applies only when the app folder holds its own
+# .git, so an app inside a larger repository never touches it, and never in a dev session. Every
+# start first checks the branch: on any other branch (or a detached HEAD) dboss stashes local
+# changes and untracked files (`git stash push --include-untracked`; ignored files such as .env
+# stay) and checks the branch out, logged in the lifecycle-branch channel. When the stash or the
+# checkout fails, the start fails. A switch rescans, so the branch's own dboss.yaml is read.
+# The automatic deploy hook (and `deploy: true`) refuses to pull on another branch, the
+# console's Redeploy refuses to compare it, and `dboss deploy sync` refuses a local checkout on
+# another branch.
+branch: main
+#
 # A web process may set `host_prefix`, one label or wildcard pattern or a list, prepended to
 # every host it serves. "www" and "*" also answer the bare host: "*" is the apex plus every
 # subdomain, and "www" is just the apex (so it never needs a redirect). A host written as a

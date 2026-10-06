@@ -147,6 +147,40 @@ func PullHook() Hook {
 	return Hook{Command: pullCommand, Restart: true, Pull: true}
 }
 
+// branchName keeps `branch` to plain ref characters, so it can be quoted into the shell lines
+// below as it is.
+var branchName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*$`)
+
+func validateBranch(branch string) error {
+	if branch == "" {
+		return nil
+	}
+	if !branchName.MatchString(branch) || strings.Contains(branch, "..") || strings.Contains(branch, "//") || strings.Contains(branch, "/.") || strings.HasSuffix(branch, "/") || strings.HasSuffix(branch, ".") || strings.HasSuffix(branch, ".lock") {
+		return keyErr("branch", "invalid git branch name %q", branch)
+	}
+	return nil
+}
+
+// PullCommand is what a pull hook runs. With a branch it refuses a checkout on any other branch
+// instead of pulling into it.
+func PullCommand(branch string) string {
+	if branch == "" {
+		return pullCommand
+	}
+	return fmt.Sprintf(`[ "$(git symbolic-ref --quiet --short HEAD)" = '%[1]s' ] || { echo "dboss: checkout is not on branch %[1]s, refusing to deploy" >&2; exit 1; }; %[2]s`, branch, pullCommand)
+}
+
+// BranchCommand is the start step that puts the checkout on branch. On any other branch it
+// stashes local changes and untracked files (ignored files stay) and checks branch out; when
+// either fails the step exits non-zero and the start fails with git's output in its log.
+func BranchCommand(branch string) string {
+	return fmt.Sprintf(`current=$(git symbolic-ref --quiet --short HEAD)
+[ "$current" = '%[1]s' ] && exit 0
+echo "dboss: checkout is on ${current:-a detached HEAD}, switching to %[1]s"
+git stash push --include-untracked --message 'dboss: before switching to %[1]s' || { echo "dboss: cannot stash local changes" >&2; exit 1; }
+git checkout '%[1]s' || { echo "dboss: cannot check out %[1]s" >&2; exit 1; }`, branch)
+}
+
 // LifecycleCommand is one lifecycle step: create runs once before the app's first start, start
 // before every start, destroy after the app is stopped and detached, before its folder goes.
 // A scalar is the command alone; a zero Timeout means DefaultLifecycleTimeout.

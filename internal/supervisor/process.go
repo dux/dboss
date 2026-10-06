@@ -117,6 +117,10 @@ func (a *appRuntime) spawn(name string, log *logWriter) (*process, error) {
 }
 
 func (a *appRuntime) handleEvent(event processEvent) {
+	if event.kind == "branch-rescanned" {
+		a.branchRescanned(event.err)
+		return
+	}
 	if event.job != nil {
 		switch event.kind {
 		case "job-exit":
@@ -265,7 +269,7 @@ func backoff(attempt int) time.Duration {
 }
 
 func (a *appRuntime) snapshot() Snapshot {
-	result := Snapshot{Name: a.spec.Name, State: a.state, Maintenance: a.maintenance, Draining: a.draining, Rolling: a.roll != nil, Dir: a.spec.Dir, Branch: a.spec.Branch, BranchURL: a.spec.BranchURL, GitConnected: a.spec.GitConnected, Pages: resolveDir(a.spec.Dir, a.spec.Config.Pages), Hosts: a.spec.Config.Hosts, WebProcesses: WebProcessSnapshots(a.spec.Config.WebProcesses), Autostart: a.spec.Config.Autostart.Starts(), Deletable: a.spec.Config.Deletable && a.cfg.App == nil, WakeButton: a.spec.Config.Autostart == config.AutostartButton, Web: a.spec.Config.Web, Cron: a.cronSnapshot(), Hooks: a.hookSnapshot(), LastActivity: a.lastActivity, Error: a.lastError, LogRetention: a.spec.Config.LogRetention.Value(), StdoutRetention: a.spec.Config.StdoutRetention.Value(), MaxDBSize: int64(a.spec.Config.MaxDBSize), TmpClean: a.spec.Config.TmpClean.Value()}
+	result := Snapshot{Name: a.spec.Name, State: a.state, Maintenance: a.maintenance, Draining: a.draining, Rolling: a.roll != nil, Dir: a.spec.Dir, Branch: a.spec.Branch, RequiredBranch: a.spec.Config.Branch, BranchURL: a.spec.BranchURL, GitConnected: a.spec.GitConnected, Pages: resolveDir(a.spec.Dir, a.spec.Config.Pages), Hosts: a.spec.Config.Hosts, WebProcesses: WebProcessSnapshots(a.spec.Config.WebProcesses), Autostart: a.spec.Config.Autostart.Starts(), Deletable: a.spec.Config.Deletable && a.cfg.App == nil, WakeButton: a.spec.Config.Autostart == config.AutostartButton, Web: a.spec.Config.Web, Cron: a.cronSnapshot(), Hooks: a.hookSnapshot(), LastActivity: a.lastActivity, Error: a.lastError, LogRetention: a.spec.Config.LogRetention.Value(), StdoutRetention: a.spec.Config.StdoutRetention.Value(), MaxDBSize: int64(a.spec.Config.MaxDBSize), TmpClean: a.spec.Config.TmpClean.Value()}
 	if result.Error != "" {
 		processName := a.lastErrorProcess
 		if processName == "" && len(a.spec.Config.WebProcesses) > 0 {

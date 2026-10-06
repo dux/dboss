@@ -137,3 +137,18 @@ func TestLifecycle(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAppValidatesBranch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	for _, branch := range []string{"main", "release/2.1", "feature_x-1"} {
+		app, err := ParseApp([]byte("procfile:\n  web: ./server\nbranch: "+branch+"\n"), path, Default().Defaults)
+		if err != nil || app.Branch != branch {
+			t.Fatalf("branch %q = %q, %v", branch, app.Branch, err)
+		}
+	}
+	for _, branch := range []string{"-main", "a..b", "a b", "a/", "a//b", "x.lock", "'quote'", "a/.b", "$(id)"} {
+		if _, err := ParseApp([]byte("procfile:\n  web: ./server\nbranch: \""+branch+"\"\n"), path, Default().Defaults); err == nil || !strings.Contains(err.Error(), "invalid git branch name") {
+			t.Fatalf("branch %q = %v", branch, err)
+		}
+	}
+}

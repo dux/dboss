@@ -256,3 +256,25 @@ func TestDeployGitExplainsAMissingHookAndABadToken(t *testing.T) {
 		t.Fatalf("no token: %v", err)
 	}
 }
+
+func TestCheckBranchRefusesAnotherBranch(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"app.txt": "x\n"})
+	gitRun(t, dir, "init", "-q", "-b", "main")
+	gitRun(t, dir, "add", ".")
+	gitRun(t, dir, "commit", "-q", "-m", "init")
+	if err := checkBranch(dir, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkBranch(dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "checkout", "-q", "-b", "feature")
+	if err := checkBranch(dir, "main"); err == nil || !strings.Contains(err.Error(), `on "feature", the app requires "main"`) {
+		t.Fatalf("feature = %v", err)
+	}
+	gitRun(t, dir, "checkout", "-q", "--detach")
+	if err := checkBranch(dir, "main"); err == nil || !strings.Contains(err.Error(), "this one has none") {
+		t.Fatalf("detached = %v", err)
+	}
+}

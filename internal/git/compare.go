@@ -29,7 +29,8 @@ type Comparison struct {
 
 // Compare refreshes the remote-tracking ref and counts commits on each side without changing
 // the local branch, working tree or FETCH_HEAD. A shallow checkout is deepened for exact counts.
-func Compare(ctx context.Context, dir, token string) (Comparison, error) {
+// A nonempty required branch refuses a checkout on any other, before anything is fetched.
+func Compare(ctx context.Context, dir, token, required string) (Comparison, error) {
 	ctx, cancel := context.WithTimeout(ctx, compareTimeout)
 	defer cancel()
 	env := append(commandEnv(token), "GIT_OPTIONAL_LOCKS=0")
@@ -53,6 +54,9 @@ func Compare(ctx context.Context, dir, token string) (Comparison, error) {
 		return result, fmt.Errorf("redeploy comparison needs a Git checkout on a branch: %w", err)
 	}
 	result.Branch = branch
+	if required != "" && branch != required {
+		return result, fmt.Errorf("checkout is on branch %q, the app requires %q", branch, required)
+	}
 	upstream, err := run("rev-parse", "--symbolic-full-name", "@{upstream}")
 	if err != nil || !strings.HasPrefix(upstream, "refs/remotes/") {
 		return result, fmt.Errorf("branch %q needs a remote upstream to compare before redeploy", branch)

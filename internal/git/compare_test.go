@@ -72,7 +72,7 @@ func TestCompareCountsFreshRemoteAndLocalCommitsWithoutDeploying(t *testing.T) {
 			if err := os.WriteFile(fetchHead, []byte("previous fetch\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			result, err := Compare(context.Background(), checkout, "")
+			result, err := Compare(context.Background(), checkout, "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,7 +102,7 @@ func TestCompareUsesTheConfiguredUpstreamRemote(t *testing.T) {
 	compareGit(t, checkout, "branch", "--set-upstream-to=upstream/main")
 	compareGit(t, checkout, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "unreachable"))
 	compareGit(t, source, "commit", "-q", "--allow-empty", "-m", "New upstream commit")
-	result, err := Compare(context.Background(), checkout, "")
+	result, err := Compare(context.Background(), checkout, "", "")
 	if err != nil || result.Upstream != "upstream/main" || result.Behind != 1 {
 		t.Fatalf("comparison = %+v, %v", result, err)
 	}
@@ -116,7 +116,7 @@ func TestCompareDeepensShallowHistoryForExactCounts(t *testing.T) {
 	checkout := filepath.Join(t.TempDir(), "shallow")
 	compareGit(t, source, "clone", "-q", "--depth", "1", "file://"+source, checkout)
 	compareGit(t, source, "commit", "-q", "--allow-empty", "-m", "Newest commit")
-	result, err := Compare(context.Background(), checkout, "")
+	result, err := Compare(context.Background(), checkout, "", "")
 	if err != nil || result.Behind != 1 || result.Ahead != 0 {
 		t.Fatalf("comparison = %+v, %v", result, err)
 	}
@@ -126,15 +126,18 @@ func TestCompareErrorsAreActionableAndCancellationIsRespected(t *testing.T) {
 	_, checkout := compareRepo(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Compare(ctx, checkout, ""); !errors.Is(err, context.Canceled) {
+	if _, err := Compare(ctx, checkout, "", ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled comparison = %v", err)
 	}
+	if _, err := Compare(context.Background(), checkout, "", "release"); err == nil || !strings.Contains(err.Error(), `the app requires "release"`) {
+		t.Fatalf("wrong branch = %v", err)
+	}
 	compareGit(t, checkout, "branch", "--unset-upstream")
-	if _, err := Compare(context.Background(), checkout, ""); err == nil || !strings.Contains(err.Error(), "remote upstream") {
+	if _, err := Compare(context.Background(), checkout, "", ""); err == nil || !strings.Contains(err.Error(), "remote upstream") {
 		t.Fatalf("missing upstream = %v", err)
 	}
 	compareGit(t, checkout, "checkout", "-q", "--detach")
-	if _, err := Compare(context.Background(), checkout, ""); err == nil || !strings.Contains(err.Error(), "on a branch") {
+	if _, err := Compare(context.Background(), checkout, "", ""); err == nil || !strings.Contains(err.Error(), "on a branch") {
 		t.Fatalf("detached checkout = %v", err)
 	}
 }

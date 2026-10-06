@@ -52,7 +52,7 @@ func TestAutomaticDeployPullsAndRestartsWithoutHooksConfig(t *testing.T) {
 	if err != nil || len(infos) != 1 || infos[0].Command != "git pull --ff-only" || !infos[0].Restart || infos[0].Disabled {
 		t.Fatalf("automatic deploy = %+v, %v", infos, err)
 	}
-	preview, err := git.Compare(context.Background(), checkout, "")
+	preview, err := git.Compare(context.Background(), checkout, "", "")
 	if err != nil || preview.Behind != 1 {
 		t.Fatalf("preview = %+v, %v", preview, err)
 	}

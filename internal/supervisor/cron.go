@@ -150,14 +150,18 @@ func (a *appRuntime) syncHooks() {
 	}
 }
 
-// syncLifecycle reconciles the create and start steps the supervisor runs itself. destroy is
-// run by the manager after the runtime is gone, so it never gets a job here.
+// syncLifecycle reconciles the branch, create and start steps the supervisor runs itself.
+// destroy is run by the manager after the runtime is gone, so it never gets a job here.
 func (a *appRuntime) syncLifecycle() {
 	if a.lifecycle == nil {
 		a.lifecycle = map[string]*jobState{}
 	}
-	for _, name := range []string{"create", "start"} {
+	for _, name := range []string{"branch", "create", "start"} {
 		step, ok := a.spec.Lifecycle[name]
+		// A dev session runs the developer's own checkout, whose branch is theirs to pick.
+		if name == "branch" && a.cfg.Dev() {
+			ok = false
+		}
 		state := a.lifecycle[name]
 		if !ok {
 			if state != nil {

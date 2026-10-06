@@ -869,12 +869,13 @@
           <li>Running migrations or a console one-liner in the app's exact environment with <code>dboss exec</code>.</li>
         </ul>
         <h3>Config keys</h3>
-        <div fez:keep="keys-hooks"><db-config-keys paths="hooks,tokens.dboss,management.host" /></div>
+        <div fez:keep="keys-hooks"><db-config-keys paths="hooks,branch,tokens.dboss,management.host" /></div>
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.hooks" />
         <h3>Details</h3>
         <p>Every ping presents <code>tokens.dboss</code> from the host file, a value you choose: <code>?token=</code> in the URL, <code>Authorization: Bearer</code>, <code>X-Gitlab-Token</code> (GitLab's Secret token field), or a GitHub <code>X-Hub-Signature-256</code> HMAC over the raw body (GitHub's Secret field). Without it every ping answers <code>401</code>. <code>dboss hooks</code> prints the ready-made URL; to change the token, edit it and run <code>dboss rescan</code>.</p>
         <p>A Git checkout with a remote gets <code>deploy: true</code> (<code>git pull --ff-only</code>, then restart) automatically when the app file declares no <code>deploy</code> hook; a declared one replaces it, including one with <code>disabled: true</code>. The app card's <strong>Redeploy</strong> button then opens a dialog that fetches the branch's upstream and shows the local and remote commits and how many are ahead and behind. Confirm is enabled only once the remote was read, runs the <code>deploy</code> hook and shows its progress, result and last output; cancel changes nothing. The button stays disabled while a deploy or its restart runs and while the app is starting, stopping or rolling.</p>
+        <p><code>branch: main</code> pins the app's own checkout to one branch. Every start (outside a dev session) first switches to it when the folder is on another branch: local changes and untracked files go to <code>git stash</code>, ignored files such as <code>.env</code> stay, and a failed stash or checkout fails the start with git's output in the <code>lifecycle-branch</code> log. The automatic <code>deploy</code> hook, <strong>Redeploy</strong> and <code>dboss deploy sync</code> refuse a checkout on any other branch.</p>
         <p><code>dboss exec shop bundle exec rails runner ...</code> runs a one-off command in the same environment and prints its combined output; options like <code>--timeout</code> come before the command. Both hooks and cron write to their own log channel.</p>
       </section>
     {/if}

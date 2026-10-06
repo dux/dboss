@@ -114,9 +114,11 @@ type appRuntime struct {
 	created     bool
 	markCreated func(string)
 	// host is the live host config, for the keys a rescan may change (tokens).
-	host     func() config.Config
-	sink     notify.Sink
-	restart  func(string) error
+	host    func() config.Config
+	sink    notify.Sink
+	restart func(string) error
+	// rescan reloads every app's spec; a start calls it after its branch step moved the checkout.
+	rescan   func() error
 	failures map[string]int
 	ready    map[string]bool
 	// held are the processes the operator stopped on their own; the restart policy leaves them
@@ -276,9 +278,10 @@ func (a *appRuntime) start() error {
 
 // continueStart runs the lifecycle steps still due after the step named after ("" before the
 // first), one at a time: jobExited calls back in when a step exits. With none left it spawns.
-// create runs only until it has succeeded once for this app.
+// branch is dboss's own step for the app's `branch`; create runs only until it has succeeded
+// once for this app.
 func (a *appRuntime) continueStart(after string) error {
-	steps := []string{"create", "start"}
+	steps := []string{"branch", "create", "start"}
 	if after != "" {
 		steps = steps[slices.Index(steps, after)+1:]
 	}
@@ -317,7 +320,27 @@ func (a *appRuntime) stepExited(state *jobState, exitCode int) {
 			a.markCreated(a.spec.Name)
 		}
 	}
+	// A spec read off another branch is stale once the step moved the checkout: rescan first, so
+	// the rest of the start runs the branch's own dboss.yaml. Rescan applies the new spec
+	// through a call, before the event below can arrive.
+	if state.name == "branch" && a.spec.Branch != a.spec.Config.Branch && a.rescan != nil {
+		go func() { a.sendEvent(processEvent{kind: "branch-rescanned", err: a.rescan()}) }()
+		return
+	}
 	_ = a.continueStart(state.name)
+}
+
+// branchRescanned goes on with a start once the rescan after its branch switch is done.
+func (a *appRuntime) branchRescanned(err error) {
+	if a.state != Starting {
+		return
+	}
+	if err != nil {
+		a.lastErrorProcess = stepName("branch")
+		_ = a.failStart(fmt.Errorf("rescan after the branch switch: %w", err))
+		return
+	}
+	_ = a.continueStart("branch")
 }
 
 // spawnAll starts every process, web processes first, and hands the web ones to their monitor.

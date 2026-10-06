@@ -169,7 +169,7 @@ func selectCgroup() res.Backend {
 
 func (m *Manager) add(ctx context.Context, spec *apps.App) {
 	runtimeCtx, cancel := context.WithCancel(ctx)
-	runtime := &appRuntime{ctx: runtimeCtx, cancel: cancel, cfg: m.cfg, spec: spec, allocator: m.ports, backend: m.backend, cgroup: m.cgroup, echo: m.echo, routes: m.routes, host: m.HostConfig, sink: m.sink, restart: m.Restart, markCreated: m.markCreated, requests: make(chan request), events: make(chan processEvent, 32), state: Stopped, processes: map[string]*process{}, failures: map[string]int{}, held: map[string]bool{}, retiring: map[*process]bool{}, cron: map[string]*jobState{}, hooks: map[string]*jobState{}, lifecycle: map[string]*jobState{}, closed: make(chan struct{})}
+	runtime := &appRuntime{ctx: runtimeCtx, cancel: cancel, cfg: m.cfg, spec: spec, allocator: m.ports, backend: m.backend, cgroup: m.cgroup, echo: m.echo, routes: m.routes, host: m.HostConfig, sink: m.sink, restart: m.Restart, rescan: m.rescanApps, markCreated: m.markCreated, requests: make(chan request), events: make(chan processEvent, 32), state: Stopped, processes: map[string]*process{}, failures: map[string]int{}, held: map[string]bool{}, retiring: map[*process]bool{}, cron: map[string]*jobState{}, hooks: map[string]*jobState{}, lifecycle: map[string]*jobState{}, closed: make(chan struct{})}
 	runtime.lastActivity = m.activities[spec.Name]
 	runtime.maintenance = m.maintenance[spec.Name]
 	m.desiredMu.Lock()
@@ -465,6 +465,16 @@ func (m *Manager) HostConfig() config.Config {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.hostConfig
+}
+
+// rescanApps is Rescan for a runtime that moved its own checkout. An app whose new config fails
+// is dropped by the scan itself, so the scan errors are only logged.
+func (m *Manager) rescanApps() error {
+	invalid, err := m.Rescan()
+	for _, scanErr := range invalid {
+		logx.Warnf("rescan: %v", scanErr)
+	}
+	return err
 }
 
 // Rescan re-reads the root file and every app folder. App-level keys, including host defaults,

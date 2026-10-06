@@ -90,10 +90,12 @@ func writeTestFile(t *testing.T, path, contents string) {
 
 func TestDiscoverAutomaticDeploy(t *testing.T) {
 	for _, tc := range []struct {
-		name, hooks, command             string
-		checkout, remote, disabled, pull bool
+		name, hooks, command, branch           string
+		checkout, remote, disabled, pull, step bool
 	}{
 		{name: "automatic", checkout: true, remote: true, command: "git pull --ff-only", pull: true},
+		{name: "branch", checkout: true, remote: true, branch: "main", command: config.PullCommand("main"), pull: true, step: true},
+		{name: "branch outside its own checkout", branch: "main"},
 		{name: "custom", checkout: true, remote: true, hooks: "hooks:\n  deploy: {command: ./release, restart: true}\n", command: "./release"},
 		{name: "disabled", checkout: true, remote: true, hooks: "hooks:\n  deploy: {command: ./release, disabled: true}\n", command: "./release", disabled: true},
 		{name: "no remote", checkout: true},
@@ -104,6 +106,9 @@ func TestDiscoverAutomaticDeploy(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, config.FileName)
 			contents := "procfile:\n  web: ./server\n" + tc.hooks
+			if tc.branch != "" {
+				contents += "branch: " + tc.branch + "\n"
+			}
 			writeTestFile(t, path, contents)
 			if tc.checkout {
 				gitDir := filepath.Join(dir, ".git")
@@ -128,6 +133,9 @@ func TestDiscoverAutomaticDeploy(t *testing.T) {
 			deploy, exists := found[0].Hooks["deploy"]
 			if exists != (tc.command != "") || deploy.Command.Line != tc.command || deploy.Disabled != tc.disabled || deploy.Pull != tc.pull || tc.pull && !deploy.Restart {
 				t.Fatalf("deploy = %+v, exists %v", deploy, exists)
+			}
+			if step, ok := found[0].Lifecycle["branch"]; ok != tc.step || tc.step && step.Command.Line != config.BranchCommand(tc.branch) {
+				t.Fatalf("branch step = %+v, set %v", step, ok)
 			}
 			if tc.hooks == "" && len(found[0].Config.Hooks) != 0 {
 				t.Fatal("automatic deploy changed resolved YAML config")

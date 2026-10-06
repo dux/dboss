@@ -2,7 +2,6 @@ package console
 
 import (
 	"bytes"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"dboss/internal/authcog"
+	"dboss/internal/fault"
 	"dboss/internal/httpx"
 	"dboss/internal/ops"
 	"dboss/internal/pages"
@@ -21,13 +21,16 @@ import (
 // apiActor is the audit actor of every call authorized by tokens.dboss.
 const apiActor = "api"
 
-// API error codes. Every refused or failed call answers HTTP 400; clients branch on the code.
+// API error codes. A refused call or one the caller can fix answers HTTP 400, a failure of the
+// server itself (apiInternal) 500; clients branch on the code.
 const (
 	apiDisabled       = "api_disabled"
 	apiUnauthorized   = "unauthorized"
 	apiUnknownAction  = "unknown_action"
 	apiInvalidRequest = "invalid_request"
 	apiFailed         = "failed"
+	apiRateLimited    = "rate_limited"
+	apiInternal       = "internal"
 )
 
 const openAPIPath = "/api/openapi.json"
@@ -47,14 +50,31 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
+// apiResponse is the envelope: a success always carries data (null when the action returns
+// nothing), a failure never does.
 type apiResponse struct {
 	OK    bool      `json:"ok"`
-	Data  any       `json:"data,omitempty"`
+	Data  any       `json:"data"`
 	Error *apiError `json:"error,omitempty"`
 }
 
+type apiFailure struct {
+	OK    bool      `json:"ok"`
+	Error *apiError `json:"error"`
+}
+
 func writeAPIError(w http.ResponseWriter, code, message string) {
-	writeAPI(w, http.StatusBadRequest, apiResponse{Error: &apiError{Code: code, Message: message}})
+	writeAPI(w, http.StatusBadRequest, apiFailure{Error: &apiError{Code: code, Message: message}})
+}
+
+// writeActionError answers an action that failed: 400 when the caller can fix it (fault.Invalid),
+// else 500.
+func writeActionError(w http.ResponseWriter, err error) {
+	if fault.IsInvalid(err) {
+		writeAPIError(w, apiFailed, err.Error())
+		return
+	}
+	writeAPI(w, http.StatusInternalServerError, apiFailure{Error: &apiError{Code: apiInternal, Message: err.Error()}})
 }
 
 // writeAPI is writeJSON without HTML escaping: API answers go to scripts and agents, never into a
@@ -75,7 +95,11 @@ func (h *Handler) apiCall(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, apiDisabled, "the API is off: set tokens.dboss in the host dboss.yaml and send it as a bearer token")
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(httpx.BearerToken(r)), []byte(token)) != 1 {
+	switch h.checkToken(w, r, func() bool { return tokenIn(httpx.BearerToken(r), token) }) {
+	case tokenLimited:
+		writeAPIError(w, apiRateLimited, tokenRetry(w))
+		return
+	case tokenWrong:
 		writeAPIError(w, apiUnauthorized, "send tokens.dboss as Authorization: Bearer <token>")
 		return
 	}
@@ -91,7 +115,7 @@ func (h *Handler) apiCall(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := h.service.Do(request)
 	if err != nil {
-		writeAPIError(w, apiFailed, err.Error())
+		writeActionError(w, err)
 		return
 	}
 	writeAPI(w, http.StatusOK, apiResponse{OK: true, Data: data})
@@ -119,13 +143,18 @@ func apiRequest(w http.ResponseWriter, r *http.Request, spec ops.Spec) (ops.Requ
 		if !ok {
 			return ops.Request{}, fmt.Errorf("%s takes no param %q; it takes: %s", spec.Name, name, paramNames(spec))
 		}
+		if string(value) == "null" {
+			delete(fields, name)
+			continue
+		}
+		if err := checkParamType(param, value); err != nil {
+			return ops.Request{}, err
+		}
 		if param.Type != ops.TypeDuration {
 			continue
 		}
 		var text string
-		if err := json.Unmarshal(value, &text); err != nil {
-			return ops.Request{}, fmt.Errorf("%s must be a duration string such as \"30s\"", name)
-		}
+		_ = json.Unmarshal(value, &text)
 		duration, err := time.ParseDuration(text)
 		if err != nil {
 			return ops.Request{}, fmt.Errorf("%s: %v", name, err)
@@ -133,7 +162,7 @@ func apiRequest(w http.ResponseWriter, r *http.Request, spec ops.Spec) (ops.Requ
 		fields[name], _ = json.Marshal(duration)
 	}
 	for _, param := range spec.Params {
-		if value := strings.TrimSpace(string(fields[param.Name])); param.Required && (value == "" || value == "null" || value == `""`) {
+		if param.Required && blank(fields[param.Name]) {
 			return ops.Request{}, fmt.Errorf("%s needs %s", spec.Name, param.Name)
 		}
 	}
@@ -144,6 +173,74 @@ func apiRequest(w http.ResponseWriter, r *http.Request, spec ops.Spec) (ops.Requ
 	}
 	request.Method, request.Actor = spec.Name, apiActor
 	return request, nil
+}
+
+// checkParamType refuses a value of the wrong JSON type by the param's own name and type, so a
+// caller never reads Go's decoder text.
+func checkParamType(param ops.Param, value json.RawMessage) error {
+	var ok bool
+	switch param.Type {
+	case ops.TypeString:
+		var v string
+		ok = json.Unmarshal(value, &v) == nil
+	case ops.TypeDuration:
+		var v string
+		ok = json.Unmarshal(value, &v) == nil
+		if !ok {
+			return fmt.Errorf("%s must be a duration string such as \"30s\"", param.Name)
+		}
+	case ops.TypeInteger:
+		var v int
+		ok = json.Unmarshal(value, &v) == nil
+	case ops.TypeBoolean:
+		var v bool
+		ok = json.Unmarshal(value, &v) == nil
+	case ops.TypeStrings:
+		var v []string
+		ok = json.Unmarshal(value, &v) == nil
+	case ops.TypeObject:
+		var v map[string]string
+		ok = json.Unmarshal(value, &v) == nil
+	default:
+		ok = json.Valid(value)
+	}
+	if !ok {
+		return fmt.Errorf("%s must be %s", param.Name, typeNoun(param.Type))
+	}
+	return nil
+}
+
+func typeNoun(kind string) string {
+	switch kind {
+	case ops.TypeString:
+		return "a string"
+	case ops.TypeInteger:
+		return "an integer"
+	case ops.TypeBoolean:
+		return "true or false"
+	case ops.TypeStrings:
+		return "an array of strings"
+	case ops.TypeObject:
+		return "an object of string values"
+	}
+	return "valid JSON"
+}
+
+// blank is a missing required value: absent, an empty or whitespace-only string, or an empty
+// array of strings.
+func blank(value json.RawMessage) bool {
+	if len(value) == 0 {
+		return true
+	}
+	var text string
+	if json.Unmarshal(value, &text) == nil {
+		return strings.TrimSpace(text) == ""
+	}
+	var list []string
+	if json.Unmarshal(value, &list) == nil {
+		return len(list) == 0
+	}
+	return false
 }
 
 func paramNames(spec ops.Spec) string {
@@ -235,16 +332,19 @@ func apiGuide(base string, enabled bool) string {
 	line("## Connect")
 	line("")
 	line("* Base URL: %s/api", base)
-	line("* Auth: `Authorization: Bearer <token>`, where the token is tokens.dboss from the host config. It is the same token /hooks and /metrics take.")
+	line("* Auth: `Authorization: Bearer <token>`, where the token is tokens.dboss from the host config. /hooks and /metrics take the lower webhook token (`dboss token` prints it) and accept tokens.dboss too.")
+	line("* Wrong tokens are throttled per client address: each one makes the next check from that address wait 3s, stacking up to 30s, after which calls are refused at once with `%s` and a Retry-After header. A client that sends the right token never waits.", apiRateLimited)
 	line("* Call: `POST /api/<action>` with a JSON object of the action's params as the body. No params means an empty body or `{}`. An unknown param is refused.")
 	line("* Every action is POST, reads included. The GET endpoints are the table above.")
-	line("* Success: HTTP 200 `{\"ok\": true, \"data\": ...}`. `data` is left out when the action returns nothing.")
-	line("* Failure: HTTP 400 `{\"ok\": false, \"error\": {\"code\": \"...\", \"message\": \"...\"}}`. Branch on error.code, never on the status:")
+	line("* Success: HTTP 200 `{\"ok\": true, \"data\": ...}`. `data` is null when the action returns nothing.")
+	line("* Failure: `{\"ok\": false, \"error\": {\"code\": \"...\", \"message\": \"...\"}}`, HTTP 400 when the call was refused or the caller can fix it, HTTP 500 when dboss itself failed. The codes:")
 	line("  * `%s` - tokens.dboss is not set", apiDisabled)
 	line("  * `%s` - missing or wrong bearer token", apiUnauthorized)
 	line("  * `%s` - no such action", apiUnknownAction)
 	line("  * `%s` - bad body: not an object, an unknown param, a missing required one or a wrong type", apiInvalidRequest)
-	line("  * `%s` - the action ran and failed; the message says why", apiFailed)
+	line("  * `%s` - too many wrong tokens from this address; retry after Retry-After seconds", apiRateLimited)
+	line("  * `%s` - the action refused the request: an unknown app or name, a state or a missing confirmation; the message says why", apiFailed)
+	line("  * `%s` (HTTP 500) - the action failed on the server: a database, git or disk error; retrying may help", apiInternal)
 	line("* Audit: an action marked audited writes an audit row with the actor `%s` (read them with `audit`).", apiActor)
 	line("* Types: `duration` is a Go duration string (`30s`, `5m`); `json` is any JSON value; `object` is a string map.")
 	line("")
@@ -348,7 +448,8 @@ func openAPI(base string) object {
 			"description": description,
 			"responses": object{
 				"200": object{"description": "the action ran", "content": object{"application/json": object{"schema": object{"$ref": "#/components/schemas/Success"}}}},
-				"400": object{"description": "the call was refused or the action failed", "content": object{"application/json": object{"schema": object{"$ref": "#/components/schemas/Failure"}}}},
+				"400": object{"description": "the call was refused or the caller can fix it", "content": object{"application/json": object{"schema": object{"$ref": "#/components/schemas/Failure"}}}},
+				"500": object{"description": "the action failed on the server", "content": object{"application/json": object{"schema": object{"$ref": "#/components/schemas/Failure"}}}},
 			},
 		}
 		if len(spec.Params) > 0 {
@@ -373,8 +474,8 @@ func openAPI(base string) object {
 			"schemas": object{
 				"Success": object{
 					"type":       "object",
-					"required":   []string{"ok"},
-					"properties": object{"ok": object{"const": true}, "data": object{"description": "the action's result; left out when it returns nothing"}},
+					"required":   []string{"ok", "data"},
+					"properties": object{"ok": object{"const": true}, "data": object{"description": "the action's result; null when it returns nothing"}},
 				},
 				"Failure": object{
 					"type":     "object",
@@ -385,7 +486,7 @@ func openAPI(base string) object {
 							"type":     "object",
 							"required": []string{"code", "message"},
 							"properties": object{
-								"code":    object{"type": "string", "enum": []string{apiDisabled, apiUnauthorized, apiUnknownAction, apiInvalidRequest, apiFailed}},
+								"code":    object{"type": "string", "enum": []string{apiDisabled, apiUnauthorized, apiUnknownAction, apiInvalidRequest, apiRateLimited, apiFailed, apiInternal}},
 								"message": object{"type": "string"},
 							},
 						},

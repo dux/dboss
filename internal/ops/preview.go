@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/git"
 	"dboss/internal/preview"
 )
@@ -15,12 +16,12 @@ import (
 // down one preview app from the request params.
 func (s *Service) runHostHook(name string, params map[string]string) error {
 	if name != config.BuiltinGithubPR {
-		return fmt.Errorf("unknown host hook %q", name)
+		return fault.Invalidf("unknown host hook %q", name)
 	}
 	cfg := s.runtime.HostConfig()
 	hook, ok := cfg.HostHooks[name]
 	if !ok {
-		return fmt.Errorf("unknown host hook %q", name)
+		return fault.Invalidf("unknown host hook %q", name)
 	}
 	request, err := preview.Parse(hook, params)
 	if err != nil {

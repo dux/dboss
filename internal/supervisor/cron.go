@@ -15,6 +15,7 @@ import (
 
 	"dboss/internal/apps"
 	"dboss/internal/children"
+	"dboss/internal/fault"
 	"dboss/internal/git"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
@@ -207,10 +208,10 @@ func (a *appRuntime) cronTick(now time.Time) {
 func (a *appRuntime) runCron(name string, now time.Time) error {
 	state := a.cron[name]
 	if state == nil {
-		return fmt.Errorf("unknown cron job %q", name)
+		return fault.Invalidf("unknown cron job %q", name)
 	}
 	if state.disabled {
-		return fmt.Errorf("cron job %q is disabled", name)
+		return fault.Invalidf("cron job %q is disabled", name)
 	}
 	return a.startJob(state, now, true)
 }
@@ -219,10 +220,10 @@ func (a *appRuntime) runCron(name string, now time.Time) error {
 func (a *appRuntime) runHook(name string, now time.Time) error {
 	state := a.hooks[name]
 	if state == nil {
-		return fmt.Errorf("unknown hook %q", name)
+		return fault.Invalidf("unknown hook %q", name)
 	}
 	if state.disabled {
-		return fmt.Errorf("hook %q is disabled", name)
+		return fault.Invalidf("hook %q is disabled", name)
 	}
 	return a.startJob(state, now, true)
 }
@@ -230,7 +231,7 @@ func (a *appRuntime) runHook(name string, now time.Time) error {
 func (a *appRuntime) startJob(state *jobState, now time.Time, manual bool) error {
 	if len(state.runs) > 0 && !state.overlap || state.restarting {
 		if manual {
-			return fmt.Errorf("%s %q is still running", state.kind, state.name)
+			return fault.Invalidf("%s %q is still running", state.kind, state.name)
 		}
 		state.lastError = "skipped: previous run still going"
 		return nil

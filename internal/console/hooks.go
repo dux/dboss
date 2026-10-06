@@ -3,7 +3,6 @@ package console
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"io"
 	"net/http"
@@ -41,8 +40,7 @@ func (h *Handler) handleHook(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !hookAuthorized(r, secret, body) {
-		http.Error(w, "forbidden", http.StatusUnauthorized)
+	if !h.hookAuthorized(w, r, secret, body) {
 		return
 	}
 	// GitHub sends a ping event when the webhook is created; acknowledge it without running.
@@ -73,8 +71,7 @@ func (h *Handler) handleHookStatus(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !hookAuthorized(r, secret, nil) {
-		http.Error(w, "forbidden", http.StatusUnauthorized)
+	if !h.hookAuthorized(w, r, secret, nil) {
 		return
 	}
 	hooks, err := h.service.Hooks(app)
@@ -100,8 +97,7 @@ func (h *Handler) handleHostHook(w http.ResponseWriter, r *http.Request, name st
 		http.NotFound(w, r)
 		return
 	}
-	if !hookAuthorized(r, secret, body) {
-		http.Error(w, "forbidden", http.StatusUnauthorized)
+	if !h.hookAuthorized(w, r, secret, body) {
 		return
 	}
 	params := qsParams(r)
@@ -140,17 +136,36 @@ func qsEnvName(key string) string {
 }
 
 // hookAuthorized accepts either a GitHub HMAC signature over the raw body or a bearer token in
-// the query, Authorization header or X-Gitlab-Token. Every comparison is constant time, and an
-// unset token refuses every ping.
-func hookAuthorized(r *http.Request, secret string, body []byte) bool {
-	if secret == "" {
-		return false
+// the query, Authorization header or X-Gitlab-Token, made with the webhook token or tokens.dboss.
+// Every comparison is constant time and runs under the token throttle, and with neither token set
+// every ping is refused. A refused ping is answered here.
+func (h *Handler) hookAuthorized(w http.ResponseWriter, r *http.Request, webhook string, body []byte) bool {
+	secrets := []string{webhook, h.service.DbossToken()}
+	result := h.checkToken(w, r, func() bool { return hookSigned(r, secrets, body) })
+	switch result {
+	case tokenLimited:
+		http.Error(w, tokenRetry(w), http.StatusTooManyRequests)
+	case tokenWrong:
+		http.Error(w, "forbidden", http.StatusUnauthorized)
 	}
+	return result == tokenOK
+}
+
+func hookSigned(r *http.Request, secrets []string, body []byte) bool {
 	if signature := r.Header.Get("X-Hub-Signature-256"); strings.HasPrefix(signature, "sha256=") {
-		mac := hmac.New(sha256.New, []byte(secret))
-		mac.Write(body)
-		expected := hex.EncodeToString(mac.Sum(nil))
-		return hmac.Equal([]byte(expected), []byte(strings.TrimPrefix(signature, "sha256=")))
+		presented := []byte(strings.TrimPrefix(signature, "sha256="))
+		found := false
+		for _, secret := range secrets {
+			if secret == "" {
+				continue
+			}
+			mac := hmac.New(sha256.New, []byte(secret))
+			mac.Write(body)
+			if hmac.Equal([]byte(hex.EncodeToString(mac.Sum(nil))), presented) {
+				found = true
+			}
+		}
+		return found
 	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
@@ -159,7 +174,7 @@ func hookAuthorized(r *http.Request, secret string, body []byte) bool {
 	if token == "" {
 		token = r.Header.Get("X-Gitlab-Token")
 	}
-	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	return tokenIn(token, secrets...)
 }
 
 func (h *Handler) hooks(w http.ResponseWriter, r *http.Request) {

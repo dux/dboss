@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"dboss/internal/config"
 	"dboss/internal/supervisor"
@@ -40,7 +39,7 @@ func pageRequest(method, target string, form url.Values) *http.Request {
 
 func TestPasswordGate(t *testing.T) {
 	handler := featureHandler()
-	handler.passwords.spacing = 0
+	handler.passwords.Spacing = 0
 	snapshot := passwordSnapshot(t, "secret")
 
 	if response := serveFeature(t, handler, snapshot, pageRequest(http.MethodGet, "http://demo.test/", nil)); response.Code != http.StatusServiceUnavailable {
@@ -99,41 +98,11 @@ func TestBasicAuthPerWebProcess(t *testing.T) {
 	}
 }
 
-// Checks from one IP are spaced passwordSpacing apart, parallel ones queue, and past
-// passwordMaxWait of queue the check is refused at once.
-func TestPasswordThrottle(t *testing.T) {
-	now := time.Unix(1_000_000, 0)
-	throttle := newPasswordThrottle()
-	throttle.now = func() time.Time { return now }
-	for i, want := range []time.Duration{0, 3 * time.Second, 6 * time.Second} {
-		if wait, ok := throttle.reserve("192.0.2.1"); !ok || wait != want {
-			t.Fatalf("check %d waits %v %v, want %v", i, wait, ok, want)
-		}
-	}
-	if wait, ok := throttle.reserve("192.0.2.2"); !ok || wait != 0 {
-		t.Fatalf("another IP waits %v %v", wait, ok)
-	}
-	for range 8 {
-		throttle.reserve("192.0.2.1")
-	}
-	if wait, ok := throttle.reserve("192.0.2.1"); ok || wait <= passwordMaxWait {
-		t.Fatalf("past the queue cap = %v %v", wait, ok)
-	}
-	now = now.Add(time.Minute)
-	throttle.sweep()
-	if len(throttle.next) != 0 {
-		t.Fatalf("sweep kept %v", throttle.next)
-	}
-	if wait, ok := throttle.reserve("192.0.2.1"); !ok || wait != 0 {
-		t.Fatalf("after the queue drained = %v %v", wait, ok)
-	}
-}
-
 func TestPasswordGateAnswers429PastTheQueue(t *testing.T) {
 	handler := featureHandler()
 	snapshot := passwordSnapshot(t, "secret")
 	for range 12 {
-		handler.passwords.reserve("192.0.2.1")
+		handler.passwords.Reserve("192.0.2.1")
 	}
 	response := serveFeature(t, handler, snapshot, pageRequest(http.MethodPost, "http://admin.demo.test"+passwordPath, url.Values{"password": {"secret"}}))
 	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") == "" || !strings.Contains(response.Body.String(), "Too many attempts") || len(response.Result().Cookies()) != 0 {

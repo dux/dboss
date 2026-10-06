@@ -2,10 +2,9 @@ package ops
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/pubsub"
 	"dboss/internal/supervisor"
 )
@@ -85,7 +84,7 @@ func (s *Service) pubsubPublish(app, process, channel, event string, data json.R
 		return PubsubPublished{}, err
 	}
 	if !pubsub.ValidChannel(channel) {
-		return PubsubPublished{}, fmt.Errorf("invalid channel %q", channel)
+		return PubsubPublished{}, fault.Invalidf("invalid channel %q", channel)
 	}
 	if event == "" {
 		event = "message"
@@ -101,10 +100,10 @@ func (s *Service) pubsubPublish(app, process, channel, event string, data json.R
 // only hub; an app with several hubs requires naming one.
 func (s *Service) pubsubHub(app, process string) (supervisor.Snapshot, supervisor.WebProcessSnapshot, error) {
 	if s.pubsub == nil {
-		return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, errors.New("pubsub is not enabled")
+		return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fault.Invalidf("pubsub is not enabled")
 	}
 	if app == "" {
-		return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, errors.New("app is required")
+		return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fault.Invalidf("app is required")
 	}
 	snapshot, err := s.runtime.Snapshot(app)
 	if err != nil {
@@ -117,7 +116,7 @@ func (s *Service) pubsubHub(app, process string) (supervisor.Snapshot, superviso
 		}
 	}
 	if len(enabled) == 0 {
-		return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fmt.Errorf("app %q has no pubsub path", app)
+		return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fault.Invalidf("app %q has no pubsub path", app)
 	}
 	if process == "" {
 		if len(enabled) > 1 {
@@ -125,7 +124,7 @@ func (s *Service) pubsubHub(app, process string) (supervisor.Snapshot, superviso
 			for index, web := range enabled {
 				names[index] = web.Name
 			}
-			return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fmt.Errorf("app %q has several pubsub processes %v; name one", app, names)
+			return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fault.Invalidf("app %q has several pubsub processes %v; name one", app, names)
 		}
 		return snapshot, enabled[0], nil
 	}
@@ -134,5 +133,5 @@ func (s *Service) pubsubHub(app, process string) (supervisor.Snapshot, superviso
 			return snapshot, web, nil
 		}
 	}
-	return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fmt.Errorf("app %q web process %q has no pubsub path", app, process)
+	return supervisor.Snapshot{}, supervisor.WebProcessSnapshot{}, fault.Invalidf("app %q web process %q has no pubsub path", app, process)
 }

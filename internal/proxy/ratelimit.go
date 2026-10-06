@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dboss/internal/config"
+	"dboss/internal/httpx"
 	"dboss/internal/pages"
 	"dboss/internal/supervisor"
 )
@@ -140,7 +141,7 @@ func (h *Handler) rateLimit(w http.ResponseWriter, r *http.Request, app supervis
 		next()
 		return
 	}
-	ip := clientIP(r, h.cfg.Proxy.Cloudflare)
+	ip := httpx.ClientIP(r, h.cfg.Proxy.Cloudflare)
 	if ip == "" {
 		next()
 		return

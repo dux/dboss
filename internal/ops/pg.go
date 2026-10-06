@@ -2,10 +2,10 @@ package ops
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/pg"
 )
 
@@ -22,7 +22,7 @@ func (s *Service) PGSnapshot(refresh bool) (pg.Snapshot, error) {
 }
 
 // errNoPostgres answers every PG action while the feature is off.
-var errNoPostgres = errors.New("postgres is not enabled")
+var errNoPostgres = fault.Invalidf("postgres is not enabled")
 
 // postgres is the PG service when the operator turned it on.
 func (s *Service) postgres() (PG, error) {

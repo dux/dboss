@@ -1,7 +1,6 @@
 package console
 
 import (
-	"crypto/subtle"
 	"io"
 	"io/fs"
 	"mime"
@@ -180,15 +179,19 @@ func (h *Handler) readyz(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// metrics renders the Prometheus exposition for a bearer holding tokens.dboss. Without a token
-// configured the endpoint does not exist.
+// metrics renders the Prometheus exposition for a bearer holding the webhook token (tokens.dboss
+// is accepted too). Without a token configured the endpoint does not exist.
 func (h *Handler) metrics(w http.ResponseWriter, r *http.Request) {
-	token := h.service.DbossToken()
-	if token == "" {
-		http.Error(w, "metrics are off: set tokens.dboss in the host dboss.yaml and send it as a bearer token", http.StatusNotFound)
+	webhook, admin := h.service.WebhookToken(), h.service.DbossToken()
+	if webhook == "" && admin == "" {
+		http.Error(w, "metrics are off: set tokens.dboss in the host dboss.yaml and send the webhook token (dboss token) as a bearer token", http.StatusNotFound)
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(httpx.BearerToken(r)), []byte(token)) != 1 {
+	switch h.checkToken(w, r, func() bool { return tokenIn(httpx.BearerToken(r), webhook, admin) }) {
+	case tokenLimited:
+		http.Error(w, tokenRetry(w), http.StatusTooManyRequests)
+		return
+	case tokenWrong:
 		w.Header().Set("WWW-Authenticate", `Bearer realm="dboss"`)
 		http.Error(w, "forbidden", http.StatusUnauthorized)
 		return

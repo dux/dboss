@@ -13,6 +13,7 @@ import (
 
 	"dboss/internal/children"
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
 	"dboss/internal/ports"
@@ -47,7 +48,7 @@ func (a *appRuntime) spawn(name string, log *logWriter) (*process, error) {
 	proc, index := splitInstance(name)
 	command, ok := a.spec.Commands[proc]
 	if !ok {
-		return nil, fmt.Errorf("unknown process %q", proc)
+		return nil, fault.Invalidf("unknown process %q", proc)
 	}
 	slot := a.freeSlot(proc)
 	port, err := a.allocator.Allocate(a.spec.Name, slot)

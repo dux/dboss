@@ -114,12 +114,21 @@ tokens:
   # helper answers for https://github.com only, so a remote on another host never sees it. Empty
   # leaves the pull anonymous. Needs git 2.31+ for the env-injected helper.
   github: $GITHUB_TOKEN
-  # Inbound: the token every caller presents to dboss. A hook ping carries it as ?token=, as
-  # Authorization: Bearer, as X-Gitlab-Token, or signs the raw body with it as GitHub's
-  # X-Hub-Signature-256 (paste it into the webhook's Secret field). /metrics and the /api actions
-  # take it as a bearer token; it grants every action the CLI has, exec and destroy included. You
-  # choose it, e.g. `openssl rand -hex 32`. Unset refuses every hook and API call and hides /metrics.
+  # Inbound: the admin token. The /api actions take it as a bearer token, and it grants every
+  # action the CLI has, exec and destroy included. You choose it, e.g. `openssl rand -hex 32`.
+  # Hook pings and /metrics accept it too. Unset refuses every API call.
   dboss: $DBOSS_TOKEN
+  # Inbound: the lower token for hook pings and /metrics, so a webhook URL or a Prometheus config
+  # never holds the admin token. A hook ping carries it as ?token=, as Authorization: Bearer, as
+  # X-Gitlab-Token, or signs the raw body with it as GitHub's X-Hub-Signature-256 (paste it into
+  # the webhook's Secret field); /metrics takes it as a bearer token. Empty derives it from
+  # tokens.dboss (HMAC-SHA256), which cannot be turned back into the admin token; `dboss token`
+  # prints the value in use, and `dboss hooks` ping URLs carry it. A derived token is only as
+  # strong as tokens.dboss (a holder can test guesses offline), so keep that one random; set
+  # webhook explicitly to rotate it on its own. With neither token set every
+  # hook ping is refused and /metrics is hidden. A wrong token from one client IP makes its next
+  # check wait 3s, stacking to 30s, after which checks are refused at once.
+  webhook: $DBOSS_WEBHOOK_TOKEN
 
 # --- Proxy -------------------------------------------------------------------
 

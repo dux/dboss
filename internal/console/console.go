@@ -16,6 +16,7 @@ import (
 	"dboss/internal/ops"
 	"dboss/internal/supervisor"
 	"dboss/internal/sysinfo"
+	"dboss/internal/throttle"
 )
 
 const maxRequestBody = 1 << 20
@@ -65,6 +66,9 @@ type Handler struct {
 	appPort        string
 	// hostname names the machine in the console's tab title.
 	hostname string
+	// tokens throttles the token checks per client IP; cloudflare says where that IP comes from.
+	tokens     *throttle.Throttle
+	cloudflare bool
 }
 
 type dashboard struct {
@@ -110,7 +114,7 @@ func New(cfg config.Config, flow *authcog.Flow, service *ops.Service, store Conf
 		return nil, err
 	}
 	// The console's own listener sits on the first port of the range, reserved by the allocator.
-	handler := &Handler{service: service, store: store, auth: auth, static: static, managementPort: strconv.Itoa(cfg.ConsolePort), sys: sys, local: cfg.Dev() || cfg.Local}
+	handler := &Handler{service: service, store: store, auth: auth, static: static, managementPort: strconv.Itoa(cfg.ConsolePort), sys: sys, local: cfg.Dev() || cfg.Local, tokens: throttle.New(), cloudflare: cfg.Proxy.Cloudflare}
 	handler.hostname, _ = os.Hostname()
 	handler.mux = handler.routes()
 	if len(cfg.Management.Host) > 0 {

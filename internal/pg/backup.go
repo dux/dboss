@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"dboss/internal/fault"
 	"dboss/internal/humanize"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
@@ -36,7 +37,7 @@ func (s *Service) Backups() []Backup { return s.catalog.list() }
 func (s *Service) BackupFile(id string) (Backup, string, error) {
 	entry, ok := s.catalog.get(id)
 	if !ok {
-		return Backup{}, "", fmt.Errorf("unknown backup %q", id)
+		return Backup{}, "", fault.Invalidf("unknown backup %q", id)
 	}
 	if entry.Status != "ok" {
 		return Backup{}, "", fmt.Errorf("backup %q did not complete", id)
@@ -108,7 +109,7 @@ func (s *Service) ImportBackup(database string, source io.Reader) (Backup, error
 func (s *Service) DeleteBackup(id string) error {
 	entry, ok := s.catalog.get(id)
 	if !ok {
-		return fmt.Errorf("unknown backup %q", id)
+		return fault.Invalidf("unknown backup %q", id)
 	}
 	if entry.LocalPath != "" {
 		if err := os.Remove(entry.LocalPath); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -132,7 +133,7 @@ func (s *Service) BackupAll(ctx context.Context) error {
 	}
 	selected := postgres.Backups.Selected()
 	if len(selected) == 0 {
-		return errors.New("no databases are selected for backup")
+		return fault.Invalidf("no databases are selected for backup")
 	}
 	var firstErr error
 	for _, database := range selected {
@@ -150,7 +151,7 @@ func (s *Service) BackupDatabase(ctx context.Context, database string, manual bo
 	s.mu.Lock()
 	if s.running[database] {
 		s.mu.Unlock()
-		return Backup{}, fmt.Errorf("%s: a backup is already running", database)
+		return Backup{}, fault.Invalidf("%s: a backup is already running", database)
 	}
 	s.running[database] = true
 	s.mu.Unlock()
@@ -355,7 +356,7 @@ func readableArchive(path string) error {
 	}
 	defer reader.Close()
 	if len(reader.File) == 0 {
-		return errors.New("upload is an empty zip archive")
+		return fault.Invalidf("upload is an empty zip archive")
 	}
 	return nil
 }

@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"dboss/internal/fault"
+
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -43,13 +46,13 @@ func (s *Service) Query(ctx context.Context, database, sql string) (QueryResult,
 	database = strings.TrimSpace(database)
 	sql = strings.TrimSpace(sql)
 	if database == "" {
-		return QueryResult{}, errors.New("a database is required")
+		return QueryResult{}, fault.Invalidf("a database is required")
 	}
 	if sql == "" {
-		return QueryResult{}, errors.New("there is no SQL to run")
+		return QueryResult{}, fault.Invalidf("there is no SQL to run")
 	}
 	if !s.Enabled() {
-		return QueryResult{}, errors.New("postgres is not enabled")
+		return QueryResult{}, fault.Invalidf("postgres is not enabled")
 	}
 	connConfig, err := s.connection(ctx)
 	if err != nil {
@@ -98,7 +101,7 @@ func (s *Service) Query(ctx context.Context, database, sql string) (QueryResult,
 		tag, err := rows.Close()
 		if err != nil {
 			_ = reader.Close()
-			return QueryResult{}, err
+			return QueryResult{}, statementError(err)
 		}
 		result.Command = tag.String()
 		if len(fields) == 0 {
@@ -106,10 +109,20 @@ func (s *Service) Query(ctx context.Context, database, sql string) (QueryResult,
 		}
 	}
 	if err := reader.Close(); err != nil {
-		return QueryResult{}, err
+		return QueryResult{}, statementError(err)
 	}
 	result.DurationMS = time.Since(start).Milliseconds()
 	return result, nil
+}
+
+// statementError marks an error the server raised for the statement itself (syntax, a missing
+// table, statement_timeout) as the caller's; a lost connection stays the server's.
+func statementError(err error) error {
+	var server *pgconn.PgError
+	if errors.As(err, &server) {
+		return fault.Invalid(err)
+	}
+	return err
 }
 
 // textRow copies one row out of the reader. The values it hands out are reused by the next row,

@@ -2,6 +2,7 @@ package console
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -56,7 +57,12 @@ func TestAPIChecksParamsAgainstTheSpec(t *testing.T) {
 		{"/api/restart", `{"app":"web","color":"red"}`, apiInvalidRequest, `no param "color"`},
 		{"/api/restart", `{}`, apiInvalidRequest, "restart needs app"},
 		{"/api/restart", `[1]`, apiInvalidRequest, "one JSON object"},
-		{"/api/restart", `{"app":7}`, apiInvalidRequest, "cannot unmarshal"},
+		{"/api/restart", `{"app":7}`, apiInvalidRequest, "app must be a string"},
+		{"/api/restart", `{"app":"   "}`, apiInvalidRequest, "restart needs app"},
+		{"/api/logs", `{"app":"web","lines":"ten"}`, apiInvalidRequest, "lines must be an integer"},
+		{"/api/maintenance", `{"app":"web","on":"yes"}`, apiInvalidRequest, "on must be true or false"},
+		{"/api/exec", `{"app":"web","argv":"ls"}`, apiInvalidRequest, "argv must be an array of strings"},
+		{"/api/exec", `{"app":"web","argv":[]}`, apiInvalidRequest, "exec needs argv"},
 		{"/api/restart", `{"app":"web","method":"destroy"}`, apiInvalidRequest, `no param "method"`},
 		{"/api/exec", `{"app":"web","argv":["ls"],"timeout":"soon"}`, apiInvalidRequest, "timeout"},
 		{"/api/status", `{"app":"ghost"}`, apiFailed, "unknown app"},
@@ -208,4 +214,36 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatal(err)
 	}
 	return encoded
+}
+
+// A success always carries data, null when the action returns nothing; a failure the caller cannot
+// fix is HTTP 500 with the internal code.
+func TestAPIEnvelopeAndServerFailures(t *testing.T) {
+	manager := &fakeManager{snapshots: []supervisor.Snapshot{{Name: "web", State: supervisor.Running}}, token: "s3cret"}
+	handler := newTestHandler(t, manager, nil)
+	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/restart", strings.NewReader(`{"app":"web"}`))
+	request.Header.Set("Authorization", "Bearer s3cret")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != `{"ok":true,"data":null}` {
+		t.Fatalf("restart = %d %s", response.Code, response.Body.String())
+	}
+	manager.restartErr = errors.New("port 3000 is busy")
+	code, failed := apiPost(t, handler, "/api/restart", "s3cret", `{"app":"web"}`)
+	if code != http.StatusInternalServerError || failed.Error == nil || failed.Error.Code != apiInternal || failed.Error.Message != "port 3000 is busy" {
+		t.Fatalf("server failure = %d %+v", code, failed.Error)
+	}
+	if code, refused := apiPost(t, handler, "/api/status", "s3cret", `{"app":"ghost"}`); code != http.StatusBadRequest || refused.Error.Code != apiFailed || strings.Contains(mustBody(t, handler), `"data"`) {
+		t.Fatalf("caller failure = %d %+v", code, refused.Error)
+	}
+}
+
+// mustBody is one refused call's raw body, to check a failure carries no data key.
+func mustBody(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, "http://dboss.lvh.me:8081/api/status", strings.NewReader(`{"app":"ghost"}`))
+	request.Header.Set("Authorization", "Bearer s3cret")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response.Body.String()
 }

@@ -2,7 +2,6 @@ package events
 
 import (
 	"cmp"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"dboss/internal/fault"
 	"dboss/internal/fsutil"
 )
 
@@ -111,10 +111,10 @@ func (s *SavedStore) Delete(app, kind, name string) error {
 		case "funnel":
 			saved.Funnels = slices.DeleteFunc(saved.Funnels, func(f Funnel) bool { return f.Name == name })
 		default:
-			return fmt.Errorf("unknown kind %q: view or funnel", kind)
+			return fault.Invalidf("unknown kind %q: view or funnel", kind)
 		}
 		if len(saved.Views)+len(saved.Funnels) == before {
-			return fmt.Errorf("no console %s named %s", kind, name)
+			return fault.Invalidf("no console %s named %s", kind, name)
 		}
 		return nil
 	})

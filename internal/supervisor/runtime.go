@@ -14,6 +14,7 @@ import (
 
 	"dboss/internal/apps"
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/notify"
 	"dboss/internal/ports"
 	"dboss/internal/res"
@@ -499,7 +500,7 @@ func (a *appRuntime) startProcess(name string) error {
 		return err
 	}
 	if a.state != Running && a.state != Starting {
-		return fmt.Errorf("%s is %s; start the app first", a.spec.Name, a.state)
+		return fault.Invalidf("%s is %s; start the app first", a.spec.Name, a.state)
 	}
 	for _, instance := range names {
 		delete(a.held, instance)

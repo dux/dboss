@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"reflect"
 	"slices"
 	"strconv"
@@ -44,10 +47,25 @@ type Config struct {
 }
 
 // Tokens are the credentials of the host. Github is outbound: a pull hook and a preview checkout
-// use it for a private repository. Dboss is inbound: every hook ping and /metrics present it.
+// use it for a private repository. Dboss is inbound and grants every action; Webhook is the
+// lower one hook pings and /metrics present (see WebhookToken).
 type Tokens struct {
-	Github string `yaml:"github" json:"-"`
-	Dboss  string `yaml:"dboss" json:"-"`
+	Github  string `yaml:"github" json:"-"`
+	Dboss   string `yaml:"dboss" json:"-"`
+	Webhook string `yaml:"webhook" json:"-"`
+}
+
+// WebhookToken is the token hook pings and /metrics present: tokens.webhook when set, else one
+// derived from tokens.dboss with HMAC-SHA256. A leaked webhook URL or scrape config then never
+// carries the admin token, and the derivation cannot be turned back into it. Empty when neither
+// is set.
+func (t Tokens) WebhookToken() string {
+	if t.Webhook != "" || t.Dboss == "" {
+		return t.Webhook
+	}
+	mac := hmac.New(sha256.New, []byte(t.Dboss))
+	mac.Write([]byte("dboss-webhook"))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // Proxy has one listener per Listen address; every listener serves the same routing.

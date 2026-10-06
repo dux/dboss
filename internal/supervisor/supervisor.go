@@ -16,6 +16,7 @@ import (
 
 	"dboss/internal/apps"
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
 	"dboss/internal/ports"
@@ -187,7 +188,7 @@ func (m *Manager) runtime(name string) (*appRuntime, error) {
 	runtime := m.apps[name]
 	m.mu.RUnlock()
 	if runtime == nil {
-		return nil, fmt.Errorf("unknown app %q", name)
+		return nil, fault.Invalidf("unknown app %q", name)
 	}
 	return runtime, nil
 }
@@ -296,7 +297,7 @@ func (m *Manager) Destroy(name string) error {
 	m.rescanMu.Lock()
 	defer m.rescanMu.Unlock()
 	if m.cfg.Dev() {
-		return errors.New("cannot destroy an app in single-app mode")
+		return fault.Invalidf("cannot destroy an app in single-app mode")
 	}
 	runtime, err := m.runtime(name)
 	if err != nil {
@@ -304,7 +305,7 @@ func (m *Manager) Destroy(name string) error {
 	}
 	snapshot := runtime.query(request{kind: requestSnapshot}).snapshot
 	if !snapshot.Deletable {
-		return fmt.Errorf("app %q is not deletable; set deletable: true in its config", name)
+		return fault.Invalidf("app %q is not deletable; set deletable: true in its config", name)
 	}
 	m.drain(runtime, name)
 	if err := runtime.call(request{kind: requestStop}); err != nil {

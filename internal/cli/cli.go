@@ -57,6 +57,8 @@ func (c CLI) Run(args []string) int {
 		err = c.systemd(args[1:])
 	case "password":
 		err = c.password(args[1:])
+	case "token":
+		err = c.token(args[1:])
 	case "init":
 		err = c.init(args[1:])
 	case "sshkey":

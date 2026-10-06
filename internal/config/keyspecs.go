@@ -27,8 +27,9 @@ var keySpecs = map[string]KeySpec{
 	"authcog_realm":   {Block: "host", Name: "AuthCog realm", Description: "AuthCog host the console and every app sign-in use", Example: "dboss.authcog.com"},
 
 	// --- Tokens ---
-	"tokens.github": {Block: "tokens", Name: "GitHub token", Description: "outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only", Example: "$GITHUB_TOKEN", Secret: true},
-	"tokens.dboss":  {Block: "tokens", Name: "Dboss token", Description: "inbound: every /hooks ping, /metrics and /api call must present it; unset refuses hooks and the API and hides /metrics", Example: "$DBOSS_TOKEN", Secret: true},
+	"tokens.github":  {Block: "tokens", Name: "GitHub token", Description: "outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only", Example: "$GITHUB_TOKEN", Secret: true},
+	"tokens.dboss":   {Block: "tokens", Name: "Dboss token", Description: "inbound: every /api call presents it and it grants every action; /hooks pings and /metrics accept it too; unset refuses the API", Example: "$DBOSS_TOKEN", Secret: true},
+	"tokens.webhook": {Block: "tokens", Name: "Webhook token", Description: "inbound: the token /hooks ping URLs carry and /metrics takes; empty derives it from tokens.dboss (dboss token prints it)", Example: "$DBOSS_WEBHOOK_TOKEN", Secret: true},
 
 	// --- Proxy ---
 	"proxy.listen":     {Block: "proxy", Name: "Listen addresses", Description: "one or more addresses to listen on; owns port 80 and routes every request to an app, empty disables the proxy", Example: "127.0.0.1:8080"},

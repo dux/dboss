@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"dboss/internal/fault"
 )
 
 const (
@@ -54,7 +56,7 @@ var (
 func FindDuckDB(ctx context.Context) (DuckDB, error) {
 	path, err := lookPath("duckdb")
 	if err != nil {
-		return DuckDB{}, errors.New("duckdb is not installed (https://duckdb.org); event SQL and funnels need it")
+		return DuckDB{}, fault.Invalidf("duckdb is not installed (https://duckdb.org); event SQL and funnels need it")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -111,7 +113,7 @@ func sandbox(dir string) string {
 func (d DuckDB) Query(ctx context.Context, dir, views, sql string) (QueryResult, error) {
 	sql = strings.TrimSpace(sql)
 	if sql == "" {
-		return QueryResult{}, errors.New("there is no SQL to run")
+		return QueryResult{}, fault.Invalidf("there is no SQL to run")
 	}
 	return d.run(ctx, sandbox(dir)+views+sql, queryRowLimit)
 }
@@ -144,10 +146,11 @@ func (d DuckDB) run(ctx context.Context, script string, limit int) (QueryResult,
 		return result, nil
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return QueryResult{}, fmt.Errorf("query ran longer than %s", queryTimeout)
+		return QueryResult{}, fault.Invalidf("query ran longer than %s", queryTimeout)
 	}
+	// DuckDB names what it refused in the statement (a parser, binder or catalog error).
 	if message := strings.TrimSpace(stderr.String()); message != "" {
-		return QueryResult{}, errors.New(firstLines(message, 3))
+		return QueryResult{}, fault.Invalid(errors.New(firstLines(message, 3)))
 	}
 	if waitErr != nil {
 		return QueryResult{}, fmt.Errorf("duckdb: %w", waitErr)

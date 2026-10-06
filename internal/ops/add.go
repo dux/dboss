@@ -8,6 +8,7 @@ import (
 
 	"dboss/internal/apps"
 	"dboss/internal/config"
+	"dboss/internal/fault"
 	"dboss/internal/git"
 	"dboss/internal/supervisor"
 )
@@ -32,15 +33,15 @@ func addName(request Request) string {
 func (s *Service) add(request Request) (supervisor.Snapshot, error) {
 	cfg := s.runtime.HostConfig()
 	if cfg.Dev() {
-		return supervisor.Snapshot{}, errors.New("a single-app session has no apps folder to add to")
+		return supervisor.Snapshot{}, fault.Invalidf("a single-app session has no apps folder to add to")
 	}
 	repo, _, err := normalizeRepo(request.Repo)
 	if err != nil {
-		return supervisor.Snapshot{}, err
+		return supervisor.Snapshot{}, fault.Invalid(err)
 	}
 	name := addName(request)
 	if err := config.ValidAppName(name); err != nil {
-		return supervisor.Snapshot{}, err
+		return supervisor.Snapshot{}, fault.Invalid(err)
 	}
 	lock := s.previewLock(name)
 	lock.Lock()
@@ -48,7 +49,7 @@ func (s *Service) add(request Request) (supervisor.Snapshot, error) {
 
 	dir := filepath.Join(cfg.Apps, name)
 	if _, err := os.Lstat(dir); err == nil {
-		return supervisor.Snapshot{}, fmt.Errorf("app %s already exists; deploy to it instead", name)
+		return supervisor.Snapshot{}, fault.Invalidf("app %s already exists; deploy to it instead", name)
 	}
 	if err := git.Clone(dir, repo, request.Branch, cfg.Tokens.Github); err != nil {
 		_ = os.RemoveAll(dir)
@@ -70,7 +71,7 @@ func (s *Service) add(request Request) (supervisor.Snapshot, error) {
 func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervisor.Snapshot, bool, error) {
 	path, err := config.FindInDir(dir)
 	if errors.Is(err, config.ErrNoConfig) {
-		return supervisor.Snapshot{}, false, fmt.Errorf("the repository has no %s, so it is not a dboss app", config.FileName)
+		return supervisor.Snapshot{}, false, fault.Invalidf("the repository has no %s, so it is not a dboss app", config.FileName)
 	}
 	if err != nil {
 		return supervisor.Snapshot{}, false, err
@@ -81,7 +82,7 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 	}
 	app, err := config.ParseApp(data, path, cfg.Defaults)
 	if err != nil {
-		return supervisor.Snapshot{}, false, err
+		return supervisor.Snapshot{}, false, fault.Invalid(err)
 	}
 	if host != "" {
 		if app, err = overrideHost(app, data, path, host, cfg.Defaults); err != nil {
@@ -94,7 +95,7 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 		for _, owned := range snapshot.Hosts {
 			for _, wanted := range app.Hosts {
 				if config.NormalizePattern(owned) == config.NormalizePattern(wanted) {
-					return supervisor.Snapshot{}, false, fmt.Errorf("host %s is already served by app %s", wanted, snapshot.Name)
+					return supervisor.Snapshot{}, false, fault.Invalidf("host %s is already served by app %s", wanted, snapshot.Name)
 				}
 			}
 		}
@@ -109,7 +110,7 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 		for _, scanErr := range invalid {
 			var scan apps.ScanError
 			if errors.As(scanErr, &scan) && scan.Name == name {
-				return supervisor.Snapshot{}, false, scan.Err
+				return supervisor.Snapshot{}, false, fault.Invalid(scan.Err)
 			}
 		}
 		return supervisor.Snapshot{}, false, fmt.Errorf("app %s did not load after rescan: %w", name, err)
@@ -131,7 +132,7 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 // canonical host goes because it must be one of the hosts.
 func overrideHost(app config.App, data []byte, path, host string, defaults config.Defaults) (config.App, error) {
 	if len(app.WebProcesses) != 1 {
-		return config.App{}, fmt.Errorf("a host override needs exactly one web process, the app has %d", len(app.WebProcesses))
+		return config.App{}, fault.Invalidf("a host override needs exactly one web process, the app has %d", len(app.WebProcesses))
 	}
 	web := app.WebProcesses[0].Name
 	patched, err := config.PatchYAML(string(data), map[string]any{"procfile." + web + ".hosts": []string{config.NormalizeHost(host)}}, []string{"procfile." + web + ".canonical_host"})

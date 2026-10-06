@@ -1,12 +1,12 @@
 package ops
 
 import (
-	"errors"
 	"strings"
 	"time"
 
 	"dboss/internal/config"
 	"dboss/internal/diskusage"
+	"dboss/internal/fault"
 	"dboss/internal/logstore"
 	"dboss/internal/supervisor"
 )
@@ -32,7 +32,7 @@ func (s *Service) app(name string) (supervisor.Snapshot, error) {
 // DiskRefresh measures one app on demand. It only reads the filesystem, so it writes no audit row.
 func (s *Service) DiskRefresh(name string) (supervisor.DiskUsage, error) {
 	if s.disk == nil {
-		return supervisor.DiskUsage{}, errors.New("disk usage is not enabled")
+		return supervisor.DiskUsage{}, fault.Invalidf("disk usage is not enabled")
 	}
 	usage, err := s.disk.Refresh(name)
 	if err != nil {
@@ -127,9 +127,12 @@ func (s *Service) HostHookToken(name string) (string, error) {
 	return s.runtime.HostHookToken(name)
 }
 
-// DbossToken is tokens.dboss of the live host config: the credential of every hook ping and of
-// /metrics. Empty means neither is served.
+// DbossToken is tokens.dboss of the live host config: the admin credential of /api, which hook
+// pings and /metrics accept too. Empty refuses the API.
 func (s *Service) DbossToken() string { return s.runtime.HostConfig().Tokens.Dboss }
+
+// WebhookToken is the lower token hook pings and /metrics present, read live like DbossToken.
+func (s *Service) WebhookToken() string { return s.runtime.HostConfig().Tokens.WebhookToken() }
 
 // HostPages is the host's pages folder from the live host config.
 func (s *Service) HostPages() string { return s.runtime.HostConfig().Pages }

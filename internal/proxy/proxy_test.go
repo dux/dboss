@@ -23,15 +23,6 @@ import (
 	"dboss/internal/supervisor"
 )
 
-func TestClientIP(t *testing.T) {
-	r := httptest.NewRequest("GET", "http://example.test", nil)
-	r.RemoteAddr = "127.0.0.1:1234"
-	r.Header.Set("CF-Connecting-IP", "203.0.113.9")
-	if got := clientIP(r, true); got != "203.0.113.9" {
-		t.Fatalf("got %q", got)
-	}
-}
-
 func TestBufferRequestKeepsSmallBodyInMemory(t *testing.T) {
 	payload := []byte("hello")
 	request := httptest.NewRequest(http.MethodPost, "http://demo.test/upload", bytes.NewReader(payload))

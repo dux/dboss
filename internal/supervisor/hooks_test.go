@@ -141,11 +141,13 @@ func TestHookListsRunsAndCarriesTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(infos) != 1 || infos[0].URL != "https://dboss.example.com/hooks/demo/deploy?token=hook-token" {
+	// The ping URL carries the token derived from tokens.dboss, never the admin token itself.
+	derived := cfg.Tokens.WebhookToken()
+	if len(infos) != 1 || derived == "hook-token" || infos[0].URL != "https://dboss.example.com/hooks/demo/deploy?token="+derived {
 		t.Fatalf("hook info = %+v", infos)
 	}
 	token, err := manager.HookToken("demo", "deploy")
-	if err != nil || token != "hook-token" {
+	if err != nil || token != derived {
 		t.Fatalf("HookToken = %q, %v", token, err)
 	}
 	if _, err := manager.HookToken("demo", "missing"); err == nil {

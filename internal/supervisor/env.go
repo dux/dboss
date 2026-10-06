@@ -1,7 +1,6 @@
 package supervisor
 
 import (
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 
 	"dboss/internal/apps"
 	"dboss/internal/events"
+	"dboss/internal/fault"
 )
 
 func resolveExecutable(name, dir, pathValue string) (string, error) {
@@ -29,7 +29,7 @@ func resolveExecutable(name, dir, pathValue string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("executable %q not found in app PATH", name)
+	return "", fault.Invalidf("executable %q not found in app PATH", name)
 }
 
 // processEnv assembles one process environment in the documented priority order, lowest first:

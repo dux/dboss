@@ -1,15 +1,15 @@
 package ops
 
 import (
-	"errors"
 	"slices"
 	"time"
 
+	"dboss/internal/fault"
 	"dboss/internal/logstore"
 )
 
 // errNoLogStore answers the log viewer while the store is off.
-var errNoLogStore = errors.New("log store is not enabled")
+var errNoLogStore = fault.Invalidf("log store is not enabled")
 
 // SearchLogs and SearchRequests are the read side of the log store, shared by the console and
 // any future `dboss logs --search`.
@@ -104,7 +104,7 @@ func (s *Service) resolveException(app, expUID string, resolved bool) error {
 		SetExceptionResolved(string, string, bool) error
 	})
 	if !ok {
-		return errors.New("exceptions are not available")
+		return fault.Invalidf("exceptions are not available")
 	}
 	return writer.SetExceptionResolved(app, expUID, resolved)
 }
@@ -119,7 +119,7 @@ func (s *Service) ignoreException(app, expUID string, ignored bool) error {
 		SetExceptionIgnored(string, string, bool) error
 	})
 	if !ok {
-		return errors.New("exceptions are not available")
+		return fault.Invalidf("exceptions are not available")
 	}
 	return writer.SetExceptionIgnored(app, expUID, ignored)
 }
@@ -127,7 +127,7 @@ func (s *Service) ignoreException(app, expUID string, ignored bool) error {
 // Traffic returns the aggregated request log of one app for requests newer than since.
 func (s *Service) Traffic(name string, since time.Time) (logstore.Traffic, error) {
 	if s.store == nil {
-		return logstore.Traffic{}, errors.New("traffic is not available")
+		return logstore.Traffic{}, fault.Invalidf("traffic is not available")
 	}
 	return s.store.Traffic(name, since)
 }
@@ -135,7 +135,7 @@ func (s *Service) Traffic(name string, since time.Time) (logstore.Traffic, error
 // FleetSeries is the request count per bucket over every app, for the overview chart.
 func (s *Service) FleetSeries(since time.Time) ([]logstore.TrafficBucket, error) {
 	if s.store == nil {
-		return nil, errors.New("traffic is not available")
+		return nil, fault.Invalidf("traffic is not available")
 	}
 	snapshots := s.runtime.Snapshots()
 	names := make([]string, 0, len(snapshots))

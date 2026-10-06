@@ -1093,3 +1093,22 @@ func TestPostgresTakesFalseOrAMapping(t *testing.T) {
 		t.Fatalf("unknown postgres key = %v", err)
 	}
 }
+
+func TestWebhookToken(t *testing.T) {
+	derived := Tokens{Dboss: "s3cret"}.WebhookToken()
+	if len(derived) != 64 || derived == "s3cret" || derived != (Tokens{Dboss: "s3cret"}.WebhookToken()) {
+		t.Fatalf("derived = %q", derived)
+	}
+	if other := (Tokens{Dboss: "other"}).WebhookToken(); other == derived {
+		t.Fatal("two admin tokens derived one webhook token")
+	}
+	if got := (Tokens{Dboss: "s3cret", Webhook: "hooks-only"}).WebhookToken(); got != "hooks-only" {
+		t.Fatalf("explicit = %q", got)
+	}
+	if got := (Tokens{Webhook: "hooks-only"}).WebhookToken(); got != "hooks-only" {
+		t.Fatalf("webhook alone = %q", got)
+	}
+	if got := (Tokens{}).WebhookToken(); got != "" {
+		t.Fatalf("none = %q", got)
+	}
+}

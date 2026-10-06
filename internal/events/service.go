@@ -2,11 +2,12 @@ package events
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"dboss/internal/fault"
 )
 
 // Service is the events surface the ops layer serves to the CLI and the console: reads from the
@@ -49,7 +50,7 @@ func (s *Service) App(name string) (AppConfig, error) {
 			return app, nil
 		}
 	}
-	return AppConfig{}, fmt.Errorf("unknown app %q", name)
+	return AppConfig{}, fault.Invalidf("unknown app %q", name)
 }
 
 // Catalog is an app's saved views and funnels, dboss.yaml and console merged.
@@ -109,7 +110,7 @@ func (s *Service) RunFunnel(ctx context.Context, name, funnelName string, funnel
 	if funnel == nil {
 		index := slices.IndexFunc(catalog.Funnels, func(f Funnel) bool { return f.Name == funnelName })
 		if index < 0 {
-			return QueryResult{}, fmt.Errorf("no funnel named %q", funnelName)
+			return QueryResult{}, fault.Invalidf("no funnel named %q", funnelName)
 		}
 		funnel = &catalog.Funnels[index]
 	}

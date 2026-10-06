@@ -25,14 +25,16 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"dboss/internal/authcog"
 	"dboss/internal/config"
+	"dboss/internal/httpx"
 	"dboss/internal/logstore"
 	"dboss/internal/module"
 	"dboss/internal/pages"
 	"dboss/internal/supervisor"
+	"dboss/internal/throttle"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Retry-After of the maintenance page and of the pages in front of a starting app; the starting
@@ -73,7 +75,7 @@ type Handler struct {
 	hostConfig func() config.Config
 	filters    []Filter
 	limiter    *rateLimiter
-	passwords  *passwordThrottle
+	passwords  *throttle.Throttle
 	ticker     module.Ticker
 }
 
@@ -81,7 +83,7 @@ type Handler struct {
 // module hooks its own filter into the pipeline.
 func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, recorder Recorder, authorizer PublishAuthorizer, extra ...Filter) (*Handler, error) {
 	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: upstreamDialTimeout}).DialContext, ResponseHeaderTimeout: cfg.Proxy.Timeout.Value(), IdleConnTimeout: upstreamIdleTimeout, MaxIdleConnsPerHost: upstreamIdleConnsPerApp}
-	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter(), passwords: newPasswordThrottle()}
+	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter(), passwords: throttle.New()}
 	h.initFilters(extra...)
 	return h, nil
 }
@@ -91,7 +93,6 @@ func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, r
 func (h *Handler) Start(ctx context.Context) {
 	h.ticker.Run(ctx, rateSweepInterval, false, func(context.Context) {
 		h.limiter.sweep(h.limiter.now())
-		h.passwords.sweep()
 	})
 }
 
@@ -121,7 +122,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if web, ok := snapshot.WebForHost(r.Host); ok {
 		process = web.Name
 	}
-	_ = h.recorder.Record(snapshot.Name, snapshot.LogRetention, logstore.RequestEntry{Time: started, Method: r.Method, Host: r.Host, Path: r.URL.RequestURI(), Status: recorder.status, DurationMS: time.Since(started).Milliseconds(), BytesOut: recorder.bytes, IP: clientIP(r, h.cfg.Proxy.Cloudflare), UserAgent: r.UserAgent(), RequestID: requestID, Process: process, Country: country(r)})
+	_ = h.recorder.Record(snapshot.Name, snapshot.LogRetention, logstore.RequestEntry{Time: started, Method: r.Method, Host: r.Host, Path: r.URL.RequestURI(), Status: recorder.status, DurationMS: time.Since(started).Milliseconds(), BytesOut: recorder.bytes, IP: httpx.ClientIP(r, h.cfg.Proxy.Cloudflare), UserAgent: r.UserAgent(), RequestID: requestID, Process: process, Country: country(r)})
 }
 
 // redirectCanonical answers 301 to canonical_host for any other host the app owns, so www never
@@ -456,7 +457,7 @@ func (h *Handler) applyForwardedHeaders(r *http.Request) {
 		r.Header.Set("X-Forwarded-Host", r.Host)
 	}
 	if r.Header.Get("X-Real-IP") == "" {
-		if ip := clientIP(r, h.cfg.Proxy.Cloudflare); ip != "" {
+		if ip := httpx.ClientIP(r, h.cfg.Proxy.Cloudflare); ip != "" {
 			r.Header.Set("X-Real-IP", ip)
 		}
 	}
@@ -552,19 +553,6 @@ func (h *Handler) stoppedPage(w http.ResponseWriter, r *http.Request, app superv
 
 func wantsHTML(r *http.Request) bool {
 	return r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/html")
-}
-
-// clientIP is the visitor's address: CF-Connecting-IP behind Cloudflare, where only Cloudflare
-// can connect and the header cannot be spoofed, else the connection's own address.
-func clientIP(r *http.Request, cloudflare bool) string {
-	if value := r.Header.Get("CF-Connecting-IP"); cloudflare && value != "" {
-		return strings.TrimSpace(value)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 // country is the visitor country Cloudflare reports in CF-IPCountry. Only a two-character code is

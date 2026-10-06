@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"dboss/internal/httpx"
 	"dboss/internal/pages"
 	"dboss/internal/supervisor"
 )
@@ -47,7 +48,7 @@ func (h *Handler) canonical(w http.ResponseWriter, r *http.Request, app supervis
 }
 
 func (h *Handler) allow(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
-	if !allowed(clientIP(r, h.cfg.Proxy.Cloudflare), app.Web.AllowPrefixes()) {
+	if !allowed(httpx.ClientIP(r, h.cfg.Proxy.Cloudflare), app.Web.AllowPrefixes()) {
 		h.forbidden(w, r, app)
 		return
 	}

@@ -2,7 +2,6 @@ package supervisor
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strings"
 	"syscall"
@@ -10,6 +9,7 @@ import (
 
 	"dboss/internal/apps"
 	"dboss/internal/children"
+	"dboss/internal/fault"
 	"dboss/internal/logx"
 	"dboss/internal/notify"
 )
@@ -48,7 +48,7 @@ func lastBytes(s string, n int) string {
 // timeout. It runs off the app's goroutine so a slow command cannot stall the supervisor.
 func (m *Manager) Exec(name string, argv []string, timeout time.Duration) (ExecResult, error) {
 	if len(argv) == 0 {
-		return ExecResult{}, errors.New("no command given")
+		return ExecResult{}, fault.Invalidf("no command given")
 	}
 	runtime, err := m.runtime(name)
 	if err != nil {
@@ -90,7 +90,7 @@ func (m *Manager) run(spec *apps.App, procType string, line apps.Command, timeou
 	case <-time.After(timeout):
 		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
 		<-done
-		return ExecResult{Output: output.String(), ExitCode: -1}, fmt.Errorf("command timed out after %s", timeout)
+		return ExecResult{Output: output.String(), ExitCode: -1}, fault.Invalidf("command timed out after %s", timeout)
 	}
 	return ExecResult{Output: output.String(), ExitCode: exitCode(waitErr)}, nil
 }

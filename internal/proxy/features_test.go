@@ -15,6 +15,7 @@ import (
 	"dboss/internal/config"
 	"dboss/internal/logstore"
 	"dboss/internal/supervisor"
+	"dboss/internal/throttle"
 )
 
 // fakeRecorder captures the deny counter a blocked request reports.
@@ -29,7 +30,7 @@ func (f *fakeRecorder) RecordBlocked(path string) error {
 
 // featureHandler has no manager: every step before forwarding must answer on its own.
 func featureHandler() *Handler {
-	handler := &Handler{cfg: config.Default(), hostConfig: config.Default, signin: authcog.NewWithKey([]byte("01234567890123456789012345678901")), passwords: newPasswordThrottle()}
+	handler := &Handler{cfg: config.Default(), hostConfig: config.Default, signin: authcog.NewWithKey([]byte("01234567890123456789012345678901")), passwords: throttle.New()}
 	handler.initFilters()
 	return handler
 }

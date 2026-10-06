@@ -3,12 +3,12 @@ package ops
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"dboss/internal/events"
+	"dboss/internal/fault"
 )
 
-var errNoEvents = errors.New("events are not available")
+var errNoEvents = fault.Invalidf("events are not available")
 
 // SetEvents attaches the events service; without it every events action fails.
 func (s *Service) SetEvents(service *events.Service) { s.events = service }
@@ -95,17 +95,17 @@ func (s *Service) eventsSave(app, kind string, data json.RawMessage) error {
 	case "view":
 		var view events.View
 		if err := json.Unmarshal(data, &view); err != nil {
-			return err
+			return fault.Invalid(err)
 		}
 		return s.events.SaveView(app, view)
 	case "funnel":
 		var funnel events.Funnel
 		if err := json.Unmarshal(data, &funnel); err != nil {
-			return err
+			return fault.Invalid(err)
 		}
 		return s.events.SaveFunnel(app, funnel)
 	}
-	return errors.New("kind is view or funnel")
+	return fault.Invalidf("kind is view or funnel")
 }
 
 func (s *Service) eventsDelete(app, kind, name string) error {

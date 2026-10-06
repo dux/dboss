@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"dboss/internal/authcog"
+	"dboss/internal/httpx"
 	"dboss/internal/pages"
 	"dboss/internal/supervisor"
 )
@@ -21,56 +21,7 @@ const (
 	passwordPath    = "/.well-known/dboss/password"
 	passwordCookie  = "dboss_password"
 	passwordMaxForm = 4 << 10
-	// passwordSpacing is the least time between two password checks from one client IP, across
-	// every app, so guessing is slow; parallel requests queue instead of slipping through.
-	passwordSpacing = 3 * time.Second
-	// passwordMaxWait caps that queue: a check that would wait longer answers 429 at once, so a
-	// flood cannot pile up waiting connections.
-	passwordMaxWait = 30 * time.Second
 )
-
-// passwordThrottle hands out password check slots per client IP. It lives in memory only, so a
-// restart starts every IP fresh. now is injectable for tests.
-type passwordThrottle struct {
-	mu      sync.Mutex
-	next    map[string]time.Time
-	spacing time.Duration
-	now     func() time.Time
-}
-
-func newPasswordThrottle() *passwordThrottle {
-	return &passwordThrottle{next: map[string]time.Time{}, spacing: passwordSpacing, now: time.Now}
-}
-
-// reserve books the IP's next check slot and returns how long to wait for it, or false with the
-// wait when the queue is past passwordMaxWait.
-func (t *passwordThrottle) reserve(ip string) (time.Duration, bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	now := t.now()
-	slot := now
-	if next, ok := t.next[ip]; ok && next.After(now) {
-		slot = next
-	}
-	wait := slot.Sub(now)
-	if wait > passwordMaxWait {
-		return wait, false
-	}
-	t.next[ip] = slot.Add(t.spacing)
-	return wait, true
-}
-
-// sweep forgets the IPs whose next slot has passed; they would get an immediate check anyway.
-func (t *passwordThrottle) sweep() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	now := t.now()
-	for ip, next := range t.next {
-		if !next.After(now) {
-			delete(t.next, ip)
-		}
-	}
-}
 
 // passwordGate asks for the web process's shared password on a dboss page and keeps the visitor
 // in with a signed cookie lasting session_ttl. The audience carries a digest of the configured
@@ -91,14 +42,15 @@ func (h *Handler) passwordGate(w http.ResponseWriter, r *http.Request, app super
 	if r.URL.Path == passwordPath && r.Method == http.MethodPost {
 		r.Body = http.MaxBytesReader(w, r.Body, passwordMaxForm)
 		to := authcog.SafeRedirect(r.PostFormValue("to"), passwordPath)
-		wait, ok := h.passwords.reserve(clientIP(r, h.cfg.Proxy.Cloudflare))
+		// Every check books a slot, a passing one too: a visitor signs in once per session.
+		slot, ok := h.passwords.Reserve(httpx.ClientIP(r, h.cfg.Proxy.Cloudflare))
 		if !ok {
-			seconds := int(math.Ceil(wait.Seconds()))
+			seconds := int(math.Ceil(slot.Wait.Seconds()))
 			w.Header().Set("Retry-After", strconv.Itoa(seconds))
 			h.passwordPage(w, r, app, to, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", seconds))
 			return
 		}
-		time.Sleep(wait)
+		time.Sleep(slot.Wait)
 		if secretMatches(password, r.PostFormValue("password")) {
 			if err := h.signin.SetSession(w, r, gate, ""); err != nil {
 				http.Error(w, "could not start a session", http.StatusInternalServerError)

@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"time"
 
+	"dboss/internal/fault"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -31,10 +33,10 @@ type RestoreResult struct {
 }
 
 // ErrRestoreConfirm is returned when an in-place restore is missing its confirmation.
-var ErrRestoreConfirm = errors.New("restoring over an existing database requires the target name as confirmation")
+var ErrRestoreConfirm = fault.Invalid(errors.New("restoring over an existing database requires the target name as confirmation"))
 
 // ErrDropConfirm is returned when a drop is missing the database name as confirmation.
-var ErrDropConfirm = errors.New("dropping a database requires its name as confirmation")
+var ErrDropConfirm = fault.Invalid(errors.New("dropping a database requires its name as confirmation"))
 
 // reservedDatabases can never be dropped through dboss.
 var reservedDatabases = map[string]bool{"postgres": true, "template0": true, "template1": true}
@@ -48,7 +50,7 @@ func (s *Service) Restore(ctx context.Context, request RestoreRequest) (RestoreR
 	}
 	entry, ok := s.catalog.get(request.ID)
 	if !ok {
-		return RestoreResult{}, fmt.Errorf("unknown backup %q", request.ID)
+		return RestoreResult{}, fault.Invalidf("unknown backup %q", request.ID)
 	}
 	if entry.Status != "ok" {
 		return RestoreResult{}, fmt.Errorf("backup %q did not complete", request.ID)
@@ -96,7 +98,7 @@ func (s *Service) Restore(ctx context.Context, request RestoreRequest) (RestoreR
 // databases and requires the caller to repeat the name as confirmation.
 func (s *Service) DropDatabase(ctx context.Context, database, confirm string) error {
 	if database == "" {
-		return errors.New("database name is required")
+		return fault.Invalidf("database name is required")
 	}
 	if database != confirm {
 		return ErrDropConfirm
@@ -158,7 +160,7 @@ func unzip(path string) (string, func(), error) {
 // whichever action asked.
 func dropDatabase(ctx context.Context, connConfig *pgx.ConnConfig, target string) error {
 	if reservedDatabases[target] {
-		return fmt.Errorf("%s is a reserved database and cannot be dropped", target)
+		return fault.Invalidf("%s is a reserved database and cannot be dropped", target)
 	}
 	if err := maintenanceExec(ctx, connConfig, "DROP DATABASE IF EXISTS "+pgx.Identifier{target}.Sanitize()+" WITH (FORCE)"); err != nil {
 		return fmt.Errorf("drop database %s: %w", target, err)

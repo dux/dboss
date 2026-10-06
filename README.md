@@ -206,7 +206,7 @@ ports: [3100, 3199]
 
 tokens:
   github: $GITHUB_TOKEN   # outbound: dboss pulls private repos with it
-  dboss: $DBOSS_TOKEN     # inbound: hook pings, /metrics and /api present it
+  dboss: $DBOSS_TOKEN     # inbound admin token for /api; hook pings and /metrics take the webhook token derived from it (dboss token)
 ```
 
 App file (`./demo/apps/bun/dboss.yaml`):
@@ -251,8 +251,9 @@ Every app-level key can be set once under `defaults:` in the host file and repea
 ```
 $ dboss config --keys tokens
 Tokens  (root dboss.yaml)
-  tokens.github  outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only  e.g. $GITHUB_TOKEN
-  tokens.dboss   inbound: every /hooks ping, /metrics and /api call must present it; unset refuses hooks and the API and hides /metrics                                    e.g. $DBOSS_TOKEN
+  tokens.github   outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only  e.g. $GITHUB_TOKEN
+  tokens.dboss    inbound: every /api call presents it and it grants every action; /hooks pings and /metrics accept it too; unset refuses the API                           e.g. $DBOSS_TOKEN
+  tokens.webhook  inbound: the token /hooks ping URLs carry and /metrics takes; empty derives it from tokens.dboss (dboss token prints it)                                  e.g. $DBOSS_WEBHOOK_TOKEN
 ```
 
 ## Commands
@@ -297,6 +298,7 @@ Config
   rescan        re-read the apps directory, every dboss.yaml and the host defaults
   ports         show the live port table, one fixed port per process slot
   password      print a bcrypt hash for basic_auth
+  token         print the webhook token hook pings and /metrics present
   sshkey        list the local SSH public keys, or create a new key
 
 Binary
@@ -637,7 +639,7 @@ rsync's own `--delete` is not used on purpose: openrsync, the macOS default, rem
 It needs `git`, `rsync` and `ssh` locally, and `rsync` plus `dboss` on the ssh user's `PATH` on the box; ssh in as the service user.
 
 `git` needs no ssh.
-It posts to the app's `deploy` hook (automatic for a Git checkout with a remote, else `hooks: {deploy: true}`, see below) with `tokens.dboss` as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
+It posts to the app's `deploy` hook (automatic for a Git checkout with a remote, else `hooks: {deploy: true}`, see below) with the token from `--token` or `$DBOSS_TOKEN` (the webhook token or `tokens.dboss`) as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
 A failed pull prints git's answer and exits with its code; an app without the hook gets the line to add.
 
 ## Deploy hooks
@@ -666,7 +668,9 @@ The pull hook, the console's **Redeploy** and `dboss deploy sync` refuse a check
 
 For a private repo, set `tokens.github` (a PAT) in the host file; write `$GITHUB_TOKEN` to keep it out of the file. dboss hands it to the pull through the environment only, via a credential helper (git 2.31+), so it never lands in argv, the repo's config or the app's processes; with no token the pull stays anonymous.
 
-The ping URL is `https://<management.host>/hooks/<app>/<hook>`. Every ping presents `tokens.dboss` from the host file, a value you choose (for example `openssl rand -hex 32`) and paste into the sender: `?token=<token>` in the URL, `Authorization: Bearer`, `X-Gitlab-Token` (GitLab's Secret token field), or a GitHub `X-Hub-Signature-256` HMAC over the raw body (GitHub's Secret field). Without the token every ping answers `401`. `X-GitHub-Event: ping` (sent when the webhook is created) is acknowledged without running anything.
+The ping URL is `https://<management.host>/hooks/<app>/<hook>`. Every ping presents the webhook token: `tokens.webhook` from the host file, or, when it is empty, a token derived from `tokens.dboss` with HMAC-SHA256 that cannot be turned back into it. `dboss token` prints it and the ping URLs `dboss hooks` shows carry it, so a Git host never holds the admin token; `tokens.dboss` itself is accepted too.
+The derived token is only as strong as `tokens.dboss`: anyone holding it can test guesses of the admin token offline, so make `tokens.dboss` random (`openssl rand -hex 32`), never a word or a short phrase.
+Set `tokens.webhook` explicitly to rotate the webhook token on its own; rotating `tokens.dboss` rotates a derived one with it. Paste it into the sender: `?token=<token>` in the URL, `Authorization: Bearer`, `X-Gitlab-Token` (GitLab's Secret token field), or a GitHub `X-Hub-Signature-256` HMAC over the raw body (GitHub's Secret field). Without the token every ping answers `401`. A wrong token makes the next check from that client address wait 3s, stacking up to 30s, after which pings answer `429` at once; a sender with the right token never waits. `X-GitHub-Event: ping` (sent when the webhook is created) is acknowledged without running anything.
 
 `dboss hooks [app]` lists hooks with their last result and the ready-made ping URL; `dboss hooks run [app] <hook>` starts one now. To change the token, edit it and run `dboss rescan`; the old URLs stop working. Hooks run in the app folder with the app environment, log to a `hook-<name>` channel, and leave the app alone unless `restart: true`.
 
@@ -697,7 +701,7 @@ Each step runs in the app folder with the cron and hook environment (no `PORT`) 
 ## GitHub PR previews
 
 A host can declare one built-in `github_pr` hook that turns a branch into a short-lived app, so a Git host webhook creates, updates and tears down PR previews with no runner and no SSH deploy script.
-The hook is host-level and answered at `https://<management.host>/hooks/github_pr`, signed with `tokens.dboss` like every hook; one path segment is a host hook, two are an app hook.
+The hook is host-level and answered at `https://<management.host>/hooks/github_pr`, signed with the webhook token like every hook; one path segment is a host hook, two are an app hook.
 
 ```yaml
 hooks:
@@ -795,7 +799,7 @@ The management host also serves three endpoints:
 * `GET /readyz` - `200` only while every `autostart` app serves (running, or asleep and woken by the next request), else `503` with the apps that are not ready.
 * `GET /metrics` - Prometheus text: build info, per-app up/state/uptime/memory/CPU, per-app disk usage by part with the time it was measured, per-process restarts and memory, request rates per window, request duration quantiles (p50/p95/p99 over the last hour), and the last exit of each cron job and hook.
 
-`healthz` and `readyz` are open so an uptime checker or load balancer can reach them. `metrics` requires `tokens.dboss` as `Authorization: Bearer <token>` and answers `404` when no token is set. All three answer on the management host only.
+`healthz` and `readyz` are open so an uptime checker or load balancer can reach them. `metrics` requires the webhook token (`dboss token`, or `tokens.dboss`) as `Authorization: Bearer <token>`, so a scrape config never holds the admin token, and answers `404` when no token is set. All three answer on the management host only.
 
 Each app also answers on its own hosts at `health_endpoint` (default `/.well-known/dboss/health`): `200 {"app","state"}` while a visitor would be served, `503` otherwise. An app stopped by `idle_stop` (or `dboss stop`) still answers `200` with `"state":"stopped"`, because the next request wakes it, so a Cloudflare Health Check or Load Balancer never flags a sleeping app. Draining, maintenance, starting, crashed and a stopped `autostart: button` app answer `503`. It runs before basic auth and never wakes a stopped app, so a Cloudflare health check or uptime monitor can probe the app domain directly. Set `health_endpoint: ""` to disable it.
 
@@ -812,7 +816,7 @@ The management host serves every action the CLI runs over the control socket as 
 
 * `GET /api` - the guide, for people and agents alike. A browser (Firefox, Chrome, Edge, Safari) gets it as a rendered page; curl, scripts and agents get the markdown, and `?format=md` forces it. It opens with every GET endpoint on the host as a relative link (`/api`, `/api/openapi.json`, `/healthz`, `/readyz`, `/metrics`, hook status), then covers how to connect, the answer shape, the error codes and every action with its params. It is generated from the action catalog (`./internal/ops/spec.go`), so it never lags the code.
 * `GET /api/openapi.json` - the same catalog as OpenAPI 3.1. Import it into Swagger UI, Postman, Insomnia, Bruno or Hoppscotch, or generate a client from it.
-* `POST /api/<action>` - runs one action. Send `tokens.dboss` as `Authorization: Bearer <token>` and the action's params as a JSON object (no params: an empty body or `{}`).
+* `POST /api/<action>` - runs one action. Send `tokens.dboss` as `Authorization: Bearer <token>` (the webhook token is refused here) and the action's params as a JSON object (no params: an empty body or `{}`).
 
 ```sh
 curl -s -X POST https://dboss.example.com/api/ls -H "Authorization: Bearer $DBOSS_TOKEN"
@@ -821,7 +825,8 @@ curl -s -X POST https://dboss.example.com/api/restart -H "Authorization: Bearer 
 
 Every action is `POST`, reads included; only the guide and the export are `GET`, and both are open.
 Success is HTTP `200` `{"ok": true, "data": ...}`.
-A refused or failed call is HTTP `400` `{"ok": false, "error": {"code": "...", "message": "..."}}`, with the code one of `api_disabled` (no `tokens.dboss`), `unauthorized`, `unknown_action`, `invalid_request` (an unknown param, a missing required one or a wrong type) and `failed` (the action ran and failed).
+A success is HTTP `200` `{"ok": true, "data": ...}`, with `data` null when the action returns nothing.
+A failure is `{"ok": false, "error": {"code": "...", "message": "..."}}`: HTTP `400` with `api_disabled` (no `tokens.dboss`), `unauthorized`, `rate_limited` (too many wrong tokens from this address, with `Retry-After`), `unknown_action`, `invalid_request` (an unknown param, a missing required one or a wrong type) or `failed` (the action refused: an unknown app, a state, a missing confirmation), and HTTP `500` with `internal` when dboss itself failed (a database, git or disk error).
 Audited actions write their audit row with the actor `api`.
 Without `tokens.dboss` the API refuses every call.
 The token grants everything the CLI can do, `exec`, `pg-query` and `destroy` included, so treat it like root on the box.

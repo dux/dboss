@@ -1,8 +1,9 @@
 package supervisor
 
 import (
-	"fmt"
 	"net/url"
+
+	"dboss/internal/fault"
 )
 
 // RunHook starts one deploy hook now, whether the app is running or stopped.
@@ -28,14 +29,15 @@ func (m *Manager) Hooks(name string) ([]HookInfo, error) {
 	host := m.HostConfig()
 	result := make([]HookInfo, 0, len(response.hooks))
 	for _, info := range response.hooks {
-		info.URL = hookLink(host.ConsoleURL(), host.Tokens.Dboss, name, info.Name)
+		info.URL = hookLink(host.ConsoleURL(), host.Tokens.WebhookToken(), name, info.Name)
 		result = append(result, info)
 	}
 	return result, nil
 }
 
-// HookToken returns the token a ping to one app hook must present: tokens.dboss of the live host
-// config. An unknown app or hook is an error, so the endpoint can answer 404.
+// HookToken returns the token a ping to one app hook presents: the webhook token of the live host
+// config (tokens.dboss is accepted too, see the console). An unknown app or hook is an error, so
+// the endpoint can answer 404.
 func (m *Manager) HookToken(name, hookName string) (string, error) {
 	hooks, err := m.Hooks(name)
 	if err != nil {
@@ -43,19 +45,19 @@ func (m *Manager) HookToken(name, hookName string) (string, error) {
 	}
 	for _, info := range hooks {
 		if info.Name == hookName {
-			return m.HostConfig().Tokens.Dboss, nil
+			return m.HostConfig().Tokens.WebhookToken(), nil
 		}
 	}
-	return "", fmt.Errorf("unknown hook %q", hookName)
+	return "", fault.Invalidf("unknown hook %q", hookName)
 }
 
 // HostHookToken is HookToken for a host-level hook.
 func (m *Manager) HostHookToken(name string) (string, error) {
 	host := m.HostConfig()
 	if _, ok := host.HostHooks[name]; !ok {
-		return "", fmt.Errorf("unknown host hook %q", name)
+		return "", fault.Invalidf("unknown host hook %q", name)
 	}
-	return host.Tokens.Dboss, nil
+	return host.Tokens.WebhookToken(), nil
 }
 
 // HookInfo is one hook with its ready-made ping URL and the output tail of its last run,

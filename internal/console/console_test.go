@@ -20,6 +20,7 @@ import (
 	"dboss/internal/authcog"
 	"dboss/internal/config"
 	"dboss/internal/diskusage"
+	"dboss/internal/fault"
 	"dboss/internal/logstore"
 	"dboss/internal/ops"
 	"dboss/internal/supervisor"
@@ -52,6 +53,8 @@ type fakeManager struct {
 	token string
 	// held is a hand-run session still waiting for ENTER.
 	held bool
+	// restartErr is what Restart answers, a server failure for the API's 500.
+	restartErr error
 }
 
 func (m *fakeManager) Snapshots() []supervisor.Snapshot {
@@ -64,7 +67,7 @@ func (m *fakeManager) Snapshot(app string) (supervisor.Snapshot, error) {
 			return snapshot, nil
 		}
 	}
-	return supervisor.Snapshot{}, errors.New("unknown app")
+	return supervisor.Snapshot{}, fault.Invalidf("unknown app")
 }
 
 func (m *fakeManager) Ports() map[string]int { return map[string]int{} }
@@ -88,7 +91,7 @@ func (m *fakeManager) Stop(app string) error {
 
 func (m *fakeManager) Restart(app string) error {
 	m.actions = append(m.actions, "restart "+app)
-	return nil
+	return m.restartErr
 }
 
 func (m *fakeManager) StartProcess(app, process string) error {
@@ -620,6 +623,8 @@ func handlerFor(t *testing.T, cfg config.Config, manager *fakeManager, rates fak
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Tests send wrong tokens on purpose; token_test.go covers the spacing itself.
+	handler.tokens.Spacing = 0
 	return handler
 }
 

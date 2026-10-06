@@ -16,6 +16,7 @@ import (
 	"dboss/internal/config"
 	"dboss/internal/diskusage"
 	"dboss/internal/events"
+	"dboss/internal/fault"
 	"dboss/internal/logstore"
 	"dboss/internal/notify"
 	"dboss/internal/pg"
@@ -76,7 +77,7 @@ var auditActions = map[string]bool{
 	ActionStart: true, ActionStop: true, ActionRestart: true, ActionDestroy: true, ActionMaintenance: true,
 	ActionRescan: true, ActionCronRun: true, ActionHookRun: true, ActionHostHookRun: true, ActionExec: true,
 	ActionPGBackup: true, ActionPGRestore: true, ActionPGDrop: true, ActionPGDeleteDump: true, ActionPGQuery: true,
-	ActionPubsubRotate: true, ActionPubsubPublish: true, ActionAdd: true,
+	ActionPubsubSecret: true, ActionPubsubRotate: true, ActionPubsubPublish: true, ActionAdd: true,
 	ActionEventsQuery: true, ActionEventsSave: true, ActionEventsDelete: true,
 	ActionExceptionResolve: true, ActionExceptionIgnore: true,
 }
@@ -351,7 +352,7 @@ func (s *Service) dispatch(request Request) (any, error) {
 // SearchAudit returns audit rows for the console and CLI.
 func (s *Service) SearchAudit(filter logstore.AuditFilter) ([]logstore.AuditEntry, error) {
 	if s.store == nil {
-		return nil, errors.New("audit is not enabled")
+		return nil, fault.Invalidf("audit is not enabled")
 	}
 	return s.store.SearchAudit(filter)
 }
@@ -415,6 +416,8 @@ func auditDetail(request Request) string {
 		return request.Database + ": " + pg.QueryAuditDetail(request.SQL)
 	case ActionPubsubPublish:
 		return request.Channel
+	case ActionPubsubSecret:
+		return request.Process
 	case ActionEventsQuery:
 		return pg.QueryAuditDetail(request.SQL)
 	case ActionEventsSave:

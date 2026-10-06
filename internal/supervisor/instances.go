@@ -2,11 +2,12 @@ package supervisor
 
 import (
 	"cmp"
-	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
+
+	"dboss/internal/fault"
 )
 
 // A procfile entry runs as one or more instances: "web" when count is 1, else "web.1".."web.N".
@@ -98,7 +99,7 @@ func (a *appRuntime) resolve(name string) ([]string, error) {
 	if _, ok := a.spec.Commands[proc]; ok && slices.Contains(a.knownInstances(), name) {
 		return []string{name}, nil
 	}
-	return nil, fmt.Errorf("unknown process %q", name)
+	return nil, fault.Invalidf("unknown process %q", name)
 }
 
 // tracked lists every process the runtime owns: live, retiring and a rolling replacement.

@@ -955,7 +955,7 @@ This is a second layer, not a replacement for Cloudflare, which still owns volum
 
 ```yaml
 auth: [ana@example.com, "*@example.com"]   # empty leaves the app open
-session_ttl: 24h                            # also under defaults:, where it covers the console
+session_ttl: 7d                             # also under defaults:, where it covers the console
 ```
 
 A visitor without a session is sent to AuthCog (`authcog_realm` in the host file), returns to `/.well-known/dboss/auth` and gets a signed, host-only cookie; `/.well-known/dboss/logout` signs out.

@@ -343,7 +343,7 @@ defaults:
   #   X-Powered-By: ""
 
   # How long a sign-in lasts: an app's auth gate and, set here, the management console.
-  session_ttl: 24h
+  session_ttl: 7d
 
 # --- Notifications -----------------------------------------------------------
 # Post runtime events to one operator webhook. Best-effort: a slow endpoint never blocks the
@@ -649,7 +649,7 @@ lifecycle: {}
 auth: []
 #   - ana@example.com
 #   - "*@example.com"
-session_ttl: 24h
+session_ttl: 7d
 
 # --- AuthCog login: dboss runs the sign-in for the app --------------------------------------
 # authcog: true (path /authcog) or a path turns it on. dboss owns the whole AuthCog round trip on

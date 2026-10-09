@@ -448,18 +448,24 @@ func replaceAppError(response *http.Response, r *http.Request, snapshot supervis
 }
 
 // applyForwardedHeaders adds the headers an app expects from a reverse proxy, but never
-// overrides what Cloudflare already sent.
+// overrides what Cloudflare already sent. Client addresses are the exception: a
+// CF-Connecting-IP that did not come from Cloudflare (or the box) is the client's own word and
+// is dropped, and X-Real-IP is always the address dboss resolved, never one a client sent.
 func (h *Handler) applyForwardedHeaders(r *http.Request) {
+	cloudflare := h.cfg.Proxy.Cloudflare || inPrefixes(r.RemoteAddr, cloudflareRanges)
+	if !cloudflare {
+		r.Header.Del("CF-Connecting-IP")
+	}
 	if r.Header.Get("X-Forwarded-Proto") == "" {
 		r.Header.Set("X-Forwarded-Proto", requestScheme(r))
 	}
 	if r.Header.Get("X-Forwarded-Host") == "" {
 		r.Header.Set("X-Forwarded-Host", r.Host)
 	}
-	if r.Header.Get("X-Real-IP") == "" {
-		if ip := httpx.ClientIP(r, h.cfg.Proxy.Cloudflare); ip != "" {
-			r.Header.Set("X-Real-IP", ip)
-		}
+	if ip := httpx.ClientIP(r, cloudflare); ip != "" {
+		r.Header.Set("X-Real-IP", ip)
+	} else {
+		r.Header.Del("X-Real-IP")
 	}
 }
 

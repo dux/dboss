@@ -1047,7 +1047,10 @@ Destroy drains and stops the app, clears its running and maintenance state, remo
 A plain app folder is removed recursively; an app symlink is unlinked without following its target, which remains owned by lux-deploy.
 Single-app mode cannot destroy itself, and retained logs, audit rows and config history continue through their normal retention.
 
-On the way to an app the proxy adds `X-Forwarded-Proto`, `X-Forwarded-Host` and `X-Real-IP` when they are missing; whatever Cloudflare sent is left untouched. `X-Forwarded-For` is appended by the reverse proxy.
+On the way to an app the proxy adds `X-Forwarded-Proto` and `X-Forwarded-Host` when they are missing; whatever Cloudflare sent is left untouched.
+`X-Real-IP` is always set to the client address dboss resolved, replacing any the client sent.
+A `CF-Connecting-IP` is passed on only when the connection came from Cloudflare's ranges (or the box itself, e.g. `cloudflared`) or `proxy.cloudflare` is set; otherwise the client wrote it and it is dropped.
+`X-Forwarded-For` is appended by the reverse proxy.
 
 An app's processes start with the web processes (the ones with `hosts`) first, then the rest in name order, so a web process that expects other services to be up still gets that.
 

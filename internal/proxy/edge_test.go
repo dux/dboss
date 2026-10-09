@@ -47,3 +47,25 @@ func TestCloudflareOnlyAcceptsCloudflareAndLoopback(t *testing.T) {
 		t.Fatalf("disabled guard answered %d", response.Code)
 	}
 }
+
+func TestForwardedClientAddressCannotBeSpoofed(t *testing.T) {
+	handler := featureHandler()
+	for remote, want := range map[string][2]string{
+		// off-box client: its own CF-Connecting-IP and X-Real-IP are replaced by the real peer
+		"203.0.113.9:1234": {"", "203.0.113.9"},
+		// Cloudflare edge: its CF-Connecting-IP is the client
+		"173.245.48.9:1234": {"198.51.100.7", "198.51.100.7"},
+	} {
+		request := httptest.NewRequest(http.MethodGet, "http://app.example.com/", nil)
+		request.RemoteAddr = remote
+		request.Header.Set("CF-Connecting-IP", "198.51.100.7")
+		request.Header.Set("X-Real-IP", "10.9.9.9")
+		handler.applyForwardedHeaders(request)
+		if got := request.Header.Get("CF-Connecting-IP"); got != want[0] {
+			t.Errorf("%s: CF-Connecting-IP = %q, want %q", remote, got, want[0])
+		}
+		if got := request.Header.Get("X-Real-IP"); got != want[1] {
+			t.Errorf("%s: X-Real-IP = %q, want %q", remote, got, want[1])
+		}
+	}
+}

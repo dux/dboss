@@ -339,30 +339,30 @@ func TestMaxClients(t *testing.T) {
 	}
 }
 
-func TestAuthorizesPublish(t *testing.T) {
+func TestAuthorizes(t *testing.T) {
 	service := newTestService(t)
 	cfg := config.Pubsub{Path: "/socketio", Secret: "s3cret"}
 	snapshot := snapshotFor("web", cfg)
 
 	request, _ := http.NewRequest(http.MethodPost, "http://app.test/socketio/chat", strings.NewReader("{}"))
 	request.Header.Set("Authorization", "Bearer s3cret")
-	if !service.AuthorizesPublish(request, snapshot) {
+	if !service.Authorizes(request, snapshot) {
 		t.Fatal("valid publish should be authorized")
 	}
 
 	get, _ := http.NewRequest(http.MethodGet, "http://app.test/socketio/chat", nil)
-	if service.AuthorizesPublish(get, snapshot) {
+	if service.Authorizes(get, snapshot) {
 		t.Fatal("GET is not a publish")
 	}
 
 	wrong, _ := http.NewRequest(http.MethodPost, "http://app.test/socketio/chat", strings.NewReader("{}"))
 	wrong.Header.Set("Authorization", "Bearer nope")
-	if service.AuthorizesPublish(wrong, snapshot) {
+	if service.Authorizes(wrong, snapshot) {
 		t.Fatal("wrong secret must not be authorized")
 	}
 }
 
-func TestAuthorizesPublishPerWebProcess(t *testing.T) {
+func TestAuthorizesPerWebProcess(t *testing.T) {
 	service := newTestService(t)
 	snapshot := supervisor.Snapshot{
 		Name:  "app",
@@ -376,7 +376,7 @@ func TestAuthorizesPublishPerWebProcess(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "http://"+host+"/socketio/chat", strings.NewReader("{}"))
 		request.Host = host
 		request.Header.Set("Authorization", "Bearer "+secret)
-		return service.AuthorizesPublish(request, snapshot)
+		return service.Authorizes(request, snapshot)
 	}
 	if !post("a.test", "sa") {
 		t.Fatal("a's secret should authorize a")

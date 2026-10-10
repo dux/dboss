@@ -51,6 +51,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Web console** - live state, start/stop, log search, config editing with history, and an audit row for every action.
 * **PostgreSQL** - inspection, SQL prompt, scheduled backups, rotation and restore.
 * **PubSub** - realtime channels over WebSocket or SSE.
+* **Vibe** - an AI harness on the app's own host: the app in a frame, a chat that edits it, its diffs, Restart, Reset, Commit and Push, and MCP for any agent.
 * **HTTP API** - every CLI action as `POST /api/<action>` with a bearer token, a guide at `GET /api` and an OpenAPI export.
 * **Metrics and alerts** - Prometheus `/metrics`, `/healthz`, `/readyz`, and webhook alerts on crashes, OOM kills, full disks, error rates and slow responses.
 * **Resource limits** - per-process memory and CPU limits on a cgroup v2 host.
@@ -790,6 +791,45 @@ The secret is accepted as `?token=`, `Authorization: Bearer` or `X-Pubsub-Token`
 **Self-test.** With `test: true`, `GET <path>/_test` serves a page that opens a WebSocket and an SSE connection and reports PASS or FAIL in the browser.
 
 `dboss pubsub [app]` lists channels and subscriber counts, `dboss pubsub secret [app] [--process name]` prints the credential and example URLs, `dboss pubsub publish [app] <channel> [--event name] [--data json|-] [--process name]` sends a message through the control socket, and `dboss pubsub help` prints the integration guide. Name `--process` only when the app runs several hubs. The console's **PubSub** tab (when any web process sets `pubsub`) shows the same and can publish a test message. Channels are one path segment; `client.js`, `_test` and `_selftest` are reserved. Metrics are `dboss_pubsub_clients`, `dboss_pubsub_channels` and `dboss_pubsub_messages_total`, each labeled by app.
+
+## Vibe: an AI harness on the app
+
+A web process can serve an AI harness at `/_dboss_/vibe` on its own hosts.
+The page shows the app in a frame, a chat on the left that edits it, and Restart, Commit, Push and **AI handover** on top.
+The same tools are served over MCP, so Claude Code, Codex, Cursor or a web chat connector can work on the app too, and what they do shows up live in the chat.
+
+```yaml
+deepseek_api_key: $DEEPSEEK_API_KEY   # the built-in chat; or under host defaults: for every app
+procfile:
+  web:
+    command: ./start.sh
+    hosts: [staging.shop.example.com]
+    vibe:
+      password: $VIBE_PASSWORD    # plain or a bcrypt hash from `dboss password`
+```
+
+The harness has its own password, so the app itself may stay public.
+A signed-in owner passes the app's own `password`, `basic_auth` and `auth` gates on that web process, so the framed app opens, and the proxy drops `X-Frame-Options` and CSP `frame-ancestors` from the answers the owner gets, so an app that refuses framing still renders.
+Outside a dev session the password is required, because the tools run commands on the box; `vibe: true` (no password) is for a dev session only.
+The harness and the app share one origin, so script on an app page can call the harness from the owner's browser: put `vibe` on a dedicated checkout behind a password when the app serves real users.
+
+* **Chat** - DeepSeek with a fixed tool set; it reads and edits files, runs commands, restarts the app, reads logs and exceptions and checks pages with `http_get`. A turn stops after 40 tool steps or 5 minutes; one chat per web process lives under `dir/state/<app>/`. Without `deepseek_api_key` the chat is off and everything else works.
+* **Changes** - the uncommitted files with their line counts and diffs, and the commits Push would send with theirs.
+* **Reset** - throws away every uncommitted change by stashing it, untracked files included and ignored ones never, so `git stash pop` brings it back.
+* **Commit** and **Push** - commit everything (the message can be written from the diff) and push to the upstream with `tokens.github`; a pinned `branch` refuses any other. Push and Reset are never agent tools.
+* **AI handover** - copies a prompt with the MCP URL, the app's state and the rules, ready to paste into any agent.
+
+The tools are `app_info`, `list_files`, `read_file`, `search`, `write_file`, `edit_file`, `run`, `restart`, `logs`, `exceptions`, `http_get`, `git_status` and `commit`.
+Paths stay inside the app folder and never reach `.git` or dboss's runtime folder; every write, command, restart, commit, push and reset leaves an audit row (`vibe:<app>/<process>` from the harness, `mcp:<app>/<process>` from MCP).
+MCP is Streamable HTTP at `/_dboss_/vibe/mcp/<token>`; the token sits in the path so clients that cannot set headers connect too, and **Rotate token** in the handover dialog locks out every earlier prompt:
+
+```bash
+claude mcp add --transport http shop https://staging.shop.example.com/_dboss_/vibe/mcp/<token>
+```
+
+Commit, push and reset are also actions of their own (`git-commit`, `git-push`, `git-reset`) on the HTTP API and the control socket.
+Git actions need the app folder to be the root of its own repository, so an app inside a larger checkout never commits or stashes another project's files.
+The demo's `vibe` app (`./demo/apps/vibe`, a one-page site that makes itself a repository on its first start) serves it at `http://vibe.lvh.me/_dboss_/vibe` with the password `vibe`.
 
 ## Health and metrics
 

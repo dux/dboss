@@ -25,7 +25,7 @@ func main() {
 	flag.Parse()
 	apps := flag.Args()
 	if len(apps) == 0 {
-		apps = []string{"bun", "sinatra", "button", "scratch"}
+		apps = []string{"bun", "sinatra", "button", "scratch", "vibe"}
 	}
 	if *socket == "" {
 		*socket = filepath.Join(filepath.Dir(*dir), "dboss.sock")
@@ -234,7 +234,7 @@ func seedHost(store *logstore.Store, rng *rand.Rand, now time.Time) {
 			_ = store.RecordBlocked(path)
 		}
 	}
-	messages := []string{"dboss ready: listen=:80 management=dboss.lvh.me", "wake bun: starting web", "rescan: 4 apps", "notify: posted crash for scratch", "log prune and vacuum done"}
+	messages := []string{"dboss ready: listen=:80 management=dboss.lvh.me", "wake bun: starting web", "rescan: 5 apps", "notify: posted crash for scratch", "log prune and vacuum done"}
 	for i := 0; i < 40; i++ {
 		message := messages[rng.Intn(len(messages))]
 		_ = store.RecordLogs(logstore.HostApp, []logstore.LogEntry{{

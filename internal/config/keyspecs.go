@@ -105,6 +105,9 @@ var keySpecs = map[string]KeySpec{
 	"session_ttl": {Block: "auth", Name: "Session lifetime", Description: "how long a sign-in lasts before AuthCog is asked again; the host value also covers the console", Example: "8h"},
 	"authcog":     {Block: "auth", Name: "AuthCog login", Description: "run the AuthCog sign-in for the app at this path (true means /authcog) and hand it the profile once as X-Dboss-User", Example: "/login"},
 
+	// --- Vibe ---
+	"deepseek_api_key": {Block: "vibe", Name: "DeepSeek API key", Description: "DeepSeek API key of the built-in chat in every vibe harness of the app; empty turns the chat off, MCP and the handover still work", Example: "$DEEPSEEK_API_KEY", Secret: true},
+
 	// --- Alerts ---
 	"alerts.error_rate": {Block: "alerts", Name: "Error rate", Description: "percent of 5xx answers over the last 5 minutes that posts error-rate; 0 disables", Example: "5"},
 	"alerts.slow_p95":   {Block: "alerts", Name: "Slow p95", Description: "p95 request latency over the last 5 minutes that posts slow; 0 disables", Example: "2s"},

@@ -50,6 +50,7 @@ type WebOverrides struct {
 	Auth             List                `yaml:"auth,omitempty" json:"auth,omitempty"`
 	SessionTTL       *Duration           `yaml:"session_ttl,omitempty" json:"session_ttl,omitempty"`
 	AuthCog          *AuthCogPath        `yaml:"authcog,omitempty" json:"authcog,omitempty"`
+	DeepseekAPIKey   *string             `yaml:"deepseek_api_key,omitempty" json:"-"`
 }
 
 // PubsubOverrides is the web process's pubsub mapping as pointers, so an app can set one key and

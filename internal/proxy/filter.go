@@ -28,11 +28,13 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, app supervisor.S
 	step(0)
 }
 
-// initFilters assembles the pipeline: built-ins, then extra module filters, then the forward
-// stage that ends every request.
-func (h *Handler) initFilters(extra ...Filter) {
-	h.filters = append(h.filters[:0], h.canonical, h.allow, h.block, h.publicHealth, h.rateLimit, h.authCog, h.signIn, h.authorize, h.passwordGate, h.maintain, h.staticFiles, h.bufferBody)
-	h.filters = append(h.filters, extra...)
+// initFilters assembles the pipeline: built-ins with the early module stages ahead of the gates,
+// then the extra module stages, then the forward stage that ends every request.
+func (h *Handler) initFilters() {
+	h.filters = append(h.filters[:0], h.canonical, h.allow, h.block, h.publicHealth, h.rateLimit, h.authCog)
+	h.filters = append(h.filters, h.modules.Early...)
+	h.filters = append(h.filters, h.signIn, h.authorize, h.passwordGate, h.maintain, h.staticFiles, h.bufferBody)
+	h.filters = append(h.filters, h.modules.Extra...)
 	h.filters = append(h.filters, func(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, _ func()) {
 		h.forward(w, r, app)
 	})
@@ -76,14 +78,19 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, app supervis
 	http.Error(w, "authentication required", http.StatusUnauthorized)
 }
 
-// exempt reports whether a request passes basic_auth, the password and the sign-in gate on its own terms: the
-// app owns its authcog login namespace, where dboss hands the identity over, and a module can
-// vouch for a request, e.g. a pubsub publisher presenting its own secret.
+// exempt reports whether a request passes basic_auth, the password and the sign-in gate on its own
+// terms: the app owns its authcog login namespace, where dboss hands the identity over, and a
+// module can vouch for a request, e.g. a pubsub publisher presenting its own secret.
 func (h *Handler) exempt(r *http.Request, app supervisor.Snapshot) bool {
 	if app.Web.AuthCog.Enabled() && withinPath(string(app.Web.AuthCog), r.URL.Path) {
 		return true
 	}
-	return h.pubsub != nil && h.pubsub.AuthorizesPublish(r, app)
+	for _, authorizer := range h.modules.Authorizers {
+		if authorizer.Authorizes(r, app) {
+			return true
+		}
+	}
+	return false
 }
 
 // publicHealth answers the app's own status path without auth, so a Cloudflare health check or

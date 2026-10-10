@@ -58,9 +58,12 @@ type Web struct {
 	// bare * for any account; an empty list leaves the app open.
 	Auth List `yaml:"auth" json:"auth"`
 	// SessionTTL is how long a sign-in lasts, for the app gate and, on the host, the console.
-	SessionTTL    Duration    `yaml:"session_ttl" json:"session_ttl"`
-	AuthCog       AuthCogPath `yaml:"authcog" json:"authcog"`
-	allowPrefixes []netip.Prefix
+	SessionTTL Duration    `yaml:"session_ttl" json:"session_ttl"`
+	AuthCog    AuthCogPath `yaml:"authcog" json:"authcog"`
+	// DeepseekAPIKey is the DeepSeek API key the vibe harness's built-in chat uses; empty turns the
+	// chat off. It never leaves the process as JSON.
+	DeepseekAPIKey string `yaml:"deepseek_api_key" json:"-"`
+	allowPrefixes  []netip.Prefix
 }
 
 // DefaultAuthCogPath is the app URL a bare `authcog: true` captures, matching AuthCog's own

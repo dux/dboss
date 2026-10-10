@@ -42,6 +42,7 @@ import (
 	"dboss/internal/supervisor"
 	"dboss/internal/sysinfo"
 	"dboss/internal/tmpclean"
+	"dboss/internal/vibe"
 )
 
 // Daemon is one running session. Build binds it, Serve starts the modules, Boot starts the apps,
@@ -165,15 +166,25 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 	}
 	sizes := diskusage.New(manager, cfg.LogDir)
 	postgres := pg.New(cfg, notifier)
-	d := &Daemon{cfg: cfg, manager: manager, modules: module.NewManager(logs, ingester, eventModule, alerts.New(manager, logs, sysInfo.Inspector(), notifier), tmpclean.New(manager), sizes, sysInfo, postgres, channels), notifier: notifier, echo: echo, managementPort: managementPort, registry: registry}
 	service := ops.New(manager, logs, postgres, channels, sizes, notifier)
 	service.SetEvents(eventService)
-	// One AuthCog flow for the console and every app gate: one signing key, one challenge map.
+	// One AuthCog flow for the console, every app gate and the vibe harness: one signing key, one
+	// challenge map.
 	flow, err := authcog.New(cfg.StateDir)
 	if err != nil {
-		d.Close()
+		notifier.Close()
+		manager.Close()
+		closeRegistry(registry)
 		return nil, err
 	}
+	harness, err := vibe.New(service, flow, cfg.StateDir, cfg.RuntimeDir, cfg.Proxy.Cloudflare, console.Assets())
+	if err != nil {
+		notifier.Close()
+		manager.Close()
+		closeRegistry(registry)
+		return nil, err
+	}
+	d := &Daemon{cfg: cfg, manager: manager, modules: module.NewManager(logs, ingester, eventModule, alerts.New(manager, logs, sysInfo.Inspector(), notifier), tmpclean.New(manager), sizes, sysInfo, postgres, channels, harness), notifier: notifier, echo: echo, managementPort: managementPort, registry: registry}
 	// The console has its own loopback listener, so it is built and bound outside the proxy
 	// block: a dev session with proxy.listen turned off still gets a console and `dboss login`.
 	var management *console.Handler
@@ -186,7 +197,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 		d.management = management
 	}
 	if cfg.Dev() {
-		appProxy, edge, err := edgeHandler(cfg, flow, manager, logs, management, channels)
+		appProxy, edge, err := edgeHandler(cfg, flow, manager, logs, management, channels, harness)
 		if err != nil {
 			d.Close()
 			return nil, err
@@ -197,7 +208,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 			return nil, err
 		}
 	} else if len(cfg.Proxy.Listen) > 0 {
-		appProxy, edge, err := edgeHandler(cfg, flow, manager, logs, management, channels)
+		appProxy, edge, err := edgeHandler(cfg, flow, manager, logs, management, channels, harness)
 		if err != nil {
 			d.Close()
 			return nil, err
@@ -359,11 +370,17 @@ func managementAddress(port int) string { return "127.0.0.1:" + strconv.Itoa(por
 // edgeHandler is the single public listener: Cloudflare hands it the full request and the
 // host header picks the console or an app. Only the app proxy is affected by the trusted CIDRs.
 // A console with no management.host is left off the switch; it is reached on its own port.
-func edgeHandler(cfg config.Config, flow *authcog.Flow, manager *supervisor.Manager, logs proxy.Recorder, management *console.Handler, channels *pubsub.Service) (*proxy.Handler, http.Handler, error) {
-	appProxy, err := proxy.New(cfg, flow, manager, logs, channels, channels.Filter)
+func edgeHandler(cfg config.Config, flow *authcog.Flow, manager *supervisor.Manager, logs proxy.Recorder, management *console.Handler, channels *pubsub.Service, harness *vibe.Service) (*proxy.Handler, http.Handler, error) {
+	appProxy, err := proxy.New(cfg, flow, manager, logs, proxy.Modules{
+		Authorizers: []proxy.Authorizer{channels, harness},
+		Early:       []proxy.Filter{harness.Filter},
+		Extra:       []proxy.Filter{channels.Filter},
+		Responses:   []proxy.ResponseHook{harness.FrameHeaders},
+	})
 	if err != nil {
 		return nil, nil, err
 	}
+	harness.SetProxy(appProxy)
 	var handler http.Handler = appProxy
 	if management != nil && cfg.Management.Enabled() {
 		handler = proxy.HostSwitch(cfg.Management.Host, management, appProxy)

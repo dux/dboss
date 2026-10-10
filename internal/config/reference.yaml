@@ -474,6 +474,19 @@ branch: main
 # process only, so an app's admin process can ask for a password while its public one stays open.
 # An empty value (`basic_auth: {}`, `password: ""`) turns the gate off for that process.
 #
+# A web process may set `vibe`, the AI harness dboss serves at /_dboss_/vibe on its own hosts:
+# the app in a frame, a chat that edits it, Restart, the changed files with their diffs, Reset,
+# Commit and Push, plus an MCP endpoint any LLM client can drive and an AI handover prompt.
+#   vibe:
+#     password: $VIBE_PASSWORD      # plain or a bcrypt hash from `dboss password`
+#   vibe: true                      # no password; a dev session only
+# The password is its own gate, independent of the app's: the app can stay public while only
+# the owner signs in to the harness, and a signed-in owner passes the app's own password,
+# basic_auth and auth gates so the frame opens. Outside a dev session the password is required,
+# because the harness tools run commands on the box. Harness and app share one origin, so put
+# vibe on a dedicated checkout behind password when the app serves real users. The built-in chat
+# needs deepseek_api_key; MCP and the handover work without it.
+#
 # `count` runs that many copies of one entry (default 1, at most 64), each with its own PORT and
 # PROC_INSTANCE (1..count). Copies are named <name>.1 .. <name>.<count> in logs, the console and
 # metrics; a single copy keeps the bare name. The proxy sends each request to the ready copy of a
@@ -495,6 +508,8 @@ procfile:
     command: bundle exec puma -C config/admin.rb
     hosts: [admin.myapp.com]
     password: $ADMIN_PASSWORD
+    vibe:
+      password: $VIBE_PASSWORD
   worker: bundle exec lux jobs:work
   cron: bundle exec lux jobs:cron
 
@@ -507,9 +522,9 @@ autostart: true
 # Folder of the pages dboss serves for this app instead of forwarding: starting (waking up),
 # waiting (a hand-run start still waits for ENTER), stopped (a button app, with the start
 # button), crashed, maintenance, error (the proxy's own 502s and the app's 5xx) and forbidden
-# (allow_ips), plus password (the password form) and signed_out. For each one dboss reads
-# <name>.html here, else template.html here, else the same two in the host's pages folder, else
-# the built-in page, on every request. Every page fills {{status}}, {{title}}, {{message}},
+# (allow_ips), plus password (the password form), vibe_password (the vibe harness sign-in) and
+# signed_out. For each one dboss reads <name>.html here, else template.html here, else the same
+# two in the host's pages folder, else the built-in page, on every request. Every page fills {{status}}, {{title}}, {{message}},
 # {{action}} (the start button, password form or sign-in link dboss builds), {{app}} and {{dboss_logo}} (the
 # dboss mark at /.well-known/dboss/logo.svg); any other {{...}} is left alone, so one
 # template.html covers every page. An app 5xx body is only replaced when this folder has
@@ -690,6 +705,14 @@ rate_limit:
   # Request methods the limit applies to, case-insensitive. Empty means every method.
   methods: []
   #   - POST
+
+# --- Vibe: the AI harness ------------------------------------------------------------------
+# DeepSeek API key of the built-in chat in every vibe harness of the app (see `vibe` on a
+# procfile entry). Empty turns the chat off; MCP and the AI handover still work. Valid at the
+# app top level and under host `defaults:`, so one key on the box serves every app; keep the
+# literal key in dboss.local.yaml or write $DEEPSEEK_API_KEY.
+deepseek_api_key: ""
+#   $DEEPSEEK_API_KEY
 
 # --- Alerts: request log checks ------------------------------------------------------------
 # Once a minute dboss looks at the app's last 5 minutes of requests (once there are at least 20)

@@ -49,6 +49,8 @@ type ProcessSpec struct {
 	// inherits, an empty value turns the gate off here.
 	BasicAuth map[string]string `yaml:"basic_auth,omitempty" json:"-"`
 	Password  *string           `yaml:"password,omitempty" json:"-"`
+	// Vibe serves the AI harness at VibePath on this web process's hosts.
+	Vibe *VibeSpec `yaml:"vibe,omitempty" json:"vibe,omitempty"`
 }
 
 // MaxCount bounds procfile count, so one typo cannot claim the whole port range.
@@ -59,7 +61,7 @@ func (p ProcessSpec) Instances() int { return max(p.Count, 1) }
 
 // processSpecKeys are the keys of the mapping form, in the order the hints name them. They are
 // checked here because a custom decoder is a leaf as far as the schema walk is concerned.
-var processSpecKeys = []string{"command", "hosts", "host_prefix", "pubsub", "health", "canonical_host", "count", "basic_auth", "password"}
+var processSpecKeys = []string{"command", "hosts", "host_prefix", "pubsub", "health", "canonical_host", "count", "basic_auth", "password", "vibe"}
 
 // processSpecFields is ProcessSpec without its methods, so the mapping form decodes and encodes
 // through the struct tags instead of recursing into the custom marshalers.
@@ -84,7 +86,7 @@ func (p *ProcessSpec) UnmarshalYAML(node *yaml.Node) error {
 
 // commandOnly reports whether the process only runs a command, which marshals as a scalar.
 func (p ProcessSpec) commandOnly() bool {
-	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.BasicAuth == nil && p.Password == nil
+	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.BasicAuth == nil && p.Password == nil && p.Vibe == nil
 }
 
 // MarshalYAML writes a scalar command when the process only runs a command, else the full mapping,
@@ -227,6 +229,62 @@ func validPubsubKey(key string) bool {
 	return false
 }
 
+// VibePath is where a web process with vibe serves the harness, on each of its own hosts.
+const VibePath = "/_dboss_/vibe"
+
+// VibeSpec is the web process's AI harness option: true turns it on with no password (a dev
+// session only), a {password} mapping turns it on behind that password, false or absent is off.
+type VibeSpec struct {
+	Enabled  bool
+	Password string
+}
+
+// UnmarshalYAML accepts true, false or a {password} mapping.
+func (v *VibeSpec) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		switch node.Tag {
+		case "!!bool":
+			v.Enabled = node.Value == "true"
+			return nil
+		case "!!null":
+			return nil
+		}
+	case yaml.MappingNode:
+		var fields struct {
+			Password string `yaml:"password"`
+		}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if key := node.Content[i].Value; key != "password" {
+				return &Error{Line: node.Content[i].Line, Key: "vibe", Message: fmt.Sprintf("unknown key %q", key), Hint: "valid keys here: password"}
+			}
+		}
+		if err := node.Decode(&fields); err != nil {
+			return err
+		}
+		v.Enabled, v.Password = true, fields.Password
+		return nil
+	}
+	return &Error{Line: node.Line, Key: "vibe", Message: "must be true, false or a {password} mapping"}
+}
+
+// MarshalYAML writes the mapping when a password is set, else the switch.
+func (v VibeSpec) MarshalYAML() (any, error) {
+	if v.Enabled && v.Password != "" {
+		return map[string]string{"password": v.Password}, nil
+	}
+	return v.Enabled, nil
+}
+
+// MarshalJSON writes only the switch, so the password never reaches a JSON reader.
+func (v VibeSpec) MarshalJSON() ([]byte, error) { return json.Marshal(v.Enabled) }
+
+// Vibe is a web process's resolved AI harness: on or off, and the password that guards it.
+type Vibe struct {
+	Enabled  bool   `json:"enabled"`
+	Password string `json:"-"`
+}
+
 // WebProcess is one procfile entry that answers proxied traffic: the hosts it serves, the
 // canonical hostname its other hosts redirect to, and its realtime hub. An app may have several,
 // each bound to its own PORT.
@@ -240,6 +298,7 @@ type WebProcess struct {
 	// BasicAuth and Password are the app-level gates with the process's own values applied.
 	BasicAuth map[string]string
 	Password  string
+	Vibe      Vibe
 }
 
 type App struct {
@@ -462,6 +521,28 @@ func (a *App) resolvePubsub() error {
 	return nil
 }
 
+// resolveVibe resolves every web process's vibe option onto its WebProcess. Outside a dev session
+// the harness needs a password, since its tools run commands on the box.
+func (a *App) resolveVibe(dev bool) error {
+	for index := range a.WebProcesses {
+		web := &a.WebProcesses[index]
+		spec := a.Procfile[web.Name].Vibe
+		if spec == nil || !spec.Enabled {
+			continue
+		}
+		if spec.Password == "" && !dev {
+			return &Error{Key: "procfile." + web.Name + ".vibe.password", Message: "is required outside a dev session", Hint: "the harness runs commands on the box: vibe: {password: $VIBE_PASSWORD}"}
+		}
+		web.Vibe = Vibe{Enabled: true, Password: spec.Password}
+	}
+	for _, name := range processNames(a.Procfile) {
+		if spec := a.Procfile[name].Vibe; spec != nil && spec.Enabled && !a.IsWeb(name) {
+			return &Error{Key: "procfile." + name + ".vibe", Message: "vibe needs hosts on the same process", Hint: "add hosts or host_prefix to this process, or move vibe to a web process"}
+		}
+	}
+	return nil
+}
+
 // resolveCanonical validates each web process's canonical_host against its own hosts and rejects
 // canonical_host on a process that serves no hosts.
 func (a *App) resolveCanonical() error {
@@ -574,6 +655,9 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 		return App{}, err
 	}
 	if err := app.resolvePubsub(); err != nil {
+		return App{}, err
+	}
+	if err := app.resolveVibe(dev); err != nil {
 		return App{}, err
 	}
 	if err := app.resolveCanonical(); err != nil {

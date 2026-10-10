@@ -1,0 +1,22 @@
+# A one-page site to try the AI harness on: open http://vibe.lvh.me/_dboss_/vibe (password "vibe").
+# The site sits in a frame next to a chat that edits it, with its changed files, Restart, Reset,
+# Commit, Push and an MCP endpoint for any LLM client. AI handover works as it is; the built-in
+# chat reads DEEPSEEK_API_KEY from the environment dboss starts in (DEEPSEEK_API_KEY=sk-... make
+# demo) and stays off while it is unset.
+#
+# The start step makes this folder its own git repository, so Changes, Commit and Reset touch only
+# these files, never the dboss checkout around them. To start over:
+#   rm -rf demo/apps/vibe/.git && git checkout demo/apps/vibe && git clean -fd demo/apps/vibe
+deepseek_api_key: $DEEPSEEK_API_KEY
+
+procfile:
+  web:
+    command: ./start.sh
+    hosts:
+      - vibe.lvh.me
+    health: /up
+    vibe:
+      password: vibe
+
+lifecycle:
+  start: ./git-init.sh

@@ -101,7 +101,7 @@ func TestWakeProxyAndRequestLog(t *testing.T) {
 	}
 	requestLogs := logstore.New(cfg.LogDir, 10*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer requestLogs.Close()
-	handler, err := New(cfg, authcog.NewWithKey([]byte("01234567890123456789012345678901")), manager, requestLogs, nil)
+	handler, err := New(cfg, authcog.NewWithKey([]byte("01234567890123456789012345678901")), manager, requestLogs, Modules{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestButtonAppWakesOnPost(t *testing.T) {
 	}
 	requestLogs := logstore.New(cfg.LogDir, 10*time.Millisecond, nil, "", time.Hour, 0, 0)
 	defer requestLogs.Close()
-	handler, err := New(cfg, authcog.NewWithKey([]byte("01234567890123456789012345678901")), manager, requestLogs, nil)
+	handler, err := New(cfg, authcog.NewWithKey([]byte("01234567890123456789012345678901")), manager, requestLogs, Modules{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ type fakeAuthorizer struct {
 	called bool
 }
 
-func (f *fakeAuthorizer) AuthorizesPublish(*http.Request, supervisor.Snapshot) bool {
+func (f *fakeAuthorizer) Authorizes(*http.Request, supervisor.Snapshot) bool {
 	f.called = true
 	return f.allow
 }
@@ -416,7 +416,7 @@ func TestAuthorizeHonorsPublishAuthorizer(t *testing.T) {
 	app := supervisor.Snapshot{Name: "web", Web: config.Web{BasicAuth: map[string]string{"alice": "$2a$10$abcdefghijklmnopqrstuv"}}}
 
 	authorizer := &fakeAuthorizer{allow: true}
-	handler := &Handler{pubsub: authorizer}
+	handler := &Handler{modules: Modules{Authorizers: []Authorizer{authorizer}}}
 	next := false
 	recorder := httptest.NewRecorder()
 	handler.authorize(recorder, httptest.NewRequest(http.MethodPost, "/socketio/chat", nil), app, func() { next = true })
@@ -425,7 +425,7 @@ func TestAuthorizeHonorsPublishAuthorizer(t *testing.T) {
 	}
 
 	denied := &fakeAuthorizer{allow: false}
-	handler = &Handler{pubsub: denied}
+	handler = &Handler{modules: Modules{Authorizers: []Authorizer{denied}}}
 	recorder = httptest.NewRecorder()
 	next = false
 	handler.authorize(recorder, httptest.NewRequest(http.MethodPost, "/socketio/chat", nil), app, func() { next = true })

@@ -72,9 +72,10 @@ func decode(data []byte, path string, raw *file, profile string) (map[string]boo
 var envRef = regexp.MustCompile(`\$[A-Z_][A-Z0-9_]*`)
 
 // expandEnv replaces $NAME in every string value with the matching process environment
-// variable, leaving the text as written when NAME is unset. procfile values and
-// cron.*.command are runtime shell lines, so they are skipped. It reports whether any value
-// changed, which tells decode to read the mutated tree instead of the original bytes.
+// variable, leaving the text as written when NAME is unset. Procfile and cron commands are
+// runtime shell lines, so they are skipped; the other keys of a procfile entry (password,
+// basic_auth, vibe) expand like any value. It reports whether any value changed, which tells
+// decode to read the mutated tree instead of the original bytes.
 func expandEnv(node *yaml.Node, path string) bool {
 	changed := false
 	switch node.Kind {
@@ -86,7 +87,7 @@ func expandEnv(node *yaml.Node, path string) bool {
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			key, value := node.Content[i], node.Content[i+1]
 			child := path + key.Value + "."
-			if strings.HasPrefix(child, "procfile.") || strings.HasPrefix(child, "cron.") && strings.HasSuffix(child, ".command.") {
+			if procfileCommand(child, value) || strings.HasPrefix(child, "cron.") && strings.HasSuffix(child, ".command.") {
 				continue
 			}
 			changed = expandEnv(value, child) || changed
@@ -108,6 +109,17 @@ func expandEnv(node *yaml.Node, path string) bool {
 		return true
 	}
 	return changed
+}
+
+// procfileCommand reports whether child is a procfile command: the scalar shorthand
+// procfile.<name> or the mapping's procfile.<name>.command.
+func procfileCommand(child string, value *yaml.Node) bool {
+	rest, ok := strings.CutPrefix(child, "procfile.")
+	if !ok || rest == "" {
+		return false
+	}
+	parts := strings.Split(strings.TrimSuffix(rest, "."), ".")
+	return len(parts) == 1 && value.Kind == yaml.ScalarNode || len(parts) == 2 && parts[1] == "command"
 }
 
 // SetRuntimeDir points the config at one runtime folder and derives the state, log and socket

@@ -5,11 +5,15 @@ package secret
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"sync"
 
 	"dboss/internal/fsutil"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Store is one state_dir JSON file mapping group -> name -> secret, e.g. app -> hook.
@@ -102,4 +106,15 @@ func Generate() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
+// Matches compares a configured password with the one given. A value bcrypt can parse is a hash
+// and goes through bcrypt's compare; anything else is a plain password, compared in constant time
+// over sha256 digests so its length does not leak.
+func Matches(want, got string) bool {
+	if _, err := bcrypt.Cost([]byte(want)); err == nil {
+		return bcrypt.CompareHashAndPassword([]byte(want), []byte(got)) == nil
+	}
+	gotSum, wantSum := sha256.Sum256([]byte(got)), sha256.Sum256([]byte(want))
+	return subtle.ConstantTimeCompare(gotSum[:], wantSum[:]) == 1
 }

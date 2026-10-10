@@ -65,6 +65,10 @@ var specs = []Spec{
 		opt("timeout", TypeDuration, "kill after this long; default 60s"),
 	}},
 
+	{Name: ActionGitCommit, Group: "Git", Summary: "Stage every change in the app's checkout (untracked files too, ignored ones never) and commit it.", Params: []Param{pApp, req("message", TypeString, "commit message")}},
+	{Name: ActionGitPush, Group: "Git", Summary: "Push the app's branch to its upstream with tokens.github; a pinned branch refuses any other.", Params: []Param{pApp}},
+	{Name: ActionGitReset, Group: "Git", Summary: "Clear every uncommitted change by stashing it (untracked files too, ignored ones never); `git stash pop` brings it back.", Params: []Param{pApp}},
+
 	{Name: ActionCron, Group: "Cron and hooks", Summary: "An app's cron jobs with their schedule and last run.", Params: []Param{pApp}},
 	{Name: ActionCronRun, Group: "Cron and hooks", Summary: "Run one cron job now.", Params: []Param{pApp, req("job", TypeString, "cron job name")}},
 	{Name: ActionHook, Group: "Cron and hooks", Summary: "An app's deploy hooks with their ping URL, state and last output.", Params: []Param{pApp}},

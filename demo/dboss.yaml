@@ -6,7 +6,7 @@ management:
 ports: [3100, 3199]
 
 # Common scanner targets every demo app refuses with 403 before the app is contacted. Set under
-# defaults: so it covers all four apps at once; an app can override it with its own deny: list.
+# defaults: so it covers every demo app at once; an app can override it with its own deny: list.
 # try: curl -i http://bun.lvh.me/wp-login.php
 defaults:
   deny:

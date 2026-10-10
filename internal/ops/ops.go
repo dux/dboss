@@ -70,6 +70,9 @@ const (
 	ActionEventsDelete     = "events-delete"
 	ActionExceptionResolve = "exception-resolve"
 	ActionExceptionIgnore  = "exception-ignore"
+	ActionGitCommit        = "git-commit"
+	ActionGitPush          = "git-push"
+	ActionGitReset         = "git-reset"
 )
 
 // auditActions are the methods that write an audit row when they run.
@@ -80,6 +83,7 @@ var auditActions = map[string]bool{
 	ActionPubsubSecret: true, ActionPubsubRotate: true, ActionPubsubPublish: true, ActionAdd: true,
 	ActionEventsQuery: true, ActionEventsSave: true, ActionEventsDelete: true,
 	ActionExceptionResolve: true, ActionExceptionIgnore: true,
+	ActionGitCommit: true, ActionGitPush: true, ActionGitReset: true,
 }
 
 // Runtime is the supervisor surface the service drives.
@@ -210,6 +214,8 @@ type Request struct {
 	Name string `json:"name,omitempty"`
 	// ExpUID addresses one exception group for the resolve action; On carries the new flag.
 	ExpUID string `json:"exp_uid,omitempty"`
+	// Message is the commit message of git-commit.
+	Message string `json:"message,omitempty"`
 }
 
 // RescanResult is what a rescan changed: the fleet after the scan, apps it could not load and
@@ -344,6 +350,12 @@ func (s *Service) dispatch(request Request) (any, error) {
 		return nil, s.resolveException(request.App, request.ExpUID, request.On)
 	case ActionExceptionIgnore:
 		return nil, s.ignoreException(request.App, request.ExpUID, request.On)
+	case ActionGitCommit:
+		return s.gitCommit(request.App, request.Message)
+	case ActionGitPush:
+		return s.gitPush(request.App)
+	case ActionGitReset:
+		return s.gitReset(request.App)
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAction, request.Method)
 	}
@@ -426,6 +438,9 @@ func auditDetail(request Request) string {
 		return request.Kind + " " + request.Name
 	case ActionExceptionResolve, ActionExceptionIgnore:
 		return request.ExpUID
+	case ActionGitCommit:
+		subject, _, _ := strings.Cut(request.Message, "\n")
+		return subject
 	case ActionAdd:
 		detail := request.Repo
 		if request.Branch != "" {

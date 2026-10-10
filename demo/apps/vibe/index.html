@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Corner Bakery</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+  </head>
+  <body class="bg-stone-50 text-stone-800 antialiased">
+    <header class="sticky top-0 z-10 border-b border-stone-200/70 bg-stone-50/80 backdrop-blur">
+      <nav class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
+        <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+          <span class="grid size-8 place-items-center rounded-full bg-amber-700 text-white">CB</span>
+          Corner Bakery
+        </a>
+        <div class="flex items-center gap-1 text-sm">
+          <a href="#menu" class="hidden rounded-md px-3 py-2 text-stone-600 hover:bg-stone-200/60 sm:block">Menu</a>
+          <a href="#visit" class="hidden rounded-md px-3 py-2 text-stone-600 hover:bg-stone-200/60 sm:block">Visit</a>
+          <!-- _top: inside the harness this page sits in a frame, and the harness must not open inside itself -->
+          <a href="/_dboss_/vibe" target="_top" class="ml-2 inline-flex items-center gap-2 rounded-md bg-stone-900 px-3 py-2 font-medium text-white shadow-sm hover:bg-stone-700">
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8L4 10.7l5.4 3.5L8 20l4-3.6 4 3.6-1.4-5.8 5.4-3.5-6.1-1.9z"/></svg>
+            Open vibe harness
+          </a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="relative overflow-hidden">
+        <div class="absolute inset-0 -z-10 bg-gradient-to-br from-amber-100 via-orange-50 to-stone-50"></div>
+        <div class="mx-auto grid max-w-5xl items-center gap-10 px-4 py-20 md:grid-cols-2 md:py-28">
+          <div>
+            <p class="mb-4 inline-flex rounded-full bg-amber-200/60 px-3 py-1 text-xs font-semibold tracking-wide text-amber-900 uppercase">Baked every morning at six</p>
+            <h1 class="text-4xl font-bold tracking-tight text-stone-900 sm:text-5xl">Bread worth getting up for.</h1>
+            <p class="mt-5 max-w-md text-lg text-stone-600">Slow sourdough, flaky croissants and a proper flat white, on the corner of Mill Street since 2009.</p>
+            <div class="mt-8 flex flex-wrap gap-3">
+              <a href="#menu" class="rounded-md bg-amber-700 px-5 py-3 font-medium text-white shadow-sm hover:bg-amber-800">See the menu</a>
+              <a href="#visit" class="rounded-md border border-stone-300 bg-white px-5 py-3 font-medium text-stone-700 hover:bg-stone-100">Find us</a>
+            </div>
+          </div>
+          <div class="hidden grid-cols-2 gap-4 md:grid">
+            <div class="flex aspect-square items-end rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 p-4 font-semibold text-white shadow-lg">Sourdough</div>
+            <div class="mt-8 flex aspect-square items-end rounded-2xl bg-gradient-to-br from-orange-200 to-rose-400 p-4 font-semibold text-white shadow-lg">Croissants</div>
+            <div class="-mt-8 flex aspect-square items-end rounded-2xl bg-gradient-to-br from-stone-300 to-stone-500 p-4 font-semibold text-white shadow-lg">Coffee</div>
+            <div class="flex aspect-square items-end rounded-2xl bg-gradient-to-br from-yellow-200 to-amber-400 p-4 font-semibold text-amber-950 shadow-lg">Cinnamon buns</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="menu" class="mx-auto max-w-5xl scroll-mt-16 px-4 py-20">
+        <div class="mb-10 flex items-end justify-between gap-4">
+          <div>
+            <h2 class="text-3xl font-bold tracking-tight text-stone-900">Menu</h2>
+            <p class="mt-2 text-stone-600">Everything is made here, in small batches, until it runs out.</p>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <article class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold tracking-wide text-amber-700 uppercase">Bread</p>
+            <h3 class="mt-2 font-semibold text-stone-900">Country sourdough</h3>
+            <p class="mt-1 text-sm text-stone-500">48-hour ferment, dark crust.</p>
+            <p class="mt-4 text-lg font-semibold">6.50</p>
+          </article>
+          <article class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold tracking-wide text-amber-700 uppercase">Pastry</p>
+            <h3 class="mt-2 font-semibold text-stone-900">Butter croissant</h3>
+            <p class="mt-1 text-sm text-stone-500">27 layers of French butter.</p>
+            <p class="mt-4 text-lg font-semibold">2.80</p>
+          </article>
+          <article class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold tracking-wide text-amber-700 uppercase">Pastry</p>
+            <h3 class="mt-2 font-semibold text-stone-900">Cinnamon bun</h3>
+            <p class="mt-1 text-sm text-stone-500">Cardamom dough, brown sugar.</p>
+            <p class="mt-4 text-lg font-semibold">3.20</p>
+          </article>
+          <article class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold tracking-wide text-amber-700 uppercase">Coffee</p>
+            <h3 class="mt-2 font-semibold text-stone-900">Flat white</h3>
+            <p class="mt-1 text-sm text-stone-500">Double shot, local milk.</p>
+            <p class="mt-4 text-lg font-semibold">3.50</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="visit" class="scroll-mt-16 border-y border-stone-200 bg-white">
+        <div class="mx-auto grid max-w-5xl gap-10 px-4 py-20 md:grid-cols-2">
+          <div>
+            <h2 class="text-3xl font-bold tracking-tight text-stone-900">Visit</h2>
+            <p class="mt-4 text-stone-600">12 Mill Street. Grab a seat by the window, or take a loaf home while it is still warm.</p>
+          </div>
+          <dl class="divide-y divide-stone-200 rounded-xl border border-stone-200 text-sm">
+            <div class="flex justify-between px-5 py-3"><dt class="text-stone-500">Tuesday - Friday</dt><dd class="font-medium">6:00 - 14:00</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-stone-500">Saturday - Sunday</dt><dd class="font-medium">7:00 - 13:00</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-stone-500">Monday</dt><dd class="font-medium text-stone-400">Closed</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="mx-auto max-w-5xl px-4 py-16">
+        <div class="flex flex-col items-start justify-between gap-6 rounded-2xl bg-stone-900 p-8 text-stone-100 md:flex-row md:items-center">
+          <div>
+            <h2 class="text-xl font-semibold text-white">This page is a dboss vibe demo</h2>
+            <p class="mt-2 max-w-xl text-sm text-stone-400">Open the harness (password <code class="rounded bg-stone-800 px-1.5 py-0.5 text-stone-200">vibe</code>) and ask it to change something: "add a gift card section", "make the hero green" or "add a contact form".</p>
+          </div>
+          <a href="/_dboss_/vibe" target="_top" class="shrink-0 rounded-md bg-white px-5 py-3 font-medium text-stone-900 hover:bg-stone-200">Open vibe harness</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mx-auto max-w-5xl px-4 pb-10 text-sm text-stone-500">Corner Bakery, 12 Mill Street.</footer>
+  </body>
+</html>

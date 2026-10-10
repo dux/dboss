@@ -58,6 +58,7 @@ type WebProcessSnapshot struct {
 	// BasicAuth and Password are the proxy's gates for this web process; never sent as JSON.
 	BasicAuth map[string]string `json:"-"`
 	Password  string            `json:"-"`
+	Vibe      config.Vibe       `json:"vibe"`
 }
 
 // WebURL is the address one web process answers on. Snapshot.URLs lists one per web process with
@@ -143,7 +144,7 @@ func (s Snapshot) WebForHost(host string) (WebProcessSnapshot, bool) {
 func WebProcessSnapshots(webs []config.WebProcess) []WebProcessSnapshot {
 	result := make([]WebProcessSnapshot, 0, len(webs))
 	for _, web := range webs {
-		result = append(result, WebProcessSnapshot{Name: web.Name, Hosts: web.Hosts, CanonicalHost: web.CanonicalHost, Static: web.Static, Pubsub: web.Pubsub, BasicAuth: web.BasicAuth, Password: web.Password})
+		result = append(result, WebProcessSnapshot{Name: web.Name, Hosts: web.Hosts, CanonicalHost: web.CanonicalHost, Static: web.Static, Pubsub: web.Pubsub, BasicAuth: web.BasicAuth, Password: web.Password, Vibe: web.Vibe})
 	}
 	return result
 }

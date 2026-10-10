@@ -1,0 +1,105 @@
+<script>
+  class {
+    init() {
+      this.state.loading = true
+      this.state.error = ''
+      this.state.tooLarge = ''
+      this.state.change = null
+      this.state.rows = []
+      this.state.request = 0
+    }
+
+    onMount() {
+      this.on(document, 'keydown', (event) => {
+        if (event.key === 'Escape' && !document.querySelector('dialog[open]')) this.back()
+      })
+    }
+
+    onRefresh(props, changed) {
+      if ('path' in changed || 'commit' in changed || 'version' in changed) this.load()
+    }
+
+    async load() {
+      const request = ++this.state.request
+      const query = new URLSearchParams({ path: this.props.path })
+      if (this.props.commit) query.set('commit', this.props.commit)
+      this.state.error = ''
+      try {
+        const data = await Vibe.api(`diff?${query}`)
+        if (request !== this.state.request) return
+        this.state.change = data.change
+        this.state.tooLarge = data.too_large || ''
+        this.state.rows = data.too_large ? [] : Vibe.parseDiff(data.diff)
+      } catch (error) {
+        if (request !== this.state.request) return
+        this.state.error = error.message
+        this.state.rows = []
+      } finally {
+        if (request === this.state.request) this.state.loading = false
+      }
+    }
+
+    back() {
+      VibeApp.closeDiff()
+    }
+
+    label(status) {
+      return { M: 'Modified', A: 'Added', D: 'Deleted', R: 'Renamed', '?': 'New file' }[status] || ''
+    }
+  }
+</script>
+
+<div class="vibe-diff">
+  <div class="vibe-diff-head">
+    <button class="btn btn-sm" type="button" onclick="fez.back()" title="Back to the app (Esc)">
+      <svg class="icon"><use href="#i-arrow-left"></use></svg>
+      Back to preview
+    </button>
+    <svg class="icon text-muted"><use href="#i-file"></use></svg>
+    <strong class="vibe-diff-path">{props.path}</strong>
+    {#if state.change}
+      <span class="text-muted">{label(state.change.status)}</span>
+      {#unless state.change.binary}
+        <span class="vibe-stat"><span class="plus">+{state.change.additions}</span> <span class="minus">-{state.change.deletions}</span></span>
+      {/unless}
+    {/if}
+    {#if props.commit}
+      <span class="text-muted">in <code>{props.commit.slice(0, 7)}</code></span>
+    {/if}
+  </div>
+  <div class="vibe-diff-body">
+    {#if state.loading && !state.rows.length}
+      <p class="vibe-note text-muted">Loading the diff...</p>
+    {:else if state.error}
+      <p class="vibe-note text-danger">{state.error}</p>
+    {:else if state.tooLarge}
+      <p class="vibe-note text-muted">{state.tooLarge}.</p>
+    {:else}
+      <table class="vibe-diff-table">
+        <tbody>
+          {#each state.rows as row}
+            {#if row.kind === 'hunk' || row.kind === 'note'}
+              <tr class={'d-' + row.kind}>
+                <td class="ln"></td>
+                <td class="ln"></td>
+                <td class="code">{row.text}</td>
+              </tr>
+            {:else}
+              <tr class={'d-' + row.kind}>
+                <td class="ln">{row.old ?? ''}</td>
+                <td class="ln">{row.new ?? ''}</td>
+                <td class="code">{row.text}</td>
+              </tr>
+            {/if}
+          {:else}
+            <tr class="d-note">
+              <td class="ln"></td>
+              <td class="ln"></td>
+              <td class="code">No line changes (a mode or rename only).</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </div>
+</div>

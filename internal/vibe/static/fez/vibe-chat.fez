@@ -1,0 +1,178 @@
+<script>
+  // Tools whose chat line can open the diff of the file they changed.
+  const FILE_TOOLS = ['write_file', 'edit_file']
+
+  class {
+    init() {
+      this.state.open = {}
+      this.state.stick = true
+      this.state.sending = false
+    }
+
+    onMount() {
+      this.on(this.state.scroller, 'scroll', () => {
+        const node = this.state.scroller
+        this.state.stick = node.scrollHeight - node.scrollTop - node.clientHeight < 80
+      })
+      // The streamed answer is written straight into the live node, so a token never re-renders
+      // the whole chat.
+      this.subscribe('vibe:delta', (text) => {
+        this.state.live.textContent += text
+        this.follow()
+      })
+      this.subscribe('vibe:live', (text) => {
+        this.state.live.textContent = text
+        this.follow()
+      })
+    }
+
+    afterRender() {
+      this.follow()
+    }
+
+    follow() {
+      if (this.state.stick && this.state.scroller) this.state.scroller.scrollTop = this.state.scroller.scrollHeight
+    }
+
+    keydown(event) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault()
+        this.send(event)
+      }
+    }
+
+    async send(event) {
+      event.preventDefault()
+      const input = this.state.input
+      const message = input.value.trim()
+      if (!message || this.globalState.vibeChat.running || this.state.sending) return
+      this.state.sending = true
+      try {
+        await Vibe.api('chat', { message })
+        input.value = ''
+        this.state.stick = true
+      } catch (error) {
+        Toast.show(error.message, true)
+      } finally {
+        this.state.sending = false
+        input.focus()
+      }
+    }
+
+    async stop() {
+      try {
+        await Vibe.api('stop', {})
+      } catch (error) {
+        Toast.show(error.message, true)
+      }
+    }
+
+    async newChat() {
+      try {
+        await Vibe.api('new', {})
+      } catch (error) {
+        Toast.show(error.message, true)
+      }
+    }
+
+    toggle(id) {
+      this.state.open = { ...this.state.open, [id]: !this.state.open[id] }
+    }
+
+    diff(index) {
+      const entry = this.globalState.vibeChat.entries[index]
+      if (entry?.path) VibeApp.openDiff(entry.path)
+    }
+
+    fileTool(entry) {
+      return FILE_TOOLS.includes(entry.tool) && entry.ok && entry.path
+    }
+  }
+</script>
+
+<div class="vibe-chat">
+  <div class="vibe-messages" fez:this="scroller">
+    {#unless globalState.vibeChat.entries}
+      <div class="vibe-empty">
+        <svg class="icon"><use href="#i-sparkles"></use></svg>
+        {#if globalState.vibeStatus && !globalState.vibeStatus.chat}
+          <p><strong>The built-in chat is off.</strong></p>
+          <p>Set <code>deepseek_api_key</code> in the app's dboss.yaml (or under host <code>defaults:</code>) and run <code>dboss rescan</code>. A <code>$NAME</code> value needs that variable in dboss's environment.</p>
+          <p>Meanwhile <strong>AI handover</strong> connects any AI agent you already use to this app over MCP; what it does shows up here.</p>
+        {:else}
+          <p><strong>Describe a change.</strong></p>
+          <p>The agent reads the code, edits it, restarts the app when needed and checks the page. Changed files show up under Changes.</p>
+        {/if}
+      </div>
+    {/unless}
+    {#each globalState.vibeChat.entries as entry, index}
+      {#if entry.kind === 'user'}
+        <div class="vibe-msg vibe-user" key={entry.id}>{entry.text}</div>
+      {:else if entry.kind === 'assistant'}
+        <div class="vibe-msg vibe-assistant markdown" key={entry.id}>{@html Vibe.markdown(entry.text)}</div>
+      {:else if entry.kind === 'error'}
+        <div class="vibe-msg vibe-error" key={entry.id}>
+          <svg class="icon"><use href="#i-alert"></use></svg>
+          <span>{entry.text}</span>
+        </div>
+      {:else}
+        <div class="vibe-tool" class:failed={!entry.ok} class:external={entry.kind === 'external'} key={entry.id}>
+          <div class="vibe-tool-line">
+            <button class="vibe-tool-toggle" type="button" onclick="fez.toggle({entry.id})" aria-expanded={state.open[entry.id] ? 'true' : 'false'}>
+              <svg class="icon vibe-chevron" class:open={state.open[entry.id]}><use href="#i-chevron"></use></svg>
+              {#if entry.kind === 'external'}
+                <span class="vibe-tag">MCP</span>
+              {/if}
+              <span class="vibe-tool-name">{entry.tool}</span>
+              <span class="vibe-tool-summary">{entry.summary}</span>
+            </button>
+            {#if fileTool(entry)}
+              <button class="btn btn-ghost btn-sm vibe-tool-diff" type="button" onclick="fez.diff({index})">diff</button>
+            {/if}
+            {#if !entry.ok}
+              <svg class="icon vibe-tool-state"><use href="#i-x"></use></svg>
+            {/if}
+          </div>
+          {#if state.open[entry.id]}
+            <pre class="vibe-tool-result">{entry.result}</pre>
+          {/if}
+        </div>
+      {/if}
+    {/each}
+    <div class="vibe-msg vibe-assistant vibe-live" fez:this="live" fez:keep="live"></div>
+    {#if globalState.vibeChat.pending}
+      <div class="vibe-tool pending">
+        <div class="vibe-tool-line">
+          <span class="vibe-spinner" aria-hidden="true"></span>
+          <span class="vibe-tool-name">{globalState.vibeChat.pending.tool}</span>
+          <span class="vibe-tool-summary">{globalState.vibeChat.pending.summary}</span>
+        </div>
+      </div>
+    {:else if globalState.vibeChat.running}
+      <div class="vibe-thinking"><span class="vibe-spinner" aria-hidden="true"></span>Working...</div>
+    {/if}
+  </div>
+  {#if globalState.vibeStatus?.chat}
+    <form class="vibe-composer" onsubmit="fez.send(event)">
+      <textarea fez:this="input" fez:keep="input" rows="3" placeholder="Describe a change, e.g. make the header blue" aria-label="Message" onkeydown="fez.keydown(event)"></textarea>
+      <div class="vibe-composer-actions">
+        <span class="vibe-hint">Enter sends, Shift+Enter adds a line</span>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="fez.newChat()" disabled={Boolean(globalState.vibeChat.running || !globalState.vibeChat.entries.length)} title="Start a new chat">
+          <svg class="icon"><use href="#i-plus"></use></svg>
+          New chat
+        </button>
+        {#if globalState.vibeChat.running}
+          <button class="btn btn-sm" type="button" onclick="fez.stop()">
+            <svg class="icon"><use href="#i-stop"></use></svg>
+            Stop
+          </button>
+        {:else}
+          <button class="btn btn-primary btn-sm" type="submit" disabled={Boolean(state.sending)}>
+            <svg class="icon"><use href="#i-send"></use></svg>
+            Send
+          </button>
+        {/if}
+      </div>
+    </form>
+  {/if}
+</div>

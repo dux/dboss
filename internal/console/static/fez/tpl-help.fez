@@ -26,6 +26,7 @@
         { id: 'lifecycle', title: 'Lifecycle', summary: 'Commands run when an app is created, started and destroyed.' },
         { id: 'previews', title: 'GitHub PR previews', summary: 'One built-in host hook turns a branch into a short-lived app, with teardown on close.' },
         { id: 'pubsub', title: 'PubSub', summary: 'Realtime channels over WebSocket and SSE on the app hosts.' },
+        { id: 'vibe', title: 'Vibe', summary: 'An AI harness on the app\x27s own host: chat, changed files, Restart, Commit, Push and MCP for any agent.' },
         { id: 'audit', title: 'Audit & history', summary: 'Who did what, and every saved config revision.' },
         { id: 'health', title: 'Health & metrics', summary: 'Health endpoints, Prometheus metrics and the doctor preflight.' },
         { id: 'notify', title: 'Notifications', summary: 'One operator webhook for crashes and failures.' },
@@ -292,6 +293,18 @@
     curl -X POST https://myapp.example.com/socketio/chat \\
       -H "Authorization: Bearer $PUBSUB_SECRET" \\
       -d '{"event":"message","data":{"text":"hello"}}'
+    `,
+    vibe: `
+    deepseek_api_key: $DEEPSEEK_API_KEY   # or under host defaults:, one key for every app
+    procfile:
+      web:
+        command: ./start.sh
+        hosts: [staging.shop.example.com]
+        vibe:
+          password: $VIBE_PASSWORD    # its own gate; the app may stay public
+    `,
+    vibeMCP: `
+    claude mcp add --transport http shop https://staging.shop.example.com/_dboss_/vibe/mcp/<token>
     `,
     audit: `
     audit_retention: 30d   # 0 keeps rows forever
@@ -985,6 +998,37 @@
         <db-preview-yaml :text="state.examples.pubsubPublish" lang="text" />
         <p>Each message is <code>&#123;"event","data","ts"&#125;</code>; the last <code>replay</code> messages are replayed to a subscriber that joins late, oldest first. A slow subscriber is dropped rather than blocking the publisher. <code>client_events: true</code> lets a WebSocket client publish to its own channel with the same envelope.</p>
         <p>With no <code>secret</code> in the config, dboss generates one per web process under <code>dir/state</code>; the PubSub tab and <code>dboss pubsub</code> print it and <code>dboss pubsub rotate</code> replaces it. The self-test at <code>&#60;path&#62;/_test</code> (when <code>test: true</code>) opens a WebSocket and an SSE connection and reports PASS or FAIL.</p>
+      </section>
+    {/if}
+
+    {#if state.topic === 'vibe'}
+      <section>
+        <h2>Vibe</h2>
+        <p>A web process's <code>vibe</code> option serves an AI harness at <code>/_dboss_/vibe</code> on its own hosts: the app in a frame, a chat on the left that edits it, and the actions a vibe coder needs on top. The same tools are served over MCP, so any LLM client can work on the app, and <strong>AI handover</strong> copies a prompt that connects an outside agent in one paste.</p>
+        <h3>What it helps with</h3>
+        <ul>
+          <li>Changing a running app by describing the change: the built-in agent reads the code, edits it, restarts the app when needed and checks the page with <code>http_get</code>.</li>
+          <li>Working with the agent you already use: Claude Code, Codex, Cursor or a web chat connector reach the app over MCP, and their edits show up live in the chat.</li>
+          <li>Reviewing what changed: the Changes tab lists the uncommitted files with line counts and each file's diff, plus the commits Push would send.</li>
+          <li>Undoing a bad change: <strong>Reset</strong> stashes every uncommitted change, so <code>git stash pop</code> brings it back.</li>
+          <li>Shipping: <strong>Commit</strong> (with a message written from the diff) and <strong>Push</strong>, so production deploys from git as usual.</li>
+        </ul>
+        <h3>Config keys</h3>
+        <ul>
+          <li><code>vibe</code> - on a web procfile entry: <code>&#123;password: ...&#125;</code>, or <code>true</code> for no password in a dev session only. Each web process with it gets its own harness, chat and MCP token.</li>
+        </ul>
+        <div fez:keep="keys-vibe"><db-config-keys paths="deepseek_api_key" /></div>
+        <h3>Example</h3>
+        <db-preview-yaml :text="state.examples.vibe" />
+        <h3>Details</h3>
+        <ul>
+          <li>The harness has its own password, independent of the app's gates, so the app can stay public. A signed-in owner passes the app's own <code>password</code>, <code>basic_auth</code> and <code>auth</code> on that web process, so the framed app opens, and <code>X-Frame-Options</code> and CSP <code>frame-ancestors</code> are dropped from the answers the owner gets. Changing the password signs everyone out.</li>
+          <li>Outside a dev session the password is required: the tools run commands on the box. The harness and the app share one origin, so script on an app page can call the harness from the owner's browser; put <code>vibe</code> on a dedicated checkout behind a password when the app serves real users.</li>
+          <li>Tools: <code>app_info</code>, <code>list_files</code>, <code>read_file</code>, <code>search</code>, <code>write_file</code>, <code>edit_file</code>, <code>run</code>, <code>restart</code>, <code>logs</code>, <code>exceptions</code>, <code>http_get</code>, <code>git_status</code> and <code>commit</code>. Paths stay inside the app folder (never <code>.git</code> or dboss's runtime folder), every result is capped, and a write, a command, a restart and a commit each leave an audit row. Push and Reset are buttons only, never tools.</li>
+          <li>The built-in chat uses DeepSeek and needs <code>deepseek_api_key</code>; MCP and the handover work without it. One chat per web process, kept under <code>dir/state/&#60;app&#62;</code>; a turn stops after 40 tool steps or 5 minutes.</li>
+          <li>MCP is Streamable HTTP at <code>/_dboss_/vibe/mcp/&#60;token&#62;</code>; the token is in the path so clients that cannot set headers connect too. <strong>Rotate token</strong> in the handover dialog locks out every earlier prompt.</li>
+        </ul>
+        <db-preview-yaml :text="state.examples.vibeMCP" lang="text" />
       </section>
     {/if}
 

@@ -154,7 +154,7 @@ func TestSignInOwnsTheUserHeader(t *testing.T) {
 func TestSignInHonorsPublishAuthorizer(t *testing.T) {
 	authorizer := &fakeAuthorizer{allow: true}
 	handler := signInHandler("ana@example.com")
-	handler.pubsub = authorizer
+	handler.modules.Authorizers = []Authorizer{authorizer}
 	passed := false
 	handler.filters = []Filter{handler.signIn, func(http.ResponseWriter, *http.Request, supervisor.Snapshot, func()) { passed = true }}
 	serveFeature(t, handler, featureSnapshot(t, gated), httptest.NewRequest(http.MethodPost, "http://demo.test:8080/socketio/news", nil))

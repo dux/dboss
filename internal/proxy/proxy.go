@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -31,10 +29,9 @@ import (
 	"dboss/internal/logstore"
 	"dboss/internal/module"
 	"dboss/internal/pages"
+	"dboss/internal/secret"
 	"dboss/internal/supervisor"
 	"dboss/internal/throttle"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 // Retry-After of the maintenance page and of the pages in front of a starting app; the starting
@@ -58,17 +55,32 @@ type Recorder interface {
 	RecordBlocked(path string) error
 }
 
-// PublishAuthorizer lets a module vouch for a request that basic_auth would otherwise reject, so
-// a pubsub publisher needs only its own publish secret. A nil authorizer disables the check.
-type PublishAuthorizer interface {
-	AuthorizesPublish(r *http.Request, app supervisor.Snapshot) bool
+// Authorizer lets a module vouch for a request the app's gates would otherwise reject: a pubsub
+// publisher presenting its publish secret, the signed-in owner of a vibe harness.
+type Authorizer interface {
+	Authorizes(r *http.Request, app supervisor.Snapshot) bool
+}
+
+// ResponseHook sees the headers of every app response the proxy forwards, after the configured
+// headers are applied.
+type ResponseHook func(r *http.Request, app supervisor.Snapshot, header http.Header)
+
+// Modules are what features outside the proxy hook into it; every field is optional.
+type Modules struct {
+	Authorizers []Authorizer
+	// Early stages run after the rate limit and before the sign-in and password gates, for a path
+	// that carries its own credential.
+	Early []Filter
+	// Extra stages run right before the forward stage.
+	Extra     []Filter
+	Responses []ResponseHook
 }
 
 type Handler struct {
 	cfg       config.Config
 	manager   *supervisor.Manager
 	recorder  Recorder
-	pubsub    PublishAuthorizer
+	modules   Modules
 	signin    *authcog.Flow
 	transport *http.Transport
 	// hostConfig is the live host config, for the keys a rescan may change (pages, realm).
@@ -79,12 +91,11 @@ type Handler struct {
 	ticker     module.Ticker
 }
 
-// New builds the proxy. extra stages are inserted before the forward stage, which is where a
-// module hooks its own filter into the pipeline.
-func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, recorder Recorder, authorizer PublishAuthorizer, extra ...Filter) (*Handler, error) {
+// New builds the proxy with the modules' stages, authorizers and response hooks.
+func New(cfg config.Config, signin *authcog.Flow, manager *supervisor.Manager, recorder Recorder, modules Modules) (*Handler, error) {
 	transport := &http.Transport{DialContext: (&net.Dialer{Timeout: upstreamDialTimeout}).DialContext, ResponseHeaderTimeout: cfg.Proxy.Timeout.Value(), IdleConnTimeout: upstreamIdleTimeout, MaxIdleConnsPerHost: upstreamIdleConnsPerApp}
-	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, pubsub: authorizer, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter(), passwords: throttle.New()}
-	h.initFilters(extra...)
+	h := &Handler{cfg: cfg, manager: manager, recorder: recorder, modules: modules, signin: signin, transport: transport, hostConfig: manager.HostConfig, limiter: newRateLimiter(), passwords: throttle.New()}
+	h.initFilters()
 	return h, nil
 }
 
@@ -186,18 +197,7 @@ func authorized(r *http.Request, users map[string]string) bool {
 		return false
 	}
 	want, found := users[user]
-	return found && secretMatches(want, password)
-}
-
-// secretMatches compares a configured password with the one given. A value bcrypt can parse is a
-// hash and goes through bcrypt's compare; anything else is a plain password, compared in constant
-// time over sha256 digests so its length does not leak.
-func secretMatches(want, got string) bool {
-	if _, err := bcrypt.Cost([]byte(want)); err == nil {
-		return bcrypt.CompareHashAndPassword([]byte(want), []byte(got)) == nil
-	}
-	gotSum, wantSum := sha256.Sum256([]byte(got)), sha256.Sum256([]byte(want))
-	return subtle.ConstantTimeCompare(gotSum[:], wantSum[:]) == 1
+	return found && secret.Matches(want, password)
 }
 
 // serveStatic answers GET and HEAD for files under the static directory. Missing files and
@@ -397,6 +397,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, snapshot super
 	reverse.Transport = h.transport
 	reverse.ModifyResponse = func(response *http.Response) error {
 		applyHeaders(response.Header, snapshot.Web.Headers)
+		for _, hook := range h.modules.Responses {
+			hook(r, snapshot, response.Header)
+		}
 		replaceAppError(response, r, snapshot)
 		return nil
 	}

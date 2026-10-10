@@ -30,6 +30,15 @@ const maxBackupUpload = 4 << 30
 //go:embed static/*
 var assets embed.FS
 
+// Assets is the console's static folder; the vibe harness shares its fez runtime and stylesheet.
+func Assets() fs.FS {
+	static, err := fs.Sub(assets, "static")
+	if err != nil {
+		panic(err)
+	}
+	return static
+}
+
 // SysReader is the read-only host inspection behind the Sys tab. sysinfo.Inspector is the real
 // one; both methods return the current snapshot, and Refresh re-samples the host.
 type SysReader interface {

@@ -64,6 +64,11 @@
       this.state.processes = app.processes || []
       const hubs = (app.web_processes || []).filter((web) => web.pubsub && web.pubsub.path)
       this.state.pubsub = hubs.map((web) => `${web.name} ${web.pubsub.path}`)
+      // One badge links the first harness; a host pattern with no concrete name gets no link.
+      const vibe = webs.filter((web) => web.vibe && web.vibe.enabled)
+      const vibeHost = vibe.map((web) => web.canonical_host || (web.hosts || []).find((name) => !/^[*.]/.test(name))).find(Boolean)
+      this.state.vibe = vibe.map((web) => web.name)
+      this.state.vibeUrl = vibeHost && scheme ? `${scheme}://${vibeHost}${port ? `:${port}` : ''}/_dboss_/vibe` : ''
       this.state.cron = app.cron || []
       this.state.hooks = (app.hooks || []).map((hook) => ({ ...hook, ...this.state.hookMeta[hook.name] }))
       this.state.deploy = this.state.hooks.find((hook) => hook.name === 'deploy')
@@ -211,6 +216,11 @@
       <span class="badge">{props.app.state}</span>
       {#if state.pubsub.length}
         <a class="badge badge-success badge-pubsub" href="#/pubsub" title="Realtime hub: {state.pubsub.join(', ')}">PubSub</a>
+      {/if}
+      {#if state.vibe.length && state.vibeUrl}
+        <a class="badge badge-vibe" href={state.vibeUrl} target="_blank" rel="noreferrer" title="AI harness on {state.vibe.join(', ')}: open it">Vibe</a>
+      {:else if state.vibe.length}
+        <span class="badge badge-vibe" title="AI harness on {state.vibe.join(', ')}">Vibe</span>
       {/if}
       {#if props.app.maintenance}
         <span class="badge badge-warning">maintenance</span>

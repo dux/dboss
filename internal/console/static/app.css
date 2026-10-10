@@ -832,9 +832,14 @@ input[type="radio"] {
   --state-color: var(--success);
 }
 
-.badge-pubsub {
+.badge-pubsub,
+.badge-vibe {
   text-decoration: none;
   text-transform: none;
+}
+
+.badge-vibe {
+  --state-color: var(--primary);
 }
 
 .badge-warning {

@@ -1,0 +1,772 @@
+/* The vibe harness. It loads the console's app.css first for its tokens, buttons, badges, modal
+   and toast, and lays out a full-viewport workbench on top: top bar, side panel, app frame. */
+
+html:has(body.vibe) {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+body.vibe {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fez-vibe-app {
+  height: 100%;
+}
+
+.vibe-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.vibe-grow {
+  flex: 1;
+}
+
+.vibe-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* --- Top bar ---------------------------------------------------------------- */
+
+.vibe-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.vibe-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.vibe-brand strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vibe-brand .text-muted {
+  margin-left: -6px;
+}
+
+.vibe-logo {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.vibe-path {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 140px;
+}
+
+.vibe-path input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.vibe-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vibe-changed {
+  color: var(--muted);
+}
+
+.vibe-changed.has-changes {
+  border-color: rgb(245 159 0 / 50%);
+  color: #7a4f00;
+  background: rgb(245 159 0 / 10%);
+}
+
+/* --- Layout ------------------------------------------------------------------- */
+
+.vibe-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.vibe-side {
+  display: flex;
+  flex: 0 0 420px;
+  flex-direction: column;
+  width: 420px;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+}
+
+.side-collapsed .vibe-side {
+  display: none;
+}
+
+.vibe-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.vibe-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  background: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.vibe-tabs button:hover {
+  color: var(--text);
+}
+
+.vibe-tabs button.active {
+  border-bottom-color: var(--primary);
+  color: var(--text);
+}
+
+.vibe-panel,
+.vibe-keep,
+.fez-vibe-chat,
+.fez-vibe-changes,
+.vibe-chat,
+.vibe-changes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.vibe-panel.d-none {
+  display: none;
+}
+
+.vibe-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+}
+
+.vibe-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* --- Chat ---------------------------------------------------------------------- */
+
+.vibe-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.vibe-empty {
+  margin: auto 8px;
+  color: var(--muted);
+  font-size: var(--text-size-small);
+  text-align: center;
+}
+
+.vibe-empty > .icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 8px;
+  color: var(--primary);
+}
+
+.vibe-empty p {
+  margin-bottom: 8px;
+}
+
+.vibe-empty strong {
+  color: var(--text);
+}
+
+.vibe-msg {
+  max-width: 100%;
+  font-size: var(--text-size-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.vibe-user {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 8px 12px;
+  border-radius: 12px 12px 2px 12px;
+  color: #fff;
+  background: var(--primary);
+  white-space: pre-wrap;
+}
+
+.vibe-assistant {
+  align-self: stretch;
+  color: var(--text);
+}
+
+.vibe-assistant.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.vibe-assistant.markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.vibe-live {
+  white-space: pre-wrap;
+}
+
+.vibe-live:empty {
+  display: none;
+}
+
+.vibe-error {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: var(--danger);
+  background: rgb(214 57 57 / 8%);
+}
+
+.vibe-tool {
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.vibe-tool.failed {
+  border-color: rgb(214 57 57 / 30%);
+}
+
+.vibe-tool.external {
+  border-left: 3px solid var(--primary);
+}
+
+.vibe-tool-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-right: 6px;
+}
+
+.vibe-tool.pending .vibe-tool-line {
+  padding: 6px 10px;
+}
+
+.vibe-tool-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  color: inherit;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vibe-tool-name {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.vibe-tool-summary {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vibe-tool-diff {
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.vibe-tool-state {
+  color: var(--danger);
+}
+
+.vibe-tag {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--label-tracking);
+}
+
+.vibe-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.vibe-chevron.open {
+  transform: rotate(90deg);
+}
+
+.vibe-tool-result {
+  max-height: 320px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vibe-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--text-size-small);
+}
+
+.vibe-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: vibe-spin 0.8s linear infinite;
+}
+
+@keyframes vibe-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vibe-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+
+.vibe-composer textarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 40vh;
+  resize: vertical;
+}
+
+.vibe-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vibe-hint {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* --- Changes ------------------------------------------------------------------- */
+
+.vibe-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.vibe-subhead {
+  min-height: 40px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.vibe-subhead .text-muted {
+  font-size: 13px;
+}
+
+.vibe-changes-body {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 12px;
+  overflow-y: auto;
+}
+
+.vibe-note {
+  margin: 12px 16px;
+  font-size: var(--text-size-small);
+}
+
+.vibe-file,
+.vibe-commit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 12px 4px 16px;
+  border: 0;
+  color: var(--text);
+  background: none;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vibe-file:hover,
+.vibe-commit:hover {
+  background: var(--surface);
+}
+
+.vibe-file.active {
+  background: var(--primary-soft);
+}
+
+.vibe-nested {
+  padding-left: 40px;
+}
+
+.vibe-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vibe-commit .vibe-file-path {
+  font-family: inherit;
+}
+
+.vibe-commit code {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.vibe-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  color: #fff;
+  background: var(--neutral);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vibe-status.s-M {
+  background: var(--warning);
+}
+
+.vibe-status.s-A,
+.vibe-status.s-U {
+  background: var(--success);
+}
+
+.vibe-status.s-D {
+  background: var(--danger);
+}
+
+.vibe-status.s-R {
+  background: var(--primary);
+}
+
+.vibe-stat {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.vibe-stat .plus {
+  color: var(--success);
+}
+
+.vibe-stat .minus {
+  color: var(--danger);
+}
+
+/* --- Diff ------------------------------------------------------------------------ */
+
+.vibe-diff {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+}
+
+.vibe-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.vibe-diff-path {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.vibe-diff-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.vibe-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.vibe-diff-table td {
+  padding: 0 10px;
+  vertical-align: top;
+}
+
+.vibe-diff-table .ln {
+  width: 1%;
+  min-width: 44px;
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+  white-space: nowrap;
+  border-right: 1px solid var(--border-soft);
+}
+
+.vibe-diff-table .code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vibe-diff-table .d-add {
+  background: rgb(47 179 68 / 12%);
+}
+
+.vibe-diff-table .d-add .code::before {
+  content: "+";
+  margin-right: 6px;
+  color: var(--success);
+}
+
+.vibe-diff-table .d-del {
+  background: rgb(214 57 57 / 10%);
+}
+
+.vibe-diff-table .d-del .code::before {
+  content: "-";
+  margin-right: 6px;
+  color: var(--danger);
+}
+
+.vibe-diff-table .d-ctx .code::before {
+  content: " ";
+  margin-right: 6px;
+}
+
+.vibe-diff-table .d-hunk td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.vibe-diff-table .d-note td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- Dialogs ----------------------------------------------------------------------- */
+
+.fez-vibe-dialogs {
+  width: min(560px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  background: transparent;
+}
+
+.fez-vibe-dialogs::backdrop {
+  background: rgb(24 36 51 / 32%);
+}
+
+.fez-vibe-dialogs .modal {
+  width: 100%;
+}
+
+.fez-vibe-dialogs .vibe-handover {
+  width: 100%;
+}
+
+.fez-vibe-dialogs:has(.vibe-handover) {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.fez-vibe-dialogs .modal-body p {
+  margin: 0;
+}
+
+.fez-vibe-dialogs .modal-foot {
+  align-items: center;
+}
+
+.vibe-commit-message,
+.vibe-prompt {
+  width: 100%;
+  resize: vertical;
+}
+
+.vibe-prompt {
+  min-height: 260px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.vibe-reset-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  list-style: none;
+}
+
+.vibe-reset-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vibe-warning {
+  display: flex;
+  gap: 8px;
+  color: #7a4f00;
+  font-size: var(--text-size-small);
+}
+
+/* --- Narrow screens ------------------------------------------------------------------ */
+
+@media (max-width: 1100px) {
+  .vibe-label {
+    display: none;
+  }
+
+  .vibe-side {
+    flex-basis: 360px;
+    width: 360px;
+  }
+}
+
+@media (max-width: 760px) {
+  .vibe-top {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .vibe-path {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .vibe-actions {
+    margin-left: auto;
+  }
+
+  .vibe-side {
+    flex: 1 1 auto;
+    width: 100%;
+    border-right: 0;
+  }
+
+  /* one pane at a time: the panel, or the app once the panel is hidden */
+  .vibe-shell:not(.side-collapsed) .vibe-stage {
+    display: none;
+  }
+}

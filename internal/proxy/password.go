@@ -14,6 +14,7 @@ import (
 	"dboss/internal/authcog"
 	"dboss/internal/httpx"
 	"dboss/internal/pages"
+	"dboss/internal/secret"
 	"dboss/internal/supervisor"
 )
 
@@ -51,7 +52,7 @@ func (h *Handler) passwordGate(w http.ResponseWriter, r *http.Request, app super
 			return
 		}
 		time.Sleep(slot.Wait)
-		if secretMatches(password, r.PostFormValue("password")) {
+		if secret.Matches(password, r.PostFormValue("password")) {
 			if err := h.signin.SetSession(w, r, gate, ""); err != nil {
 				http.Error(w, "could not start a session", http.StatusInternalServerError)
 				return

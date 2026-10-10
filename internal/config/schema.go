@@ -37,6 +37,7 @@ var blocks = []Block{
 	{ID: "runtime", Title: "Runtime", Summary: "How a process is checked, restarted, limited and logged.", Scope: ScopeBoth},
 	{ID: "web", Title: "Web", Summary: "Proxy behaviour in front of the app.", Scope: ScopeBoth},
 	{ID: "auth", Title: "Sign-in", Summary: "AuthCog sign-in in front of the app, or run for the app.", Scope: ScopeBoth},
+	{ID: "vibe", Title: "Vibe", Summary: "The AI harness a web process serves at /_dboss_/vibe.", Scope: ScopeBoth},
 	{ID: "alerts", Title: "Alerts", Summary: "Request log checks that post error-rate and slow events.", Scope: ScopeBoth},
 	{ID: "events", Title: "Events", Summary: "Analytics events from log/*.json.log: retention, saved views and funnels.", Scope: ScopeBoth},
 }

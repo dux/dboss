@@ -1,0 +1,235 @@
+<script>
+  // One native dialog for the harness's three confirmations: commit, reset and the AI handover.
+  class {
+    NAME = 'dialog'
+    MOUNT = true
+    GLOBAL = 'VibeDialog'
+
+    init() {
+      this.state.mode = ''
+      this.state.error = ''
+      this.state.busy = ''
+      this.state.files = []
+      this.state.prompt = ''
+      this.state.fresh = false
+    }
+
+    // A freshly opened commit form starts empty and focused; the textarea only exists once the
+    // render that opened it has run.
+    afterRender() {
+      if (!this.state.fresh || !this.state.message) return
+      this.state.fresh = false
+      this.state.message.value = ''
+      this.state.message.focus()
+      if (this.globalState.vibeStatus?.chat) this.setTimeout(() => this.suggest(), 0)
+    }
+
+    onMount() {
+      this.on(this.root, 'cancel', (event) => {
+        event.preventDefault()
+        this.close()
+      })
+      this.on(this.root, 'click', (event) => {
+        if (event.target !== this.root) return
+        const box = this.root.getBoundingClientRect()
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) this.close()
+      })
+    }
+
+    show(mode) {
+      this.state.mode = mode
+      this.state.error = ''
+      this.state.busy = ''
+      if (!this.root.open) this.root.showModal()
+    }
+
+    close() {
+      if (this.state.busy === 'commit' || this.state.busy === 'reset') return
+      this.root.close()
+      this.state.mode = ''
+    }
+
+    async run(name, action) {
+      this.state.busy = name
+      this.state.error = ''
+      try {
+        await action()
+      } catch (error) {
+        this.state.error = error.message
+      } finally {
+        this.state.busy = ''
+      }
+    }
+
+    openCommit() {
+      this.state.fresh = true
+      this.show('commit')
+    }
+
+    suggest() {
+      this.run('suggest', async () => {
+        const data = await Vibe.api('commit-message', {})
+        if (this.state.mode === 'commit' && !this.state.message.value.trim()) this.state.message.value = data.message
+      })
+    }
+
+    commitKeydown(event) {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) this.commit(event)
+    }
+
+    commit(event) {
+      event.preventDefault()
+      const message = this.state.message.value.trim()
+      if (!message) {
+        this.state.error = 'Write a commit message.'
+        return
+      }
+      this.run('commit', async () => {
+        const result = await Vibe.api('commit', { message })
+        this.state.busy = ''
+        this.close()
+        Toast.show(`Committed ${result.hash}`)
+        VibeApp.refreshGit()
+      })
+    }
+
+    openReset(files) {
+      this.state.files = files
+      this.show('reset')
+    }
+
+    reset() {
+      this.run('reset', async () => {
+        const result = await Vibe.api('reset', {})
+        const count = this.state.files.length
+        this.state.busy = ''
+        this.close()
+        Toast.show(`Reset ${count} file${count === 1 ? '' : 's'}. Saved as ${result.stash}: git stash pop brings them back.`)
+        VibeApp.closeDiff()
+        VibeApp.refreshGit()
+        VibeApp.reloadFrame()
+      })
+    }
+
+    openHandover() {
+      this.state.prompt = ''
+      this.show('handover')
+      this.loading = this.run('load', async () => {
+        this.state.prompt = (await Vibe.api('handover')).prompt
+      })
+    }
+
+    // Copy is never disabled: a click before the prompt arrived waits for it.
+    async copy() {
+      await this.loading
+      if (!this.state.prompt) return
+      const copied = await Vibe.copy(this.state.prompt)
+      if (copied) {
+        this.close()
+        Toast.show('Handover prompt copied. Paste it into your AI agent and add the task.')
+      } else {
+        this.state.error = 'Copying is blocked here: select the prompt and copy it by hand.'
+      }
+    }
+
+    rotate() {
+      this.run('rotate', async () => {
+        await Vibe.api('mcp-rotate', {})
+        this.state.prompt = (await Vibe.api('handover')).prompt
+        Toast.show('New MCP token. Agents connected with the old prompt are locked out.')
+      })
+    }
+  }
+</script>
+
+{#if state.mode === 'commit'}
+  <form class="modal card" onsubmit="fez.commit(event)">
+    <div class="modal-head">
+      <strong>Commit every change</strong>
+      <button class="btn btn-ghost btn-icon" type="button" onclick="fez.close()" aria-label="Close">
+        <svg class="icon"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted">Stages every changed and new file (ignored ones stay out) and commits it on {globalState.vibeGit?.branch || 'the current branch'}.</p>
+      <textarea class="vibe-commit-message" fez:this="message" fez:keep="commit-message" rows="4" placeholder={state.busy === 'suggest' ? 'Writing a message from the diff...' : 'Short imperative subject, e.g. Make the header blue'} aria-label="Commit message" onkeydown="fez.commitKeydown(event)"></textarea>
+    </div>
+    {#if state.error}
+      <p class="modal-error text-danger">{state.error}</p>
+    {/if}
+    <div class="modal-foot">
+      {#if globalState.vibeStatus?.chat}
+        <button class="btn" type="button" onclick="fez.suggest()" disabled={Boolean(state.busy)}>
+          <svg class="icon"><use href="#i-sparkles"></use></svg>
+          {state.busy === 'suggest' ? 'Writing...' : 'Suggest'}
+        </button>
+      {/if}
+      <span class="vibe-grow"></span>
+      <button class="btn" type="button" onclick="fez.close()">Cancel</button>
+      <button class="btn btn-primary" type="submit" disabled={Boolean(state.busy === 'commit')}>
+        <svg class="icon"><use href="#i-commit"></use></svg>
+        {state.busy === 'commit' ? 'Committing...' : 'Commit'}
+      </button>
+    </div>
+  </form>
+{:else if state.mode === 'reset'}
+  <div class="modal card">
+    <div class="modal-head">
+      <strong>Reset {state.files.length} file{state.files.length === 1 ? '' : 's'}?</strong>
+      <button class="btn btn-ghost btn-icon" type="button" onclick="fez.close()" aria-label="Close">
+        <svg class="icon"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>Every uncommitted change goes back to the last commit, and new files are removed.</p>
+      <ul class="vibe-reset-files">
+        {#each state.files.slice(0, 12) as file}
+          <li><span class={'vibe-status s-' + (file.status === '?' ? 'U' : file.status)}>{file.status === '?' ? 'U' : file.status}</span> {file.path}</li>
+        {/each}
+        {#if state.files.length > 12}
+          <li class="text-muted">and {state.files.length - 12} more</li>
+        {/if}
+      </ul>
+      <p class="text-muted">The changes are kept in a git stash, so <code>git stash pop</code> in the app folder brings them back. Ignored files (.env, uploads) and commits are not touched.</p>
+    </div>
+    {#if state.error}
+      <p class="modal-error text-danger">{state.error}</p>
+    {/if}
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="fez.close()" autofocus>Cancel</button>
+      <button class="btn btn-danger" type="button" onclick="fez.reset()" disabled={Boolean(state.busy)}>
+        <svg class="icon"><use href="#i-trash"></use></svg>
+        {state.busy === 'reset' ? 'Resetting...' : 'Reset ' + state.files.length + ' file' + (state.files.length === 1 ? '' : 's')}
+      </button>
+    </div>
+  </div>
+{:else if state.mode === 'handover'}
+  <div class="modal card vibe-handover">
+    <div class="modal-head">
+      <strong>AI handover</strong>
+      <button class="btn btn-ghost btn-icon" type="button" onclick="fez.close()" aria-label="Close">
+        <svg class="icon"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="text-muted">Paste this into Claude Code, Codex, Cursor or any agent that speaks MCP, then add the task. Its edits show up in the chat and under Changes.</p>
+      <textarea class="vibe-prompt" readonly rows="14" aria-label="Handover prompt">{state.prompt || (state.busy === 'load' ? 'Writing the prompt...' : '')}</textarea>
+      <p class="vibe-warning"><svg class="icon"><use href="#i-alert"></use></svg> The prompt carries the MCP token: whoever has it can change this app. Rotate the token to lock out every earlier prompt.</p>
+    </div>
+    {#if state.error}
+      <p class="modal-error text-danger">{state.error}</p>
+    {/if}
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="fez.rotate()" disabled={Boolean(state.busy)}>
+        <svg class="icon"><use href="#i-rotate"></use></svg>
+        {state.busy === 'rotate' ? 'Rotating...' : 'Rotate token'}
+      </button>
+      <span class="vibe-grow"></span>
+      <button class="btn" type="button" onclick="fez.close()">Close</button>
+      <button class="btn btn-primary" type="button" onclick="fez.copy()">
+        <svg class="icon"><use href="#i-copy"></use></svg>
+        Copy prompt
+      </button>
+    </div>
+  </div>
+{/if}

@@ -70,10 +70,10 @@ func (s *Service) Filter(w http.ResponseWriter, r *http.Request, app supervisor.
 	}
 }
 
-// AuthorizesPublish reports whether the request is a publish to this app carrying a valid secret.
-// The proxy's basic-auth stage consults it so a publisher needs only the publish secret, even when
-// the app also has basic_auth.
-func (s *Service) AuthorizesPublish(r *http.Request, app supervisor.Snapshot) bool {
+// Authorizes reports whether the request is a publish to this app carrying a valid secret. The
+// proxy's gates consult it so a publisher needs only the publish secret, even when the app also
+// has basic_auth.
+func (s *Service) Authorizes(r *http.Request, app supervisor.Snapshot) bool {
 	web, ok := app.WebForHost(r.Host)
 	if !ok || !web.Pubsub.Enabled() || r.Method != http.MethodPost {
 		return false

@@ -1,0 +1,121 @@
+<script>
+  class {
+    init() {
+      this.state.expanded = {}
+    }
+
+    beforeRender() {
+      const git = this.globalState.vibeGit
+      this.state.added = 0
+      this.state.removed = 0
+      for (const change of git?.changes || []) {
+        this.state.added += change.additions
+        this.state.removed += change.deletions
+      }
+      const diff = this.globalState.vibeDiff
+      this.state.openPath = diff ? diff.path : ''
+      this.state.openCommit = diff ? diff.commit : ''
+    }
+
+    openChange(index) {
+      const change = this.globalState.vibeGit?.changes[index]
+      if (change) VibeApp.openDiff(change.path)
+    }
+
+    toggleCommit(index) {
+      this.state.expanded = { ...this.state.expanded, [index]: !this.state.expanded[index] }
+    }
+
+    openCommitFile(commitIndex, fileIndex) {
+      const commit = this.globalState.vibeGit?.unpushed[commitIndex]
+      const file = commit?.files[fileIndex]
+      if (file) VibeApp.openDiff(file.path, commit.hash)
+    }
+
+    reset() {
+      VibeDialog.openReset(this.globalState.vibeGit?.changes || [])
+    }
+
+    refresh() {
+      VibeApp.refreshGit()
+    }
+
+    letter(status) {
+      return status === '?' ? 'U' : status
+    }
+
+    title(status) {
+      return { M: 'Modified', A: 'Added', D: 'Deleted', R: 'Renamed', '?': 'Untracked (new)' }[status] || status
+    }
+  }
+</script>
+
+<div class="vibe-changes">
+  <div class="vibe-section-head">
+    <strong>Uncommitted</strong>
+    {#if globalState.vibeGit?.changes.length}
+      <span class="vibe-stat"><span class="plus">+{state.added}</span> <span class="minus">-{state.removed}</span></span>
+    {/if}
+    <span class="vibe-grow"></span>
+    <button class="btn btn-ghost btn-icon btn-sm" type="button" onclick="fez.refresh()" title="Refresh" aria-label="Refresh">
+      <svg class="icon"><use href="#i-refresh"></use></svg>
+    </button>
+    <button class="btn btn-outline-danger btn-sm" type="button" onclick="fez.reset()" disabled={Boolean(!globalState.vibeGit?.changes.length || globalState.vibeChat.running)} title={globalState.vibeChat.running ? 'Wait for the chat turn to end' : 'Throw away every uncommitted change'}>
+      <svg class="icon"><use href="#i-trash"></use></svg>
+      Reset
+    </button>
+  </div>
+  <div class="vibe-changes-body">
+    {#if globalState.vibeGitError}
+      <p class="vibe-note text-danger">{globalState.vibeGitError}</p>
+    {:else if !globalState.vibeGit}
+      <p class="vibe-note text-muted">Reading the working tree...</p>
+    {:else}
+      {#each globalState.vibeGit.changes as change, index}
+        <button class="vibe-file" class:active={!state.openCommit && state.openPath === change.path} type="button" onclick="fez.openChange({index})" title={title(change.status) + ': ' + change.path}>
+          <span class={'vibe-status s-' + letter(change.status)}>{letter(change.status)}</span>
+          <span class="vibe-file-path">
+            {#if change.old_path}
+              <span class="text-muted">{change.old_path} &rarr; </span>
+            {/if}
+            {change.path}
+          </span>
+          {#if change.binary}
+            <span class="vibe-stat text-muted">binary</span>
+          {:else}
+            <span class="vibe-stat"><span class="plus">+{change.additions}</span> <span class="minus">-{change.deletions}</span></span>
+          {/if}
+        </button>
+      {:else}
+        <p class="vibe-note text-muted">No uncommitted changes. The working tree matches the last commit.</p>
+      {/each}
+      {#if globalState.vibeGit.upstream}
+        <div class="vibe-section-head vibe-subhead">
+          <strong>Unpushed</strong>
+          <span class="text-muted">{globalState.vibeGit.ahead} ahead of {globalState.vibeGit.upstream}</span>
+        </div>
+        {#each globalState.vibeGit.unpushed as commit, commitIndex}
+          <button class="vibe-commit" type="button" onclick="fez.toggleCommit({commitIndex})" aria-expanded={state.expanded[commitIndex] ? 'true' : 'false'}>
+            <svg class="icon vibe-chevron" class:open={state.expanded[commitIndex]}><use href="#i-chevron"></use></svg>
+            <code>{commit.short}</code>
+            <span class="vibe-file-path">{commit.subject}</span>
+            <span class="vibe-stat text-muted">{Human.ago(commit.time)}</span>
+          </button>
+          {#if state.expanded[commitIndex]}
+            {#each commit.files as file, fileIndex}
+              <button class="vibe-file vibe-nested" class:active={state.openCommit === commit.hash && state.openPath === file.path} type="button" onclick="fez.openCommitFile({commitIndex}, {fileIndex})">
+                <span class={'vibe-status s-' + letter(file.status)}>{letter(file.status)}</span>
+                <span class="vibe-file-path">{file.path}</span>
+                <span class="vibe-stat"><span class="plus">+{file.additions}</span> <span class="minus">-{file.deletions}</span></span>
+              </button>
+            {/each}
+          {/if}
+        {:else}
+          <p class="vibe-note text-muted">Nothing to push.</p>
+        {/each}
+      {:else}
+        <p class="vibe-note text-muted">The branch has no upstream, so there is nothing to push to.</p>
+      {/if}
+    {/if}
+  </div>
+</div>

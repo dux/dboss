@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -684,6 +685,30 @@ cron:
 	}
 }
 
+// The keys of a procfile entry other than its command expand, so a per-process secret can stay
+// out of the committed file.
+func TestEnvExpansionReachesProcfileSecrets(t *testing.T) {
+	t.Setenv("DBOSS_TEST_SECRET", "s3cret")
+	app, err := ParseApp([]byte(`procfile:
+  web:
+    command: run $DBOSS_TEST_SECRET
+    hosts: [demo.test]
+    password: $DBOSS_TEST_SECRET
+    vibe:
+      password: $DBOSS_TEST_SECRET
+`), "/srv/apps/demo/dboss.yaml", Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := app.WebProcesses[0]
+	if web.Password != "s3cret" || web.Vibe.Password != "s3cret" {
+		t.Errorf("password = %q, vibe password = %q, want both expanded", web.Password, web.Vibe.Password)
+	}
+	if app.Procfile["web"].Command != "run $DBOSS_TEST_SECRET" {
+		t.Errorf("command expanded: %q", app.Procfile["web"].Command)
+	}
+}
+
 func TestStdoutRetentionDefaultsAndValidates(t *testing.T) {
 	if got := Default().Defaults.StdoutRetention.Value(); got != 3*time.Hour {
 		t.Fatalf("stdout_retention default = %v, want 3h", got)
@@ -876,6 +901,70 @@ func TestPubsubConfig(t *testing.T) {
 		if _, err := ParseApp([]byte(data), "dboss.yaml", defaults); err == nil {
 			t.Errorf("path %q should be invalid", path)
 		}
+	}
+}
+
+func TestVibeConfig(t *testing.T) {
+	defaults := Default().Defaults
+	app, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  admin:\n    command: ./admin\n    hosts: [admin.test]\n    vibe:\n      password: pw\n"), "dboss.yaml", defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, web := range app.WebProcesses {
+		want := Vibe{}
+		if web.Name == "admin" {
+			want = Vibe{Enabled: true, Password: "pw"}
+		}
+		if web.Vibe != want {
+			t.Errorf("%s vibe = %+v, want %+v", web.Name, web.Vibe, want)
+		}
+	}
+	// A host session refuses the harness without a password, a worker and an unknown key.
+	for _, data := range []string{
+		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: true\n",
+		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  worker:\n    command: ./jobs\n    vibe: {password: pw}\n",
+		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: {password: pw, model: x}\n",
+		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: on\n",
+	} {
+		if _, err := ParseApp([]byte(data), "dboss.yaml", defaults); err == nil {
+			t.Errorf("expected an error for:\n%s", data)
+		}
+	}
+	off, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: false\n"), "dboss.yaml", defaults)
+	if err != nil || off.WebProcesses[0].Vibe.Enabled {
+		t.Fatalf("vibe: false = %+v, %v", off.WebProcesses, err)
+	}
+	// A dev session may run the harness without a password.
+	dev, err := Parse([]byte("procfile:\n  web:\n    command: ./server\n    vibe: true\n"), filepath.Join(t.TempDir(), "dboss.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if web := dev.App.WebProcesses[0]; !web.Vibe.Enabled || web.Vibe.Password != "" {
+		t.Fatalf("dev vibe = %+v", web.Vibe)
+	}
+}
+
+// The password stays out of JSON, the switch does not.
+func TestVibeSpecJSONHidesPassword(t *testing.T) {
+	data, err := json.Marshal(ProcessSpec{Command: "./server", Hosts: List{"demo.test"}, Vibe: &VibeSpec{Enabled: true, Password: "pw"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "pw") || !strings.Contains(string(data), `"vibe":true`) {
+		t.Fatalf("json = %s", data)
+	}
+}
+
+func TestDeepseekAPIKeyInheritsFromDefaults(t *testing.T) {
+	defaults := Default().Defaults
+	defaults.DeepseekAPIKey = "host-key"
+	app, err := ParseApp([]byte("procfile:\n  web: ./server\n"), "dboss.yaml", defaults)
+	if err != nil || app.DeepseekAPIKey != "host-key" {
+		t.Fatalf("inherited key = %q, %v", app.DeepseekAPIKey, err)
+	}
+	own, err := ParseApp([]byte("deepseek_api_key: app-key\nprocfile:\n  web: ./server\n"), "dboss.yaml", defaults)
+	if err != nil || own.DeepseekAPIKey != "app-key" {
+		t.Fatalf("app key = %q, %v", own.DeepseekAPIKey, err)
 	}
 }
 

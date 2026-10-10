@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -250,9 +251,11 @@ func startDaemon() error {
 	return fmt.Errorf("console never answered /readyz\n%s", readFile(host.daemonLog))
 }
 
-// environment trusts the copied apps' mise.toml files, which mise refuses in a new folder.
+// environment trusts the copied apps' mise.toml files, which mise refuses in a new folder, and
+// drops DEEPSEEK_API_KEY, so the vibe demo's chat stays off and the suite never calls DeepSeek.
 func environment() []string {
-	return append(os.Environ(), "MISE_TRUSTED_CONFIG_PATHS="+filepath.Join(host.root, "apps"))
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, "DEEPSEEK_API_KEY=") })
+	return append(env, "MISE_TRUSTED_CONFIG_PATHS="+filepath.Join(host.root, "apps"))
 }
 
 // stopDaemon stops the session like Ctrl-C, then makes sure nothing it started survives.

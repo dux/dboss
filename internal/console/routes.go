@@ -73,6 +73,7 @@ func (h *Handler) routes() *http.ServeMux {
 	signedIn("GET /ui/exceptions", h.logExceptions)
 	session("POST /ui/exceptions/resolve", h.exceptionResolve)
 	session("POST /ui/exceptions/ignore", h.exceptionIgnore)
+	session("POST /ui/exceptions/delete", h.exceptionDelete)
 	session("POST /ui/action", h.action)
 	session("POST /ui/rescan", h.rescan)
 	session("POST /ui/apps/add", h.addApp)

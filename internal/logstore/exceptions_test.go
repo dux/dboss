@@ -317,6 +317,34 @@ func TestResolvedLiftsUnlessIgnored(t *testing.T) {
 	}
 }
 
+func TestDeleteException(t *testing.T) {
+	store := openExceptionStore(t)
+	minute := time.Now().UTC().Truncate(time.Minute).Add(-time.Hour)
+	if err := store.AppendExceptions("demo", singleMinuteBatch("e", minute, 3)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetExceptionIgnored("demo", "e", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteException("demo", "e"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := store.Exceptions("demo", ExceptionFilter{ExpUID: "e"})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("deleted group still listed: %v %+v", err, rows)
+	}
+	if err := store.AppendExceptions("demo", singleMinuteBatch("e", minute.Add(time.Minute), 1)); err != nil {
+		t.Fatal(err)
+	}
+	row := mustException(t, store, "e")
+	if row.Count != 1 || row.IsResolved || row.IsIgnored || len(row.Minutes) != 1 {
+		t.Fatalf("a repeat after delete should start a fresh group: %+v", row)
+	}
+	if err := store.DeleteException("demo", "missing"); err == nil {
+		t.Fatal("deleting an unknown fingerprint should fail")
+	}
+}
+
 func mustException(t *testing.T, store *Store, uid string) ExceptionSummary {
 	t.Helper()
 	rows, err := store.Exceptions("demo", ExceptionFilter{ExpUID: uid})

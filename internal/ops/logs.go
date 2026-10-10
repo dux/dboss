@@ -124,6 +124,21 @@ func (s *Service) ignoreException(app, expUID string, ignored bool) error {
 	return writer.SetExceptionIgnored(app, expUID, ignored)
 }
 
+// deleteException removes one exception group and its minute rows. A store without the
+// capability answers with an error.
+func (s *Service) deleteException(app, expUID string) error {
+	if s.store == nil {
+		return errNoLogStore
+	}
+	writer, ok := s.store.(interface {
+		DeleteException(string, string) error
+	})
+	if !ok {
+		return fault.Invalidf("exceptions are not available")
+	}
+	return writer.DeleteException(app, expUID)
+}
+
 // Traffic returns the aggregated request log of one app for requests newer than since.
 func (s *Service) Traffic(name string, since time.Time) (logstore.Traffic, error) {
 	if s.store == nil {

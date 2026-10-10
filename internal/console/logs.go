@@ -108,6 +108,11 @@ func (h *Handler) exceptionIgnore(w http.ResponseWriter, r *http.Request, sessio
 	h.exceptionFlag(w, r, session, ops.ActionExceptionIgnore)
 }
 
+// exceptionDelete removes one group and its minute rows; the body's on flag is not used.
+func (h *Handler) exceptionDelete(w http.ResponseWriter, r *http.Request, session authSession) {
+	h.exceptionFlag(w, r, session, ops.ActionExceptionDelete)
+}
+
 func (h *Handler) exceptionFlag(w http.ResponseWriter, r *http.Request, session authSession, action string) {
 	if !h.requireCSRF(w, r, session) {
 		return

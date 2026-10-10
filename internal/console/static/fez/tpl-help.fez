@@ -764,7 +764,7 @@
         <ul>
           <li><code>uid</code> (nonempty) and <code>message</code> are required; <code>dump</code>, <code>user</code>, <code>ip</code>, <code>tags</code>, <code>description</code>, <code>method</code>, <code>url</code> and <code>headers</code> (an object of strings) are optional, and <code>ts</code> defaults to the time dboss reads the line.</li>
           <li>One row per fingerprint per UTC minute holds the count, the first occurrence's message and request, and the distinct users and IPs (up to five each).</li>
-          <li>Clicking a group opens its full dump and the last 50 minute rows. <strong>Resolve</strong> marks it resolved, and the next occurrence reopens it. <strong>Ignore</strong> marks it resolved and ignored, and a later occurrence leaves it that way. Both clicks are audited; resolved and ignored rows dim.</li>
+          <li>Clicking a group opens its full dump and the last 50 minute rows. <strong>Resolve</strong> marks it resolved, and the next occurrence reopens it. <strong>Ignore</strong> marks it resolved and ignored, and a later occurrence leaves it that way. <strong>Delete</strong> removes the group and its minute rows, and a later occurrence starts a new group. All three clicks are audited; resolved and ignored rows dim.</li>
           <li><code>log_retention</code> prunes old minute rows; the summary, its flags and its first nonempty dump are kept.</li>
           <li>A malformed line becomes a <code>warn</code> row on the file's channel, like an event.</li>
         </ul>

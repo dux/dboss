@@ -114,8 +114,33 @@
       }
     }
 
+    async remove() {
+      if (!this.state.row) return
+      if (!window.confirm(`Delete exception ${this.state.row.short}? Its occurrences are removed too.`)) return
+      this.state.busy = true
+      try {
+        await Dboss.api('/ui/exceptions/delete', {
+          method: 'POST',
+          body: JSON.stringify({ app: this.state.app, exp_uid: this.state.row.exp_uid }),
+        })
+        Toast.show('Exception deleted')
+        location.hash = '#/exceptions?app=' + encodeURIComponent(this.state.app)
+      } catch (error) {
+        this.state.error = error.message
+        this.state.busy = false
+      }
+    }
+
     toggleMinute(index) {
       this.state.openMinute = this.state.openMinute === index ? -1 : index
+    }
+
+    copyFingerprint() {
+      this.copy(this.state.row?.exp_uid, 'Fingerprint')
+    }
+
+    copyDump() {
+      this.copy(this.state.row?.dump || this.state.row?.message, 'Stacktrace')
     }
 
     async copy(value, label) {
@@ -169,6 +194,7 @@
       <button class="btn" type="button" onclick="fez.ignore()" disabled={state.busy}>
         {state.row.ignored ? 'Unignore' : 'Ignore'}
       </button>
+      <button class="btn btn-danger" type="button" onclick="fez.remove()" disabled={state.busy}>Delete</button>
     {/if}
   </div>
 </div>
@@ -214,7 +240,7 @@
       <div class="exception-fingerprint">
         <span class="subheader">Fingerprint</span>
         <code>{state.row.exp_uid}</code>
-        <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.copy(state.row.exp_uid, 'Fingerprint')" title="Copy the fingerprint">
+        <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.copyFingerprint()" title="Copy the fingerprint">
           <svg class="icon"><use href="#i-copy"></use></svg>
         </button>
       </div>
@@ -252,7 +278,7 @@
 
   <div class="section-head">
     <h2>Stacktrace</h2>
-    <button class="btn btn-sm" type="button" onclick="fez.copy(state.row.dump || state.row.message, 'Stacktrace')" disabled={!state.row.dump && !state.row.message}>
+    <button class="btn btn-sm" type="button" onclick="fez.copyDump()" disabled={!state.row.dump && !state.row.message}>
       <svg class="icon"><use href="#i-copy"></use></svg>
       Copy
     </button>

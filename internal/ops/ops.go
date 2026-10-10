@@ -70,6 +70,7 @@ const (
 	ActionEventsDelete     = "events-delete"
 	ActionExceptionResolve = "exception-resolve"
 	ActionExceptionIgnore  = "exception-ignore"
+	ActionExceptionDelete  = "exception-delete"
 	ActionGitCommit        = "git-commit"
 	ActionGitPush          = "git-push"
 	ActionGitReset         = "git-reset"
@@ -82,7 +83,7 @@ var auditActions = map[string]bool{
 	ActionPGBackup: true, ActionPGRestore: true, ActionPGDrop: true, ActionPGDeleteDump: true, ActionPGQuery: true,
 	ActionPubsubSecret: true, ActionPubsubRotate: true, ActionPubsubPublish: true, ActionAdd: true,
 	ActionEventsQuery: true, ActionEventsSave: true, ActionEventsDelete: true,
-	ActionExceptionResolve: true, ActionExceptionIgnore: true,
+	ActionExceptionResolve: true, ActionExceptionIgnore: true, ActionExceptionDelete: true,
 	ActionGitCommit: true, ActionGitPush: true, ActionGitReset: true,
 }
 
@@ -350,6 +351,8 @@ func (s *Service) dispatch(request Request) (any, error) {
 		return nil, s.resolveException(request.App, request.ExpUID, request.On)
 	case ActionExceptionIgnore:
 		return nil, s.ignoreException(request.App, request.ExpUID, request.On)
+	case ActionExceptionDelete:
+		return nil, s.deleteException(request.App, request.ExpUID)
 	case ActionGitCommit:
 		return s.gitCommit(request.App, request.Message)
 	case ActionGitPush:
@@ -436,7 +439,7 @@ func auditDetail(request Request) string {
 		return request.Kind + " " + savedName(request.Data)
 	case ActionEventsDelete:
 		return request.Kind + " " + request.Name
-	case ActionExceptionResolve, ActionExceptionIgnore:
+	case ActionExceptionResolve, ActionExceptionIgnore, ActionExceptionDelete:
 		return request.ExpUID
 	case ActionGitCommit:
 		subject, _, _ := strings.Cut(request.Message, "\n")

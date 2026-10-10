@@ -324,6 +324,8 @@ func (fakeLogs) SetExceptionResolved(string, string, bool) error { return nil }
 
 func (fakeLogs) SetExceptionIgnored(string, string, bool) error { return nil }
 
+func (fakeLogs) DeleteException(string, string) error { return nil }
+
 func (fakeLogs) UnresolvedExceptionCount(string) (int, error) { return 3, nil }
 
 func (fakeLogs) Exceptions(string, logstore.ExceptionFilter) ([]logstore.ExceptionSummary, error) {

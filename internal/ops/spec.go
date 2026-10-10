@@ -95,6 +95,7 @@ var specs = []Spec{
 	}},
 	{Name: ActionExceptionResolve, Group: "Logs and audit", Summary: "Mark an exception group resolved, or reopen it.", Params: []Param{pApp, req("exp_uid", TypeString, "exception fingerprint"), opt("on", TypeBoolean, "true resolves, false reopens")}},
 	{Name: ActionExceptionIgnore, Group: "Logs and audit", Summary: "Ignore an exception group (it stays resolved), or stop ignoring it.", Params: []Param{pApp, req("exp_uid", TypeString, "exception fingerprint"), opt("on", TypeBoolean, "true ignores, false stops ignoring")}},
+	{Name: ActionExceptionDelete, Group: "Logs and audit", Summary: "Delete an exception group and its occurrences; a later occurrence starts a new group.", Params: []Param{pApp, req("exp_uid", TypeString, "exception fingerprint")}},
 
 	{Name: ActionEvents, Group: "Events", Summary: "Event summary: counts per event, namespace and day.", Params: []Param{pApp, pQuery}},
 	{Name: ActionEventsLatest, Group: "Events", Summary: "Newest matching events.", Params: []Param{pApp, pQuery, opt("lines", TypeInteger, "row limit; default 50")}},

@@ -318,6 +318,35 @@ func (s *Store) SetExceptionIgnored(app, expUID string, ignored bool) error {
 	return s.updateException(app, expUID, `UPDATE exceptions SET is_ignored = 0 WHERE exp_uid = ?`)
 }
 
+// DeleteException removes one group and its minute rows. A later occurrence starts a new group.
+func (s *Store) DeleteException(app, expUID string) error {
+	w, err := s.writer(app)
+	if err != nil {
+		return err
+	}
+	tx, err := w.db.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM exception_logs WHERE exp_uid = ?`, expUID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	result, err := tx.Exec(`DELETE FROM exceptions WHERE exp_uid = ?`, expUID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected == 0 {
+		_ = tx.Rollback()
+		if err != nil {
+			return err
+		}
+		return errors.New("exception not found")
+	}
+	return tx.Commit()
+}
+
 func (s *Store) updateException(app, expUID, query string) error {
 	w, err := s.writer(app)
 	if err != nil {

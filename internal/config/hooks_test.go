@@ -50,18 +50,18 @@ func TestHookPullShorthand(t *testing.T) {
 }
 
 func TestTokensAreHostKeys(t *testing.T) {
-	cfg, err := Parse([]byte("apps: ./apps\ntokens:\n  github: gh\n  dboss: db\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\ntokens:\n  github: gh\n  dboss: db\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Tokens.Github != "gh" || cfg.Tokens.Dboss != "db" {
 		t.Fatalf("tokens = %+v, %v", cfg.Tokens, err)
 	}
 	path := filepath.Join(t.TempDir(), FileName)
-	if _, err := ParseApp([]byte("procfile:\n  web: ./server\ntokens:\n  github: x\n"), path, Default().Defaults); err == nil || !strings.Contains(err.Error(), "only valid in the root") {
+	if _, err := ParseApp([]byte("procfile:\n  web: ./server\ntokens:\n  github: x\n"), path, Default().Defaults); err == nil || !strings.Contains(err.Error(), "only valid in dboss-server.yaml") {
 		t.Fatalf("tokens in an app file = %v", err)
 	}
 }
 
 func TestHostGithubPRHook(t *testing.T) {
-	path := filepath.Join(t.TempDir(), FileName)
+	path := filepath.Join(t.TempDir(), ServerFileName)
 	base := "apps: ./apps\n"
 	valid := base + `hooks:
   github_pr:

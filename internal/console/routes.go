@@ -185,7 +185,7 @@ func (h *Handler) readyz(w http.ResponseWriter) {
 func (h *Handler) metrics(w http.ResponseWriter, r *http.Request) {
 	webhook, admin := h.service.WebhookToken(), h.service.DbossToken()
 	if webhook == "" && admin == "" {
-		http.Error(w, "metrics are off: set tokens.dboss in the host dboss.yaml and send the webhook token (dboss token) as a bearer token", http.StatusNotFound)
+		http.Error(w, "metrics are off: set tokens.dboss in dboss-server.yaml and send the webhook token (dboss token) as a bearer token", http.StatusNotFound)
 		return
 	}
 	switch h.checkToken(w, r, func() bool { return tokenIn(httpx.BearerToken(r), webhook, admin) }) {

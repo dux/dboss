@@ -207,7 +207,7 @@ func writeConfigResult(w http.ResponseWriter, result ops.ConfigResult, err error
 	}
 }
 
-// ensureLocalOverride puts the edit into dboss.local.yaml next to the active file, so a deploy
+// ensureLocalOverride puts the edit into the local override next to the active file, so a deploy
 // never overwrites it. The host file and app files have their own helpers.
 func (h *Handler) ensureLocalOverride(file apps.ConfigFile) (apps.ConfigFile, error) {
 	if file.App != "" {

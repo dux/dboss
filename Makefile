@@ -79,7 +79,7 @@ release: release-ready build assets ## From a clean main: build, push main and p
 	done
 
 demo: build ## Run the local demo daemon
-	$(BINARY) start $(DEMO_FLAGS) -c ./demo/dboss.yaml
+	$(BINARY) start $(DEMO_FLAGS) -c ./demo/dboss-server.yaml
 
 demo-watch: build ## Rebuild and restart the demo on changes
 	$(WATCH) --restart --clear \
@@ -95,7 +95,7 @@ seed: ## Recreate the demo databases with dummy traffic, logs, audit and blocked
 	go run ./internal/demo/seed --dir ./demo/.dboss/log
 
 kill: build ## Kill all demo apps and listeners in the app port range
-	$(BINARY) kill -c ./demo/dboss.yaml
+	$(BINARY) kill -c ./demo/dboss-server.yaml
 
 clean: ## Remove generated binaries
 	rm -rf $(BIN_DIR) $(DIST_DIR)

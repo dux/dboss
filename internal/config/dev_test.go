@@ -79,7 +79,7 @@ func TestDevSuffixDroppedUnderHost(t *testing.T) {
 
 // A host file is never dev, so its _dev keys are dropped rather than applied.
 func TestDevSuffixDroppedInHostFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), FileName)
+	path := filepath.Join(t.TempDir(), ServerFileName)
 	writeConfigFile(t, path, "apps: ./apps\nproxy:\n  listen: \":80\"\n  listen_dev: \":3000\"\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -176,7 +176,7 @@ func TestDevConsoleHostNeedsNoAdminEmails(t *testing.T) {
 	if got := cfg.ConsoleURL(); got != "https://dboss.lvh.me" {
 		t.Fatalf("ConsoleURL() = %q, want the management host", got)
 	}
-	host := filepath.Join(t.TempDir(), FileName)
+	host := filepath.Join(t.TempDir(), ServerFileName)
 	writeConfigFile(t, host, "apps: ./apps\nmanagement:\n  host: dboss.lvh.me\n")
 	if _, err := Load(host); err == nil || !strings.Contains(err.Error(), "management.admins") {
 		t.Fatalf("a host console without admins should be rejected, got %v", err)
@@ -185,7 +185,7 @@ func TestDevConsoleHostNeedsNoAdminEmails(t *testing.T) {
 
 // A host session with no management block has no console at all.
 func TestHostWithoutManagementHasNoConsole(t *testing.T) {
-	path := filepath.Join(t.TempDir(), FileName)
+	path := filepath.Join(t.TempDir(), ServerFileName)
 	writeConfigFile(t, path, "apps: ./apps\n")
 	cfg, err := Load(path)
 	if err != nil {

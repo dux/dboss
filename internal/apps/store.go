@@ -66,11 +66,8 @@ func NewStore(root config.Config) *Store {
 
 // Files lists the host file and, in host mode, the active file of every app folder.
 func (s *Store) Files() ([]ConfigFile, error) {
-	hostPath, err := config.FindInDir(s.root.Dir)
-	if err != nil {
-		hostPath = s.root.SourcePath
-	}
-	_, localErr := os.Stat(filepath.Join(filepath.Dir(hostPath), config.LocalFileName))
+	hostPath := config.Live(s.root.SourcePath)
+	_, localErr := os.Stat(config.LocalFor(hostPath))
 	files := []ConfigFile{{ID: "host", Path: hostPath, Source: filepath.Base(hostPath), HasLocal: localErr == nil}}
 	if s.root.App != nil {
 		// Single mode: the host file is the app file, and the app is named after its folder.
@@ -90,7 +87,7 @@ func (s *Store) Files() ([]ConfigFile, error) {
 		if err != nil {
 			continue
 		}
-		_, localErr := os.Stat(filepath.Join(filepath.Dir(path), config.LocalFileName))
+		_, localErr := os.Stat(config.LocalFor(path))
 		files = append(files, ConfigFile{ID: "app:" + name, App: name, Path: path, Source: filepath.Base(path), HasLocal: localErr == nil})
 	}
 	return s.stat(files)
@@ -291,7 +288,7 @@ func (s *Store) CreateLocal(app string) (ConfigFile, error) {
 	if file.HasLocal {
 		return ConfigFile{}, fmt.Errorf("%s already has %s", app, config.LocalFileName)
 	}
-	if err := copyExclusive(file.Path, filepath.Join(filepath.Dir(file.Path), config.LocalFileName)); err != nil {
+	if err := copyExclusive(file.Path, config.LocalFor(file.Path)); err != nil {
 		return ConfigFile{}, err
 	}
 	return s.Read("app:" + app)
@@ -311,10 +308,10 @@ func (s *Store) EnsureLocal(app string) (ConfigFile, error) {
 	return s.CreateLocal(app)
 }
 
-// CreateHostLocal copies the host config to dboss.local.yaml so console writes there survive a
-// deploy. It is a no-op when the local file already exists.
+// CreateHostLocal copies the host config to dboss-server.local.yaml (dboss.local.yaml in single
+// mode) so console writes there survive a deploy. It is a no-op when the local file already exists.
 func (s *Store) CreateHostLocal() (ConfigFile, error) {
-	target := filepath.Join(filepath.Dir(s.root.SourcePath), config.LocalFileName)
+	target := config.LocalFor(s.root.SourcePath)
 	if _, err := os.Stat(target); err == nil {
 		return s.Read("host")
 	}
@@ -327,11 +324,7 @@ func (s *Store) CreateHostLocal() (ConfigFile, error) {
 // HostConfig loads the active host config from disk, so a caller can push a fresh value into a
 // service after a console write.
 func (s *Store) HostConfig() (config.Config, error) {
-	path, err := config.FindInDir(s.root.Dir)
-	if err != nil {
-		return config.Config{}, err
-	}
-	return config.Load(path)
+	return config.Load(config.Live(s.root.SourcePath))
 }
 
 // Effective returns the resolved config of app as YAML, host defaults merged, read from disk.

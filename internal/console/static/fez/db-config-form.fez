@@ -340,7 +340,7 @@
           {/each}
         </div>
         <div class="config-form-note text-muted">
-          Saved to the server-only override (dboss.local.yaml) next to {state.file ? state.file.source : 'the file'}, so a deploy never overwrites it.
+          Saved to the server-only local override next to {state.file ? state.file.source : 'the file'}, so a deploy never overwrites it.
         </div>
         {#if state.message}
           <div class="config-message" class:error={state.messageError} role="status">{state.message}</div>

@@ -97,7 +97,7 @@
         <svg class="icon"><use href="#i-sparkles"></use></svg>
         {#if globalState.vibeStatus && !globalState.vibeStatus.chat}
           <p><strong>The built-in chat is off.</strong></p>
-          <p>Set <code>deepseek_api_key</code> in the app's dboss.yaml (or under host <code>defaults:</code>) and run <code>dboss rescan</code>. A <code>$NAME</code> value needs that variable in dboss's environment.</p>
+          <p>Set <code>deepseek_api_key</code> in the app's dboss.yaml (or under <code>defaults:</code> in dboss-server.yaml) and run <code>dboss rescan</code>. A <code>$NAME</code> value needs that variable in dboss's environment.</p>
           <p>Meanwhile <strong>AI handover</strong> connects any AI agent you already use to this app over MCP; what it does shows up here.</p>
         {:else}
           <p><strong>Describe a change.</strong></p>

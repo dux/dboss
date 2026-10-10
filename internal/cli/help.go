@@ -27,7 +27,7 @@ func (cmd command) display() string {
 
 type option struct{ flag, help string }
 
-var configOption = option{"-c, --config <path>", "config file (default: $DBOSS_CONFIG, then ./dboss.local.yaml or ./dboss.yaml)"}
+var configOption = option{"-c, --config <path>", "config file (default: $DBOSS_CONFIG, then ./dboss-server(.local).yaml or ./dboss(.local).yaml)"}
 var socketOption = option{"--socket <path>", "control socket (default: $DBOSS_SOCKET, the config's socket when it exists, then /run/dboss/dboss.sock)"}
 var jsonOption = option{"--json", "machine-readable output"}
 var appArgumentNote = "app defaults to the current folder's app when run inside one."
@@ -92,7 +92,7 @@ var commands = []command{
 		details: []string{appArgumentNote, "Jobs are declared under cron: in the app's dboss.yaml, each with a schedule (every 5m, every 2h, every 1d or a 5-field cron expression) and a command. They run in the app folder with the app environment, even while the app is stopped, and their output is written to the log store."},
 		options: []option{socketOption, configOption, jsonOption}},
 	{name: "hooks", args: "[app] | run [app] <hook>", group: "Apps", summary: "list an app's deploy hooks with their ping URL, or run one",
-		details: []string{appArgumentNote, "Hooks are declared under hooks: in the app's dboss.yaml. A signed HTTP POST to https://<management.host>/hooks/<app>/<hook> starts the hook; a hook with restart: true restarts the app when it exits 0.", "Every ping presents tokens.dboss from the host dboss.yaml: in the URL, as a bearer token, as X-Gitlab-Token, or as the key of GitHub's body signature. Every call prints the ready-made ping URL to paste into a Git host webhook; without tokens.dboss there is none and every ping answers 401."},
+		details: []string{appArgumentNote, "Hooks are declared under hooks: in the app's dboss.yaml. A signed HTTP POST to https://<management.host>/hooks/<app>/<hook> starts the hook; a hook with restart: true restarts the app when it exits 0.", "Every ping presents tokens.dboss from dboss-server.yaml: in the URL, as a bearer token, as X-Gitlab-Token, or as the key of GitHub's body signature. Every call prints the ready-made ping URL to paste into a Git host webhook; without tokens.dboss there is none and every ping answers 401."},
 		options: []option{socketOption, configOption, jsonOption}},
 	{name: "deploy", args: "sync <user@host:/path> [--app name] [-n] | git <url> [--app name] [--token t] | apply <path> [--app name] [-n]", group: "Apps", summary: "push an app to a box: sync over ssh, or git pull through the deploy hook",
 		details: []string{"Run inside the app folder on your machine.", "sync ships exactly the files git tracks (git ls-files), with their working-tree content. Untracked and ignored files never leave the machine: .env, .env.local, dboss.local.yaml and scratch files stay local, and a file the box needs is placed there on purpose. rsync copies the changed files, then `dboss deploy apply` runs on the box over ssh: it removes the files an earlier sync shipped and this one no longer does (listed in .dboss-sync in the app folder), and restarts the app. Files that only exist on the box are never touched. Needs git, rsync and ssh here, and rsync plus dboss on the ssh user's PATH on the box.", "git needs no ssh: it posts the app's deploy hook (hooks: {deploy: true}, git pull --ff-only plus restart) with tokens.dboss as a bearer token, waits until the pull and the restart are done, and prints the hook's output. A failed pull exits with its exit code.", "apply is the box's half of sync; sync runs it for you."},
@@ -112,7 +112,7 @@ var commands = []command{
 		options: []option{{"--target <name>", "database to restore into (default: <source>_restore_<timestamp>)"}, {"--force", "replace the target database instead of creating a new one"}, {"--confirm <name>", "repeat the database name to drop it"}, socketOption, configOption, jsonOption}},
 
 	{name: "init", args: "[service|app]", group: "Config", summary: "print a fully commented starter config for a service or an app",
-		details: []string{"Every key is printed commented out with its default, or an example when it has none, so you uncomment only what you need. With no argument it asks with an up/down menu; pipe input or pass the type to skip it.", "Save it with `dboss init > dboss.yaml` at the host root, or `dboss init app > dboss.yaml` inside an app folder."}},
+		details: []string{"Every key is printed commented out with its default, or an example when it has none, so you uncomment only what you need. With no argument it asks with an up/down menu; pipe input or pass the type to skip it.", "Save it with `dboss init > dboss-server.yaml` at the host root, or `dboss init app > dboss.yaml` inside an app folder."}},
 	{name: "config", args: "[app] [-d] | --keys [filter] | --reference | history [app] | restore [app] <revision>", group: "Config", summary: "validate and print a config file, the resolved config, or the key reference",
 		details: []string{"Validates first: an unknown key, a bad value or a syntax error is reported with file, line, key and a hint.", "Without -d the file is printed as written, comments included. With -d every default is filled in: the host config, or with an app that app's effective config after the host defaults and its own overrides are merged.", "--keys lists every key with a one-line description and its default, or an example when it has none; a filter narrows by key name. --reference prints the long annotated reference, shipped inside the binary.", "history lists the last 50 saved revisions of the host file or one app's file under dir/state/config-history; restore writes one back. The running host applies it on the next rescan."},
 		options: []option{{"-d, --defaults", "print the resolved config with defaults instead of the file as written"}, {"--keys [filter]", "list every configuration key with description and default"}, {"--reference", "print the annotated configuration reference"}, configOption, jsonOption}},
@@ -125,7 +125,7 @@ var commands = []command{
 	{name: "doctor", args: "[-c path]", group: "Config", summary: "preflight a box: tools, writable directories, valid config and a clear port range",
 		details: []string{"Checks that lsof is on PATH, that dir and its state and log folders are writable, that the config and every app load, and whether anything still listens in ports. Warns on listeners a start would clear; fails on anything that would stop the session."},
 		options: []option{configOption, jsonOption}},
-	{name: "rescan", args: "", group: "Config", summary: "re-read the apps directory, every dboss.yaml and the host defaults",
+	{name: "rescan", args: "", group: "Config", summary: "re-read dboss-server.yaml, the apps directory and every app dboss.yaml",
 		details: []string{"App-level changes apply right away. Host keys that changed (proxy, ports, apps, ...) are listed as restart required."},
 		options: []option{socketOption, configOption, jsonOption}},
 	{name: "ports", args: "", group: "Config", summary: "show the live port table, one fixed port per app process",

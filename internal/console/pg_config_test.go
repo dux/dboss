@@ -15,7 +15,7 @@ func TestPatchPostgresBackupKeepsOtherKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := config.Parse([]byte(patched), "/srv/dboss.yaml")
+	parsed, err := config.Parse([]byte(patched), "/srv/dboss-server.yaml")
 	if err != nil {
 		t.Fatalf("patched config no longer parses: %v\n%s", err, patched)
 	}

@@ -104,7 +104,7 @@ func (e *exitError) Error() string { return fmt.Sprintf("exit status %d", e.code
 // configFlag registers -c and --config on set; both write to the same variable.
 func configFlag(set *flag.FlagSet) *string {
 	var path string
-	set.StringVar(&path, "c", "", "config file (default: DBOSS_CONFIG, then ./dboss.local.yaml or ./dboss.yaml)")
+	set.StringVar(&path, "c", "", "config file (default: DBOSS_CONFIG, then ./dboss-server(.local).yaml or ./dboss(.local).yaml)")
 	set.StringVar(&path, "config", "", "config file")
 	return &path
 }

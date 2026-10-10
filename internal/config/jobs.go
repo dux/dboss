@@ -229,7 +229,7 @@ func (h *Hook) UnmarshalYAML(node *yaml.Node) error {
 			case "command", "timeout", "restart", "overlap", "disabled",
 				"repo", "template":
 			case "secret":
-				return &Error{Line: node.Content[i].Line, Key: "hooks", Message: "secret was removed", Hint: "every hook is signed with tokens.dboss in the host dboss.yaml"}
+				return &Error{Line: node.Content[i].Line, Key: "hooks", Message: "secret was removed", Hint: "every hook is signed with tokens.dboss in dboss-server.yaml"}
 			default:
 				return &Error{Line: node.Content[i].Line, Key: "hooks", Message: fmt.Sprintf("unknown key %q", key), Hint: "valid keys here: command, timeout, restart, overlap, disabled"}
 			}

@@ -14,7 +14,7 @@ const (
 	TemplateApp     = "app"
 )
 
-// Template returns a fully commented YAML starter for a service (the root dboss.yaml) or an app
+// Template returns a fully commented YAML starter for a service (dboss-server.yaml) or an app
 // (an app's dboss.yaml). Every setting is printed commented out with its default, or an example
 // when it has none, so the operator uncomments only what they want and dboss fills the rest.
 func Template(role string) (string, error) {
@@ -22,15 +22,15 @@ func Template(role string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	title := "dboss service configuration (root dboss.yaml)"
+	title, name := "dboss service configuration (dboss-server.yaml)", ServerFileName
 	if role == TemplateApp {
-		title = "dboss app configuration (an app's dboss.yaml)"
+		title, name = "dboss app configuration (an app's dboss.yaml)", FileName
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n#\n", title)
 	b.WriteString("# Every key is commented out with its default, or an example when it has none, in the\n")
 	b.WriteString("# trailing note. Uncomment what you need, edit it, and delete the rest; dboss fills\n")
-	b.WriteString("# any omitted key with the default shown. Validate with `dboss check -c dboss.yaml`.\n")
+	fmt.Fprintf(&b, "# any omitted key with the default shown. Validate with `dboss check -c %s`.\n", name)
 	for _, line := range lines {
 		switch line.kind {
 		case kindHeader:
@@ -39,7 +39,7 @@ func Template(role string) (string, error) {
 			fmt.Fprintf(&b, "# %s%s\n", strings.Repeat("  ", line.indent), line.text)
 		}
 	}
-	b.WriteString("#\n# dboss init > dboss.yaml to save config\n")
+	fmt.Fprintf(&b, "#\n# dboss init %s > %s to save config\n", role, name)
 	return b.String(), nil
 }
 

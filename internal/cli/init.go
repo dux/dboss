@@ -13,7 +13,7 @@ import (
 	"golang.org/x/term"
 )
 
-// init prints a fully commented starter config for a service (the root dboss.yaml) or an app.
+// init prints a fully commented starter config for a service (dboss-server.yaml) or an app.
 // With no argument it asks which one to generate, defaulting to service.
 func (c CLI) init(args []string) error {
 	if len(args) > 1 {
@@ -43,7 +43,7 @@ func (c CLI) init(args []string) error {
 // askTemplateRole prompts for the config type and defaults to service on an empty answer. It
 // reads one line, so `printf '2\n' | dboss init` works without a terminal.
 func (c CLI) askTemplateRole() (string, error) {
-	fmt.Fprint(c.Err, "Generate config for:\n  1) service (root dboss.yaml)\n  2) app (an app's dboss.yaml)\nSelect [1]: ")
+	fmt.Fprint(c.Err, "Generate config for:\n  1) service (dboss-server.yaml)\n  2) app (an app's dboss.yaml)\nSelect [1]: ")
 	line, err := bufio.NewReader(c.In).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
@@ -74,7 +74,7 @@ func (c CLI) selectTemplateRole() (string, error) {
 		}
 		out = file
 	}
-	labels := []string{"service (root dboss.yaml)", "app (an app's dboss.yaml)"}
+	labels := []string{"service (dboss-server.yaml)", "app (an app's dboss.yaml)"}
 	roles := []string{config.TemplateService, config.TemplateApp}
 	selected := 0
 	draw := func(first bool) {

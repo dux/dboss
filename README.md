@@ -95,7 +95,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/dboss/main/install.sh | sh -s -
 cd ./dboss && dboss start
 ```
 
-`--dev` creates `./dboss/apps` and writes a starter `./dboss/dboss.yaml` from `dboss init service`; `--dir` puts it somewhere else.
+`--dev` creates `./dboss/apps` and writes a starter `./dboss/dboss-server.yaml` from `dboss init service`; `--dir` puts it somewhere else.
 Nothing is installed as a service and no `sudo` is needed: on a terminal a `proxy.listen` port this session may not bind moves to the first free port of `ports`, and the daemon logs the address it took.
 Stop it with Ctrl-C, which stops every app with it.
 
@@ -107,14 +107,14 @@ curl -fsSL https://raw.githubusercontent.com/dux/dboss/main/install.sh | sudo sh
 
 `--server` needs root once, to write `/etc/systemd/system/dboss.service`. Everything after that runs unprivileged. It:
 
-* creates `/srv/dboss/apps` and a starter `/srv/dboss/dboss.yaml` when they are not there yet (`--dir` moves the host),
+* creates `/srv/dboss/apps` and a starter `/srv/dboss/dboss-server.yaml` when they are not there yet (`--dir` moves the host),
 * gives the whole directory to `--user`, so the runtime `dir`, the certificate cache and the generated pubsub secrets belong to the service user from the first start,
 * runs `dboss check` as the gate, then `dboss systemd --install` to write, reload and enable the unit.
 
 The user must already exist - reuse the account lux-deploy rsyncs with, so releases, app-written files and logs all have one owner and the control socket needs no group setup.
 The unit runs the daemon as that user with `CAP_NET_BIND_SERVICE`, so it binds `:80` and `:443` without being root.
 
-Then set `management.host`, `management.admins` and `tokens.dboss` in `/srv/dboss/dboss.local.yaml` (server-only, gitignored, never touched by a deploy), restart, and sign in:
+Then set `management.host`, `management.admins` and `tokens.dboss` in `/srv/dboss/dboss-server.local.yaml` (server-only, gitignored, never touched by a deploy), restart, and sign in:
 
 ```sh
 sudo systemctl restart dboss
@@ -166,7 +166,7 @@ Building from source is still the option below and needs Go 1.25+.
 ```sh
 make build            # ./bin/dboss
 make release          # from a clean main: rebuild, push main, publish ./dist as the only GitHub release
-make demo             # builds, then runs the host session on ./demo/dboss.yaml
+make demo             # builds, then runs the host session on ./demo/dboss-server.yaml
 ```
 
 The demo listens on `:80` and hosts four apps, and it needs no `sudo`.
@@ -185,17 +185,17 @@ The demo host file blocks common scanner targets for every app (`defaults.deny`:
 `make seed` recreates the demo's SQLite databases and event store from scratch with dummy data - a week of requests and a day of logs per app, Parquet analytics events behind the bun app's 4-step `onboarding` funnel (filter the Events tab by `plan:` or `page:` tags), plus exception groups with per-minute counts on the first app, and audit rows, deny counters and daemon log lines in the host database - so a fresh console's Overview, Traffic, Logs, Exceptions, Events and Audit views are populated. Stop the running demo first; it deletes the databases it seeds (`go run ./internal/demo/seed --dir ./demo/.dboss/log`).
 `make kill` stops the demo apps and clears the port range after a crash.
 
-## One config file, two modes
+## Two config files
 
-`dboss.yaml` is the only configuration file.
-A file with `procfile` describes an app; any other file describes a host that runs a directory of apps (default `./apps`).
-`dboss.local.yaml` next to it wins when it exists and is meant for server-only overrides (gitignored).
+`dboss-server.yaml` describes a host that runs a directory of apps (default `./apps`); `dboss.yaml` describes one app and must have a `procfile`.
+The name carries the role: a `dboss.yaml` without `procfile` or a `dboss-server.yaml` with one is refused, and a folder holding both is an error.
+`dboss-server.local.yaml` and `dboss.local.yaml` next to their base win when they exist and are meant for server-only overrides (gitignored).
 A folder without either file is also searched in its `config/` subfolder, so an app can keep `config/dboss.yaml`; relative paths still resolve against the app folder, and files in both places are an error.
-Every command looks for the config as `-c path`, then `$DBOSS_CONFIG`, then the current folder.
+Every command looks for the config as `-c path`, then `$DBOSS_CONFIG`, then `dboss-server.yaml` in the current folder, then `dboss.yaml` (one app run from its own folder).
 
 Every host key has a sane default - `apps: ./apps`, `dir: ./.dboss`, `proxy.listen: ":80"`, `ports: [3100, 3990]`, the AuthCog realm, session lifetime and the daily maintenance time - so a host file only names what deviates. The config has no tuning knobs: timeouts, rotation sizes and check cadences are built in, and a key dboss dropped fails `dboss check` with its replacement. With no config file at all, `dboss start` runs the default host: `:80`, `./apps`, console off.
 
-Host file (`./demo/dboss.yaml`):
+Host file (`./demo/dboss-server.yaml`):
 
 ```yaml
 management:
@@ -247,11 +247,11 @@ Every app-level key can be set once under `defaults:` in the host file and repea
 `dboss config --keys [filter]` lists every key grouped by block, with a one-line description, its default and, when useful, an example; the same list is behind the Help button in the console's Configuration view.
 `dboss config --reference` prints the long annotated reference, and `dboss config [app] -d` prints a resolved config with every default filled in.
 `dboss start --https` adds HTTPS on `:443` to a dev session, so an app that needs a secure origin (secure cookies, service workers, OAuth callbacks) works locally, with certificates from a local certificate authority dboss keeps in your user config directory and shares across projects. Nothing is issued by Let's Encrypt and plain http keeps working. The first `--https` start on a terminal asks whether to trust that root (`[Y/n]`, it may ask for your password) and starts either way; `dboss trust` does the same at any time, adding it to the macOS login keychain or the Debian/Fedora store through `sudo`. Until it is trusted the banner says so and the browser warns.
-`dboss init` prints a fully commented starter config, service or app, with every key shown with its default or an example; save it with `dboss init > dboss.yaml`.
+`dboss init` prints a fully commented starter config, service or app, with every key shown with its default or an example; save it with `dboss init service > dboss-server.yaml` or `dboss init app > dboss.yaml`.
 
 ```
 $ dboss config --keys tokens
-Tokens  (root dboss.yaml)
+Tokens  (dboss-server.yaml)
   tokens.github   outbound: personal access token a pull hook, a github_pr preview and dboss add use for a private GitHub repo; consumed from the process environment only  e.g. $GITHUB_TOKEN
   tokens.dboss    inbound: every /api call presents it and it grants every action; /hooks pings and /metrics accept it too; unset refuses the API                           e.g. $DBOSS_TOKEN
   tokens.webhook  inbound: the token /hooks ping URLs carry and /metrics takes; empty derives it from tokens.dboss (dboss token prints it)                                  e.g. $DBOSS_WEBHOOK_TOKEN
@@ -296,7 +296,7 @@ Config
   check         validate the config and every app without starting anything
   pages         list the pages dboss serves and which file renders each, or write them out to edit
   doctor        preflight a box: tools, writable dirs, valid config and a clear port range
-  rescan        re-read the apps directory, every dboss.yaml and the host defaults
+  rescan        re-read dboss-server.yaml, the apps directory and every app dboss.yaml
   ports         show the live port table, one fixed port per process slot
   password      print a bcrypt hash for basic_auth
   token         print the webhook token hook pings and /metrics present
@@ -911,7 +911,7 @@ Each database page has two tabs: **Backup** is everything above, and **SQL** is 
 It executes whatever you type against that database as the role dboss connects with - `Cmd/Ctrl+Enter` runs, several statements run in order and the last result set is shown, `NULL` is rendered as such, and long results stop at 500 rows with the full count reported.
 A run is bounded by a 30 second `statement_timeout`, so closing the tab cannot leave a query burning CPU, and it can write, so every run lands in the audit log as `pg-query` with the statement.
 
-The console writes the selection to `dboss.local.yaml` (the host override is created from the base when missing) and hot-reloads the daemon, so no restart is needed. A plain edit on disk applies on the next config save or `dboss rescan`. Restore verifies the archive and loads into a **new** database named `<source>_restore_<timestamp>` by default; replacing an existing database requires an explicit target and confirmation. The per-database panel also has **Drop database**, which needs the database name typed as confirmation.
+The console writes the selection to `dboss-server.local.yaml` (the host override is created from the base when missing) and hot-reloads the daemon, so no restart is needed. A plain edit on disk applies on the next config save or `dboss rescan`. Restore verifies the archive and loads into a **new** database named `<source>_restore_<timestamp>` by default; replacing an existing database requires an explicit target and confirmation. The per-database panel also has **Drop database**, which needs the database name typed as confirmation.
 
 On the box this feature needs `pg_dump` and `psql` on the service user's `PATH`, and a role that can read every selected database (`pg_read_all_data` or ownership). The CLI mirrors the tab:
 
@@ -1131,10 +1131,10 @@ Git checkouts with a remote automatically get a deploy action that pulls the cur
 The dialog enables confirmation only after the remote has been read successfully.
 A configured `deploy` hook takes precedence over the automatic action, including `disabled: true`.
 The button stays disabled without a Git checkout, when explicitly disabled, while a deployment or its restart is running, and while the app is starting, stopping or rolling.
-It links to the process logs and edits the host and app `dboss.yaml` files in place with validation, conflict detection and a "restart required" notice for host keys that only apply on the next start.
+It links to the process logs and edits `dboss-server.yaml` and the app `dboss.yaml` files in place with validation, conflict detection and a "restart required" notice for host keys that only apply on the next start.
 The **Config** view has two modes: **YAML** edits the raw file, and **Form** offers a visual editor built from recipes (PubSub channels, Web, Health and runtime for an app; Notifications and the PostgreSQL connection for the host).
 Each field shows a friendly label, its key, the description from the key reference and the default as a placeholder; a blank field means "use the default", so the key is removed from the file.
-A form save is written to the server-only `dboss.local.yaml` next to the file (created from the base when missing), so a deploy never overwrites a value entered here.
+A form save is written to the server-only local override next to the file (`dboss-server.local.yaml` or `dboss.local.yaml`, created from the base when missing), so a deploy never overwrites a value entered here.
 The **Events** tab reads an app's events: a filter bar with the filter language and autocomplete for tag values, labels and data keys, counts per day and event, the newest events with their tags and data, saved views and funnels (the `dboss.yaml` ones read-only, console ones saved, deleted or copied as YAML), a funnel builder and a DuckDB SQL box. SQL and saving or deleting a view are audited.
 The **Sys** tab is a read-only inspection of the box: hostname, OS and kernel, public IP, uptime, load, memory and disk use, the dboss runtime, chosen environment variables, and the installed toolchains (Go, Node, npm, Bun, Deno, Yarn, pnpm, Ruby, gem, Bundler, Python, pip, uv, PHP, Composer, Java, SQLite, lsof, rsync, curl, Docker, podman and more) with their paths and versions, each name linked to its project page.
 It never starts, stops or changes anything; the `sysinfo` module keeps the snapshot warm and **Re-inspect** re-probes on demand.
@@ -1214,7 +1214,7 @@ cmd/dboss/            entry point
 internal/cli/         commands, help text, systemd unit, host session wiring
 internal/daemon/      one host session: supervisor, modules, proxy, console, control socket
 internal/module/      module lifecycle (start in order, close in reverse)
-internal/config/      dboss.yaml model, validation, embedded reference.yaml
+internal/config/      dboss-server.yaml and dboss.yaml model, validation, embedded reference.yaml
 internal/apps/        app discovery and the config file store the console edits
 internal/secret/      generated pubsub secrets under dir/state
 internal/supervisor/  process supervisor, health checks, idle stop, state files, log writer/seal

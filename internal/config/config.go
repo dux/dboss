@@ -12,7 +12,8 @@ import (
 	"dboss/internal/notify"
 )
 
-// Config is the root dboss.yaml: either a host that runs the apps found in Apps, or a single app (App set).
+// Config is the root config: a host (dboss-server.yaml) that runs the apps found in Apps, or a
+// single app (dboss.yaml, App set).
 type Config struct {
 	SourcePath string `yaml:"-" json:"-"`
 	Dir        string `yaml:"-" json:"-"`

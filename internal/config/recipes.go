@@ -3,8 +3,8 @@ package config
 import "slices"
 
 // Recipe is one curated group of related configuration keys, the data behind the console's
-// visual config form. Scope says which file a recipe belongs to: a host recipe edits the root
-// dboss.yaml (or its server override), an app recipe edits one app's dboss.yaml.
+// visual config form. Scope says which file a recipe belongs to: a host recipe edits
+// dboss-server.yaml (or its local override), an app recipe edits one app's dboss.yaml.
 type Recipe struct {
 	ID          string        `json:"id"`
 	Title       string        `json:"title"`

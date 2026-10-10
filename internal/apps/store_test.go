@@ -18,8 +18,8 @@ func storeFixture(t *testing.T) (*Store, string) {
 		t.Fatal(err)
 	}
 	writeTestFile(t, filepath.Join(appDir, config.FileName), "procfile:\n  web:\n    command: ./server\n    hosts: [sinatra.test]\n")
-	writeTestFile(t, filepath.Join(root, config.FileName), "apps: ./apps\ndefaults:\n  idle_stop: 1h\n")
-	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	writeTestFile(t, filepath.Join(root, config.ServerFileName), "apps: ./apps\ndefaults:\n  idle_stop: 1h\n")
+	cfg, err := config.Load(filepath.Join(root, config.ServerFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,13 +78,13 @@ func TestStoreListsReadsAndWritesRealFiles(t *testing.T) {
 	if !strings.Contains(file.Contents, "sinatra.test") || file.Revision != files[1].Revision {
 		t.Fatalf("unexpected read: %+v", file)
 	}
-	if err := store.Validate("app:sinatra", "procfile:\n  web: ./server\nproxy:\n  listen: :80\n"); err == nil || !strings.Contains(err.Error(), "only valid in the root") {
+	if err := store.Validate("app:sinatra", "procfile:\n  web: ./server\nproxy:\n  listen: :80\n"); err == nil || !strings.Contains(err.Error(), "only valid in dboss-server.yaml") {
 		t.Fatalf("host key in app file: %v", err)
 	}
 	if err := store.Validate("app:sinatra", "procfile:\n  web:\n    command: ./server\n    hosts: [sinatra..test]\n"); err == nil || !strings.Contains(err.Error(), "invalid host pattern") {
 		t.Fatalf("procfile rules must apply: %v", err)
 	}
-	if err := store.Validate("host", "procfile:\n  web: ./server\n"); err == nil || !strings.Contains(err.Error(), "cannot switch") {
+	if err := store.Validate("host", "procfile:\n  web: ./server\n"); err == nil || !strings.Contains(err.Error(), "an app config is named") {
 		t.Fatalf("role change must be rejected: %v", err)
 	}
 	if err := store.Validate("host", "apps: ./apps\ndefaults:\n  nope: 1\n"); err == nil {
@@ -141,10 +141,10 @@ func TestStoreCreatesHostOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if file.Source != config.LocalFileName || !file.HasLocal {
+	if file.Source != config.ServerLocalFileName || !file.HasLocal {
 		t.Fatalf("host override = %+v", file)
 	}
-	if _, err := os.Stat(filepath.Join(root, config.LocalFileName)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, config.ServerLocalFileName)); err != nil {
 		t.Fatalf("local file missing: %v", err)
 	}
 	// The active host file is now the override, so writes target it.
@@ -152,8 +152,8 @@ func TestStoreCreatesHostOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Source != config.LocalFileName {
-		t.Fatalf("write targeted %s, want %s", updated.Source, config.LocalFileName)
+	if updated.Source != config.ServerLocalFileName {
+		t.Fatalf("write targeted %s, want %s", updated.Source, config.ServerLocalFileName)
 	}
 	cfg, err := store.HostConfig()
 	if err != nil {
@@ -169,7 +169,7 @@ func TestStoreHandlesMissingHostFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "apps"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Parse(nil, filepath.Join(root, config.FileName))
+	cfg, err := config.Parse(nil, filepath.Join(root, config.ServerFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestStoreHandlesMissingHostFile(t *testing.T) {
 	if !strings.Contains(written.Contents, "cloudflare") {
 		t.Fatalf("contents = %q", written.Contents)
 	}
-	if _, err := os.Stat(filepath.Join(root, config.FileName)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, config.ServerFileName)); err != nil {
 		t.Fatalf("write did not create the file: %v", err)
 	}
 }

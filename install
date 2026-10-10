@@ -173,10 +173,10 @@ printf 'installed dboss %s to %s\n' "$version" "$bin"
 # is written through the temp dir so a failed `dboss init` cannot leave a truncated file.
 scaffold() {
 	mkdir -p "$host_dir/apps"
-	if [ ! -f "$host_dir/dboss.yaml" ]; then
-		"$bin" init service >"$tmp/dboss.yaml"
-		mv "$tmp/dboss.yaml" "$host_dir/dboss.yaml"
-		printf 'wrote %s\n' "$host_dir/dboss.yaml"
+	if [ ! -f "$host_dir/dboss-server.yaml" ]; then
+		"$bin" init service >"$tmp/dboss-server.yaml"
+		mv "$tmp/dboss-server.yaml" "$host_dir/dboss-server.yaml"
+		printf 'wrote %s\n' "$host_dir/dboss-server.yaml"
 	fi
 }
 
@@ -186,14 +186,14 @@ case "$mode" in
 		# Ownership before the first start, so the runtime dir, the ACME cache and the generated
 		# pubsub secrets all belong to the service user from the beginning.
 		chown -R "$service_user:" "$host_dir"
-		"$bin" check -c "$host_dir/dboss.yaml"
-		"$bin" systemd -c "$host_dir/dboss.yaml" --user "$service_user" --bin "$bin" --install
+		"$bin" check -c "$host_dir/dboss-server.yaml"
+		"$bin" systemd -c "$host_dir/dboss-server.yaml" --user "$service_user" --bin "$bin" --install
 		cat <<-EOF
 
 			dboss runs as $service_user from $host_dir, and binds :80 without root.
 
 			next:
-			  1. open the console by adding this to $host_dir/dboss.local.yaml
+			  1. open the console by adding this to $host_dir/dboss-server.local.yaml
 			     (server-only, gitignored, never touched by a deploy):
 
 			       management:

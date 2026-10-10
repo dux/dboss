@@ -27,7 +27,7 @@ func gitRepo(t *testing.T, ignore string) config.Config {
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(ignore), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, config.FileName)
+	path := filepath.Join(dir, config.ServerFileName)
 	writeFile(t, path, "apps: ./apps\n")
 	cfg, err := config.Load(path)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestQuietWhenTheRuntimeFolderIsIgnored(t *testing.T) {
 // the way even though .dboss is plainly untracked there.
 func TestQuietWithoutAGitignore(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, config.FileName)
+	path := filepath.Join(dir, config.ServerFileName)
 	writeFile(t, path, "apps: ./apps\n")
 	cfg, err := config.Load(path)
 	if err != nil {

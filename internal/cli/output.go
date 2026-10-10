@@ -73,11 +73,11 @@ func (c CLI) printKeys(filter string, jsonOutput bool) error {
 func blockNote(scope config.Scope) string {
 	switch scope {
 	case config.ScopeService:
-		return "root dboss.yaml"
+		return "dboss-server.yaml"
 	case config.ScopeApp:
 		return "app dboss.yaml"
 	default:
-		return "defaults: in the root file, top level in an app file; per-process ones also under processes.<name>"
+		return "defaults: in dboss-server.yaml, top level in an app file; per-process ones also under processes.<name>"
 	}
 }
 
@@ -243,7 +243,7 @@ func (c CLI) printHuman(method string, data any) error {
 			return err
 		}
 		if missing {
-			fmt.Fprintln(c.Out, "no ping URL: set tokens.dboss and management.host in the host dboss.yaml")
+			fmt.Fprintln(c.Out, "no ping URL: set tokens.dboss and management.host in dboss-server.yaml")
 		}
 	case ops.ActionEvents, ops.ActionEventsLatest, ops.ActionEventsFacets, ops.ActionEventsViews, ops.ActionEventsFunnel, ops.ActionEventsQuery:
 		return c.printEvents(method, data)

@@ -174,7 +174,7 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{files: map[string]*apps.ConfigFile{
-		"host":        {ID: "host", Path: "/srv/dboss.yaml", Source: "dboss.yaml", Contents: "apps: ./apps\n"},
+		"host":        {ID: "host", Path: "/srv/dboss-server.yaml", Source: "dboss-server.yaml", Contents: "apps: ./apps\n"},
 		"app:sinatra": {ID: "app:sinatra", App: "sinatra", Path: "/srv/apps/sinatra/dboss.yaml", Source: "dboss.yaml", Contents: "procfile:\n  web: ./server\n"},
 	}, invalid: map[string]string{}, history: map[string][]apps.ConfigRevision{}, historyContents: map[string]string{}}
 }
@@ -935,7 +935,7 @@ func TestConsoleConfigFormWritesRealOverride(t *testing.T) {
 	if err := os.MkdirAll(appDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	hostPath := filepath.Join(hostDir, config.FileName)
+	hostPath := filepath.Join(hostDir, config.ServerFileName)
 	if err := os.WriteFile(hostPath, []byte("apps: ./apps\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1024,7 +1024,7 @@ func TestConsoleConfigFormWritesRealOverride(t *testing.T) {
 	if got := call(t, handler, cookie, session, http.MethodPost, "/ui/config/apply", hostApply); got.Code != http.StatusOK {
 		t.Fatalf("host apply: %d %s", got.Code, got.Body.String())
 	}
-	hostOverride, err := os.ReadFile(filepath.Join(hostDir, config.LocalFileName))
+	hostOverride, err := os.ReadFile(filepath.Join(hostDir, config.ServerLocalFileName))
 	if err != nil {
 		t.Fatalf("host override was not written: %v", err)
 	}

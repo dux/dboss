@@ -139,7 +139,7 @@ func overrideHost(app config.App, data []byte, path, host string, defaults confi
 	if err != nil {
 		return config.App{}, fmt.Errorf("cannot set the host of procfile.%s: %w", web, err)
 	}
-	local := filepath.Join(filepath.Dir(path), config.LocalFileName)
+	local := config.LocalFor(path)
 	overridden, err := config.ParseApp([]byte(patched), local, defaults)
 	if err != nil {
 		return config.App{}, err

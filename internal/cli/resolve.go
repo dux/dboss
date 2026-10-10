@@ -115,7 +115,7 @@ func loadHostConfig(explicit string) (config.Config, error) {
 		if wdErr != nil {
 			return config.Config{}, err
 		}
-		return config.Parse(nil, filepath.Join(dir, config.FileName))
+		return config.Parse(nil, filepath.Join(dir, config.ServerFileName))
 	}
 	return config.Load(path)
 }
@@ -127,9 +127,22 @@ func findConfig(explicit string) (string, error) {
 	if env := os.Getenv("DBOSS_CONFIG"); env != "" {
 		return env, nil
 	}
-	path, err := config.FindInDir(".")
-	if err != nil {
-		return "", fmt.Errorf("%w (use -c or DBOSS_CONFIG)", err)
+	// A folder is a host or, in a dev session, one app; the file name says which.
+	server, serverErr := config.FindServerInDir(".")
+	app, appErr := config.FindInDir(".")
+	path := server
+	switch {
+	case serverErr != nil && !errors.Is(serverErr, config.ErrNoConfig):
+		return "", serverErr
+	case appErr != nil && !errors.Is(appErr, config.ErrNoConfig):
+		return "", appErr
+	case serverErr == nil && appErr == nil:
+		return "", fmt.Errorf("both %s and %s exist; a folder is a host or an app, keep one", server, app)
+	case serverErr == nil:
+	case appErr == nil:
+		path = app
+	default:
+		return "", fmt.Errorf("%w: no %s or %s here (use -c or DBOSS_CONFIG)", config.ErrNoConfig, config.ServerFileName, config.FileName)
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {

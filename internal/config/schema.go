@@ -2,9 +2,9 @@ package config
 
 import "slices"
 
-// Scope says which config file a block may appear in. A service block lives in the root
-// dboss.yaml, an app block in an app's dboss.yaml, and a both block appears in either file
-// (under defaults: in the root file, at the top level of an app file).
+// Scope says which config file a block may appear in. A service block lives in
+// dboss-server.yaml, an app block in an app's dboss.yaml, and a both block appears in either file
+// (under defaults: in dboss-server.yaml, at the top level of an app file).
 type Scope string
 
 const (

@@ -58,7 +58,11 @@ func TestTemplateIsCommented(t *testing.T) {
 			t.Fatalf("%s: %v", role, err)
 		}
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-		if lines[len(lines)-1] != "# dboss init > dboss.yaml to save config" {
+		name := ServerFileName
+		if role == TemplateApp {
+			name = FileName
+		}
+		if want := "# dboss init " + role + " > " + name + " to save config"; lines[len(lines)-1] != want {
 			t.Errorf("%s: last line is %q", role, lines[len(lines)-1])
 		}
 		for _, line := range lines {

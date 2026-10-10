@@ -53,9 +53,9 @@
     }
 
     note(scope) {
-      if (scope === 'service') return 'root dboss.yaml'
+      if (scope === 'service') return 'dboss-server.yaml'
       if (scope === 'app') return 'app dboss.yaml'
-      return 'defaults: in the root file, top level in an app file'
+      return 'defaults: in dboss-server.yaml, top level in an app file'
     }
   }
 </script>

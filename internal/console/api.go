@@ -92,7 +92,7 @@ func writeAPI(w http.ResponseWriter, status int, value any) {
 func (h *Handler) apiCall(w http.ResponseWriter, r *http.Request) {
 	token := h.service.DbossToken()
 	if token == "" {
-		writeAPIError(w, apiDisabled, "the API is off: set tokens.dboss in the host dboss.yaml and send it as a bearer token")
+		writeAPIError(w, apiDisabled, "the API is off: set tokens.dboss in dboss-server.yaml and send it as a bearer token")
 		return
 	}
 	switch h.checkToken(w, r, func() bool { return tokenIn(httpx.BearerToken(r), token) }) {
@@ -320,7 +320,7 @@ func apiGuide(base string, enabled bool) string {
 	line("Every action the dboss CLI and the console run is one `POST /api/<action>`.")
 	if !enabled {
 		line("")
-		line("The API is off on this host: set tokens.dboss in the host dboss.yaml (or dboss.local.yaml) and run `dboss rescan`.")
+		line("The API is off on this host: set tokens.dboss in dboss-server.yaml (or dboss-server.local.yaml) and run `dboss rescan`.")
 	}
 	line("")
 	line("## GET endpoints")

@@ -70,12 +70,22 @@ func TestFindConfigOrder(t *testing.T) {
 	if _, err := findConfig(""); err == nil {
 		t.Fatal("expected no config error")
 	}
-	writeFile(t, filepath.Join(dir, config.FileName), "apps: ./apps\n")
+	writeFile(t, filepath.Join(dir, config.FileName), "procfile:\n  web: ./server\n")
 	if path, err := findConfig(""); err != nil || path != filepath.Join(dir, config.FileName) {
-		t.Fatalf("got %q, %v", path, err)
+		t.Fatalf("app file: got %q, %v", path, err)
 	}
-	writeFile(t, filepath.Join(dir, config.LocalFileName), "apps: ./apps\n")
-	if path, err := findConfig(""); err != nil || path != filepath.Join(dir, config.LocalFileName) {
+	writeFile(t, filepath.Join(dir, config.ServerFileName), "apps: ./apps\n")
+	if _, err := findConfig(""); err == nil || !strings.Contains(err.Error(), "keep one") {
+		t.Fatalf("a folder with both files must be refused, got %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, config.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	if path, err := findConfig(""); err != nil || path != filepath.Join(dir, config.ServerFileName) {
+		t.Fatalf("server file: got %q, %v", path, err)
+	}
+	writeFile(t, filepath.Join(dir, config.ServerLocalFileName), "apps: ./apps\n")
+	if path, err := findConfig(""); err != nil || path != filepath.Join(dir, config.ServerLocalFileName) {
 		t.Fatalf("local file should win: got %q, %v", path, err)
 	}
 	t.Setenv("DBOSS_CONFIG", "/env/dboss.yaml")
@@ -98,7 +108,10 @@ func TestAppArgumentDefaultsToFolderApp(t *testing.T) {
 	if err != nil || name != filepath.Base(dir) {
 		t.Fatalf("got %q, %v", name, err)
 	}
-	writeFile(t, filepath.Join(dir, config.FileName), "apps: ./apps\n")
+	if err := os.Remove(filepath.Join(dir, config.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, config.ServerFileName), "apps: ./apps\n")
 	if _, err := (&workdir{}).app(nil); err == nil {
 		t.Fatal("host config must not supply an implicit app")
 	}
@@ -134,7 +147,7 @@ func TestFindSocketFallsBackToWellKnownPath(t *testing.T) {
 
 func TestRenderUnitUsesResolvedPaths(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, config.FileName)
+	path := filepath.Join(dir, config.ServerFileName)
 	writeFile(t, path, "apps: ./apps\n")
 	cfg, err := config.Load(path)
 	if err != nil {
@@ -229,7 +242,7 @@ func TestPasswordPrintsBcryptHash(t *testing.T) {
 
 func TestConfigReferenceIsEmbedded(t *testing.T) {
 	var out strings.Builder
-	if code := (CLI{Out: &out, Err: io.Discard}).Run([]string{"config", "--reference"}); code != 0 || !strings.Contains(out.String(), "PART 1: <host>/dboss.yaml") {
+	if code := (CLI{Out: &out, Err: io.Discard}).Run([]string{"config", "--reference"}); code != 0 || !strings.Contains(out.String(), "PART 1: <host>/dboss-server.yaml") {
 		t.Fatalf("exit %d: %s", code, out.String())
 	}
 }
@@ -244,7 +257,7 @@ func TestInitGeneratesTemplates(t *testing.T) {
 		t.Fatalf("init prompt: exit %d %s", code, errOut.String())
 	}
 	out.Reset()
-	if code := (CLI{In: strings.NewReader(""), Out: &out, Err: &errOut}).Run([]string{"init"}); code != 0 || !strings.Contains(out.String(), "root dboss.yaml") {
+	if code := (CLI{In: strings.NewReader(""), Out: &out, Err: &errOut}).Run([]string{"init"}); code != 0 || !strings.Contains(out.String(), "service configuration (dboss-server.yaml)") {
 		t.Fatalf("init default: exit %d %s", code, errOut.String())
 	}
 	if code := (CLI{In: strings.NewReader(""), Out: &out, Err: &errOut}).Run([]string{"init", "nope"}); code == 0 {
@@ -294,7 +307,7 @@ func TestStartAlias(t *testing.T) {
 
 func TestConfigPrintsGivenFileOrDefaults(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, config.FileName)
+	path := filepath.Join(dir, config.ServerFileName)
 	writeFile(t, path, "# host\napps: ./apps\ndefaults:\n  idle_stop: 2h # never mind\n")
 	var out strings.Builder
 	if code := (CLI{Out: &out, Err: io.Discard}).Run([]string{"config", "-c", path}); code != 0 || out.String() != "# host\napps: ./apps\ndefaults:\n  idle_stop: 2h # never mind\n" {
@@ -306,7 +319,7 @@ func TestConfigPrintsGivenFileOrDefaults(t *testing.T) {
 	}
 	var errOut strings.Builder
 	writeFile(t, path, "apps: ./apps\ndefaults:\n  idle_stpo: 2h\n")
-	if code := (CLI{Out: io.Discard, Err: &errOut}).Run([]string{"config", "-c", path}); code != 1 || !strings.Contains(errOut.String(), "dboss.yaml:3: defaults.idle_stpo: unknown key\n  did you mean \"idle_stop\"?") {
+	if code := (CLI{Out: io.Discard, Err: &errOut}).Run([]string{"config", "-c", path}); code != 1 || !strings.Contains(errOut.String(), "dboss-server.yaml:3: defaults.idle_stpo: unknown key\n  did you mean \"idle_stop\"?") {
 		t.Fatalf("typo: exit %d %s", code, errOut.String())
 	}
 }

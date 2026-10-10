@@ -337,7 +337,7 @@ func TestRescanPicksUpNewAppsDirectoryEntries(t *testing.T) {
 		}
 	}
 	addApp("one")
-	configPath := filepath.Join(root, config.FileName)
+	configPath := filepath.Join(root, config.ServerFileName)
 	if err := os.WriteFile(configPath, []byte("apps: ./apps\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +621,7 @@ func TestRescanReloadsDefaultsAndReportsHostKeys(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(appDir, config.FileName), []byte("procfile:\n  web:\n    command: /usr/bin/true\n    hosts: [one.test]\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
-	configPath := filepath.Join(root, config.FileName)
+	configPath := filepath.Join(root, config.ServerFileName)
 	if err := os.WriteFile(configPath, []byte("apps: ./apps\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}

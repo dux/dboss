@@ -55,7 +55,7 @@ func TestCanonicalHostAcceptsAShorthandPattern(t *testing.T) {
 
 func TestLoadHostMergesDefaultsAndRejectsUnknownKeys(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, ServerFileName)
 	writeConfigFile(t, path, "apps: ./apps\ndefaults:\n  idle_stop: 2h\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestLoadSingleAppRoot(t *testing.T) {
 
 func TestLoadRejectsAmbiguousRole(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, ServerFileName)
 	writeConfigFile(t, path, "procfile:\n  web: ./server\napps: ./apps\n")
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "not both") {
 		t.Fatalf("expected both-set error, got %v", err)
@@ -123,7 +123,7 @@ func TestManagementPublicURLDerivesFromHost(t *testing.T) {
 
 func TestCloudflareLoads(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, ServerFileName)
 	writeConfigFile(t, path, "proxy:\n  cloudflare: true\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestLoadAppRequiresProcfileAndRejectsHostKeys(t *testing.T) {
 		t.Fatalf("unexpected procfile: %#v", app.Procfile)
 	}
 	writeConfigFile(t, path, "procfile:\n  web: ./server\nproxy:\n  listen: 127.0.0.1:9090\n")
-	if _, err := LoadApp(path, Default().Defaults); err == nil || !strings.Contains(err.Error(), "proxy: is only valid in the root") {
+	if _, err := LoadApp(path, Default().Defaults); err == nil || !strings.Contains(err.Error(), "proxy: is only valid in dboss-server.yaml") {
 		t.Fatalf("expected host-key error, got %v", err)
 	}
 }
@@ -229,11 +229,11 @@ func TestParseAppDeletableDefaultsToFalse(t *testing.T) {
 func TestListKeysAcceptScalarOrSequence(t *testing.T) {
 	dir := t.TempDir()
 	defaults := Default().Defaults
-	scalar, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: demo.test\nstatic_immutable: /packs/\nallow_ips: 10.0.0.0/8\n"), filepath.Join(dir, FileName), defaults)
+	scalar, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: demo.test\nstatic_immutable: /packs/\nallow_ips: 10.0.0.0/8\n"), filepath.Join(dir, ServerFileName), defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sequence, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\nstatic_immutable: [/packs/]\nallow_ips: [10.0.0.0/8]\n"), filepath.Join(dir, FileName), defaults)
+	sequence, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\nstatic_immutable: [/packs/]\nallow_ips: [10.0.0.0/8]\n"), filepath.Join(dir, ServerFileName), defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestListKeysAcceptScalarOrSequence(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "apps"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, ServerFileName)
 	writeConfigFile(t, path, "apps: ./apps\nproxy:\n  listen: [\":8080\", 127.0.0.1:8081]\nmanagement:\n  host: [dboss.example.com, dboss.internal]\n  admins: admin@example.com\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -602,14 +602,14 @@ func TestEventsMergeViewsByName(t *testing.T) {
 }
 
 func TestParseRootValidatesWithoutDisk(t *testing.T) {
-	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  idle_stop: 2h\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  idle_stop: 2h\n"), "/srv/dboss-server.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Apps != "/srv/apps" || cfg.Defaults.IdleStop.Value() != 2*time.Hour {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
-	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  nope: 1\n"), "/srv/dboss.yaml"); err == nil {
+	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  nope: 1\n"), "/srv/dboss-server.yaml"); err == nil {
 		t.Fatal("expected unknown key error")
 	}
 }
@@ -638,7 +638,7 @@ defaults:
     MALLOC_ARENA_MAX: $DBOSS_TEST_COUNT
   basic_auth:
     ops: `+hash+`
-`), "/srv/dboss.yaml")
+`), "/srv/dboss-server.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -713,11 +713,11 @@ func TestStdoutRetentionDefaultsAndValidates(t *testing.T) {
 	if got := Default().Defaults.StdoutRetention.Value(); got != 3*time.Hour {
 		t.Fatalf("stdout_retention default = %v, want 3h", got)
 	}
-	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  stdout_retention: 6h\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  stdout_retention: 6h\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Defaults.StdoutRetention.Value() != 6*time.Hour {
 		t.Fatalf("stdout_retention override: %v %v", err, cfg.Defaults.StdoutRetention.Value())
 	}
-	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  stdout_retention: -1h\n"), "/srv/dboss.yaml"); err == nil {
+	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  stdout_retention: -1h\n"), "/srv/dboss-server.yaml"); err == nil {
 		t.Fatal("negative stdout_retention should fail")
 	}
 }
@@ -726,7 +726,7 @@ func TestMaxDBSizeDefaultsAndOverrides(t *testing.T) {
 	if got := Default().Defaults.MaxDBSize; got != 100<<20 {
 		t.Fatalf("max_db_size default = %d, want 100m", got)
 	}
-	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  max_db_size: 1g\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  max_db_size: 1g\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Defaults.MaxDBSize != 1<<30 {
 		t.Fatalf("host max_db_size: %v %d", err, cfg.Defaults.MaxDBSize)
 	}
@@ -744,18 +744,18 @@ func TestTmpCleanDefaultsAndTakesFalse(t *testing.T) {
 	if got := Default().Defaults.TmpClean.Value(); got != 7*24*time.Hour {
 		t.Fatalf("tmp_clean default = %v, want 168h", got)
 	}
-	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: 30d\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: 30d\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Defaults.TmpClean.Value() != 30*24*time.Hour {
 		t.Fatalf("tmp_clean override: %v %v", err, cfg.Defaults.TmpClean.Value())
 	}
-	cfg, err = Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: false\n"), "/srv/dboss.yaml")
+	cfg, err = Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: false\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Defaults.TmpClean.Value() != 0 {
 		t.Fatalf("tmp_clean false: %v %v", err, cfg.Defaults.TmpClean.Value())
 	}
-	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: -1h\n"), "/srv/dboss.yaml"); err == nil {
+	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: -1h\n"), "/srv/dboss-server.yaml"); err == nil {
 		t.Fatal("negative tmp_clean should fail")
 	}
-	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: soon\n"), "/srv/dboss.yaml"); err == nil {
+	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  tmp_clean: soon\n"), "/srv/dboss-server.yaml"); err == nil {
 		t.Fatal("tmp_clean: soon should fail")
 	}
 }
@@ -797,26 +797,26 @@ func TestHostFileRejectsAppKeys(t *testing.T) {
 		"apps: ./apps\ncron:\n  x:\n    schedule: every 1h\n    command: ./x\n",
 		"apps: ./apps\nprocfile:\n  web: ./x\n",
 	} {
-		_, err := Parse([]byte(data), "/srv/dboss.yaml")
+		_, err := Parse([]byte(data), "/srv/dboss-server.yaml")
 		if err == nil || !strings.Contains(err.Error(), "only valid in an app file") && !strings.Contains(err.Error(), "not both") {
 			t.Errorf("host file with app keys should be rejected:\n%s\ngot %v", data, err)
 		}
 	}
 	// Shared keys stay valid under defaults:.
-	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  idle_stop: 5s\n"), "/srv/dboss.yaml"); err != nil {
+	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  idle_stop: 5s\n"), "/srv/dboss-server.yaml"); err != nil {
 		t.Fatalf("defaults block rejected: %v", err)
 	}
 }
 
 func TestErrorsPointAtLineAndKey(t *testing.T) {
 	for _, test := range []struct{ name, data, want, hint string }{
-		{"typo", "apps: ./apps\ndefaults:\n  idle_stpo: 2h\n", "dboss.yaml:3: defaults.idle_stpo: unknown key", `did you mean "idle_stop"?`},
-		{"duration", "apps: ./apps\ndefaults:\n  idle_stop: 2 hours\n", `dboss.yaml:3: defaults.idle_stop: invalid duration "2 hours"`, "durations look like"},
-		{"enum", "apps: ./apps\ndefaults:\n  restart: sometimes\n", `dboss.yaml:3: defaults.restart: must be on-failure, always or never, not "sometimes"`, ""},
-		{"listen", "apps: ./apps\nproxy:\n  listen: 80\n", `dboss.yaml:3: proxy.listen: invalid address "80"`, "host:port"},
-		{"syntax", "apps: ./apps\ndefaults:\n  idle_stop: [1\n", "dboss.yaml:2: syntax error", ""},
+		{"typo", "apps: ./apps\ndefaults:\n  idle_stpo: 2h\n", "dboss-server.yaml:3: defaults.idle_stpo: unknown key", `did you mean "idle_stop"?`},
+		{"duration", "apps: ./apps\ndefaults:\n  idle_stop: 2 hours\n", `dboss-server.yaml:3: defaults.idle_stop: invalid duration "2 hours"`, "durations look like"},
+		{"enum", "apps: ./apps\ndefaults:\n  restart: sometimes\n", `dboss-server.yaml:3: defaults.restart: must be on-failure, always or never, not "sometimes"`, ""},
+		{"listen", "apps: ./apps\nproxy:\n  listen: 80\n", `dboss-server.yaml:3: proxy.listen: invalid address "80"`, "host:port"},
+		{"syntax", "apps: ./apps\ndefaults:\n  idle_stop: [1\n", "dboss-server.yaml:2: syntax error", ""},
 	} {
-		_, err := Parse([]byte(test.data), "/srv/dboss.yaml")
+		_, err := Parse([]byte(test.data), "/srv/dboss-server.yaml")
 		if err == nil || !strings.Contains(err.Error(), test.want) || !strings.Contains(err.Error(), test.hint) {
 			t.Errorf("%s: got %v, want %q with hint %q", test.name, err, test.want, test.hint)
 		}
@@ -1123,7 +1123,7 @@ func TestRemovedKeysNameTheirReplacement(t *testing.T) {
 		{"process key", "apps: ./apps\ndefaults:\n  restart_backoff: [1s, 2, 60s]\n", "built in"},
 		{"postgres backup", "apps: ./apps\npostgres:\n  backup:\n    databases: {}\n", "postgres.backups"},
 	} {
-		_, err := Parse([]byte(test.data), "/srv/dboss.yaml")
+		_, err := Parse([]byte(test.data), "/srv/dboss-server.yaml")
 		if err == nil || !strings.Contains(err.Error(), "was removed") || !strings.Contains(err.Error(), test.want) {
 			t.Errorf("%s: got %v, want a removal naming %q", test.name, err, test.want)
 		}
@@ -1143,7 +1143,7 @@ func TestRemovedKeysNameTheirReplacement(t *testing.T) {
 }
 
 func TestRuntimeDirHoldsStateLogsAndSocket(t *testing.T) {
-	cfg, err := Parse([]byte("apps: ./apps\ndir: /var/lib/dboss\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\ndir: /var/lib/dboss\n"), "/srv/dboss-server.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1153,32 +1153,32 @@ func TestRuntimeDirHoldsStateLogsAndSocket(t *testing.T) {
 }
 
 func TestPagesResolvePerFile(t *testing.T) {
-	cfg, err := Parse([]byte("apps: ./apps\npages: ./errors\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\npages: ./errors\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Pages != "/srv/errors" {
 		t.Fatalf("host pages = %q, %v", cfg.Pages, err)
 	}
-	if cfg, err := Parse([]byte("apps: ./apps\n"), "/srv/dboss.yaml"); err != nil || cfg.Pages != "/srv/public/error_pages" {
+	if cfg, err := Parse([]byte("apps: ./apps\n"), "/srv/dboss-server.yaml"); err != nil || cfg.Pages != "/srv/public/error_pages" {
 		t.Fatalf("default host pages = %q, %v", cfg.Pages, err)
 	}
 	app, err := ParseApp([]byte("procfile:\n  web: ./server\n"), "/srv/apps/demo/dboss.yaml", Default().Defaults)
 	if err != nil || app.Pages != DefaultPages {
 		t.Fatalf("default app pages = %q, %v", app.Pages, err)
 	}
-	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  pages: ./x\n"), "/srv/dboss.yaml"); err == nil {
+	if _, err := Parse([]byte("apps: ./apps\ndefaults:\n  pages: ./x\n"), "/srv/dboss-server.yaml"); err == nil {
 		t.Fatal("pages under defaults: must be rejected, it is resolved per file")
 	}
 }
 
 func TestPostgresTakesFalseOrAMapping(t *testing.T) {
-	cfg, err := Parse([]byte("apps: ./apps\npostgres: false\n"), "/srv/dboss.yaml")
+	cfg, err := Parse([]byte("apps: ./apps\npostgres: false\n"), "/srv/dboss-server.yaml")
 	if err != nil || cfg.Postgres.Enabled {
 		t.Fatalf("postgres: false = %+v, %v", cfg.Postgres, err)
 	}
-	cfg, err = Parse([]byte("apps: ./apps\npostgres:\n  backups: {app: month, reports: \"\"}\n"), "/srv/dboss.yaml")
+	cfg, err = Parse([]byte("apps: ./apps\npostgres:\n  backups: {app: month, reports: \"\"}\n"), "/srv/dboss-server.yaml")
 	if err != nil || !cfg.Postgres.Enabled || cfg.Postgres.Backups.Rotation("app") != "month" || cfg.Postgres.Backups.Rotation("reports") != "week" {
 		t.Fatalf("postgres mapping = %+v, %v", cfg.Postgres, err)
 	}
-	if _, err := Parse([]byte("apps: ./apps\npostgres:\n  dns: x\n"), "/srv/dboss.yaml"); err == nil || !strings.Contains(err.Error(), "postgres.dns") {
+	if _, err := Parse([]byte("apps: ./apps\npostgres:\n  dns: x\n"), "/srv/dboss-server.yaml"); err == nil || !strings.Contains(err.Error(), "postgres.dns") {
 		t.Fatalf("unknown postgres key = %v", err)
 	}
 }

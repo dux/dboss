@@ -12,7 +12,7 @@ import (
 
 func TestPagesListsAndDumps(t *testing.T) {
 	dir := t.TempDir()
-	host := filepath.Join(dir, config.FileName)
+	host := filepath.Join(dir, config.ServerFileName)
 	writeFile(t, host, "apps: ./apps\n")
 	if err := os.MkdirAll(filepath.Join(dir, "apps", "shop"), 0o755); err != nil {
 		t.Fatal(err)

@@ -608,7 +608,7 @@ func ParseApp(data []byte, path string, defaults Defaults) (App, error) {
 	}
 	for _, key := range hostKeys {
 		if keys[key] {
-			return App{}, located(keyErr(key, "is only valid in the root %s", FileName), path, root)
+			return App{}, located(keyErr(key, "is only valid in %s", ServerFileName), path, root)
 		}
 	}
 	app, err := buildApp(raw.appFile, defaults, false, "")

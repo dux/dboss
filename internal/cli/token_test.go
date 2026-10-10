@@ -10,9 +10,9 @@ import (
 
 func TestTokenPrintsTheWebhookToken(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, config.FileName)
+	path := filepath.Join(dir, config.ServerFileName)
 	run := func(contents string) (int, string, string) {
-		writeFiles(t, dir, map[string]string{config.FileName: contents})
+		writeFiles(t, dir, map[string]string{config.ServerFileName: contents})
 		var out, errOut strings.Builder
 		code := (CLI{Out: &out, Err: &errOut}).Run([]string{"token", "-c", path})
 		return code, strings.TrimSpace(out.String()), errOut.String()

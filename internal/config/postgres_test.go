@@ -17,7 +17,7 @@ func TestPostgresBackupValidation(t *testing.T) {
 		{"bad name", "postgres:\n  backups:\n    \"app-production\": week\n", "invalid database name"},
 		{"bad rotation", "postgres:\n  backups:\n    app_production: daily\n", "must be week or month"},
 	} {
-		_, err := Parse([]byte(base+test.data), "/srv/dboss.yaml")
+		_, err := Parse([]byte(base+test.data), "/srv/dboss-server.yaml")
 		if test.want == "" {
 			if err != nil {
 				t.Errorf("%s: unexpected error %v", test.name, err)
@@ -32,7 +32,7 @@ func TestPostgresBackupValidation(t *testing.T) {
 
 func TestPostgresIsHostOnly(t *testing.T) {
 	_, err := ParseApp([]byte("procfile:\n  web: ./x\npostgres:\n  dsn: \"\"\n"), "/srv/apps/demo/dboss.yaml", Default().Defaults)
-	if err == nil || !strings.Contains(err.Error(), "postgres") || !strings.Contains(err.Error(), "only valid in the root") {
+	if err == nil || !strings.Contains(err.Error(), "postgres") || !strings.Contains(err.Error(), "only valid in dboss-server.yaml") {
 		t.Fatalf("postgres must be rejected in an app file, got %v", err)
 	}
 }

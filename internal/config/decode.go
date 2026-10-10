@@ -15,8 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// file is the full dboss.yaml schema: host keys plus app keys. Which role the file plays
-// is decided after decoding from whether procfile or apps is present.
+// file is the full config schema: host keys plus app keys. Which role the file plays is
+// decided after decoding from whether procfile is present, and must match a known file name.
 type file struct {
 	Config  `yaml:",inline"`
 	appFile `yaml:",inline"`
@@ -160,7 +160,15 @@ func Parse(data []byte, path string) (Config, error) {
 	cfg.Dir = BaseDir(absolutePath)
 	hasApp := keys["procfile"]
 	if hasApp && keys["apps"] {
-		return Config{}, located(&Error{Message: "a file is either an app (procfile) or a host (apps), not both", Hint: "move the host keys to the root dboss.yaml or drop apps"}, path, root)
+		return Config{}, located(&Error{Message: "a file is either an app (procfile) or a host (apps), not both", Hint: "move the host keys to dboss-server.yaml or drop apps"}, path, root)
+	}
+	// The known names carry the role, so a file in the wrong one fails instead of loading as
+	// the other role.
+	if p, ok := pairOf(path); ok && hasApp != (p == appPair) {
+		if hasApp {
+			return Config{}, located(&Error{Key: "procfile", Message: "makes this an app file", Hint: "an app config is named " + FileName}, path, root)
+		}
+		return Config{}, located(&Error{Message: "has no procfile, so it is a host config", Hint: "a host config is named " + ServerFileName + "; rename this file"}, path, root)
 	}
 	if !hasApp {
 		// A host file only accepts the host keys; the shared and app keys are ignored otherwise,

@@ -192,7 +192,7 @@
       - /.env
     `,
     logging: `
-    # host dboss.yaml
+    # dboss-server.yaml
     dir: /var/lib/dboss        # state/, log/ and the control socket live here
     log_level: info            # dboss's own log level
     maintenance_at: "04:10"    # daily prune, then SQLite VACUUM
@@ -412,7 +412,7 @@
       <section>
         <h2>What is dboss</h2>
         <p>dboss is one binary that runs the apps on one host. It starts and supervises their processes, owns port 80 and routes each hostname to the right app, keeps their logs searchable, and serves this console and a CLI over the same actions.</p>
-        <p>Cloudflare is the edge: TLS, caching, compression and WAF live there. Releases are the deploy tool's job. Everything in between is configured with plain <code>dboss.yaml</code> files on disk, one for the host and one per app.</p>
+        <p>Cloudflare is the edge: TLS, caching, compression and WAF live there. Releases are the deploy tool's job. Everything in between is configured with plain YAML files on disk: <code>dboss-server.yaml</code> for the host and one <code>dboss.yaml</code> per app.</p>
         {#each state.groups as group}
           {#unless group.title === 'Overview'}
             <h3>{group.title}</h3>
@@ -455,7 +455,7 @@
     {#if state.topic === 'config'}
       <section>
         <h2>Config files</h2>
-        <p><code>dboss.yaml</code> has two roles. A file with <code>apps:</code> is a host; a file with <code>procfile:</code> is an app. Never both. <code>dboss.local.yaml</code> next to a host file wins over it, is gitignored, and is where server-only values (secrets, admin emails, absolute paths) live. Either file may also sit in the folder's <code>config/</code> subfolder; paths still resolve against the folder itself, and files in both places are an error.</p>
+        <p><code>dboss-server.yaml</code> is the host; <code>dboss.yaml</code> is an app and needs <code>procfile:</code>. The name carries the role, so a file in the wrong one is refused. <code>dboss-server.local.yaml</code> (or an app's <code>dboss.local.yaml</code>) next to its base wins over it, is gitignored, and is where server-only values (secrets, admin emails, absolute paths) live. Either file may also sit in the folder's <code>config/</code> subfolder; paths still resolve against the folder itself, and files in both places are an error.</p>
         <p><code>defaults:</code> in the host file applies to every app. An app's top-level key overrides it key by key, and <code>processes.&#60;name&#62;</code> overrides it once more for a single process.</p>
         <p>A <code>$NAME</code> in a value is replaced from the daemon's environment before it loads, so <code>url: $ALERT_WEBHOOK_URL</code> keeps the secret out of the file. Only all-uppercase names expand, an unset name is left as written, and <code>procfile</code> and cron commands are never expanded because they are runtime shell lines.</p>
         <h3>Host</h3>
@@ -963,7 +963,7 @@
         <db-preview-yaml :text="state.examples.previewsPing" lang="text" />
         <h3>Details</h3>
         <ul>
-          <li>The hook is host-level: <code>hooks.github_pr</code> in the root <code>dboss.yaml</code>, not under an app. One path segment is a host hook and two are an app hook, so its URL is <code>/hooks/github_pr</code>.</li>
+          <li>The hook is host-level: <code>hooks.github_pr</code> in <code>dboss-server.yaml</code>, not under an app. One path segment is a host hook and two are an app hook, so its URL is <code>/hooks/github_pr</code>.</li>
           <li><code>action</code>, <code>branch</code>, <code>repo</code> and <code>num</code> become <code>QS_ACTION</code>, <code>QS_BRANCH</code>, <code>QS_REPO</code> and <code>QS_NUM</code> for the hook; <code>repo</code> falls back to the hook's own <code>repo</code>.</li>
           <li><code>action=closed</code> destroys the app, which runs its <code>destroy</code> step and removes the checkout; the template needs <code>deletable: true</code>. Any other action checks out the branch tip, writes the app from <code>template</code> and restarts it, which runs its <code>create</code> and <code>start</code> steps.</li>
           <li><code>template</code> is an app file with <code>$VAR</code> and <code>$&#123;VAR&#125;</code> interpolation. Its <code>name</code> is required and names the app folder; <code>main</code> and <code>development</code> are refused.</li>
@@ -1149,7 +1149,7 @@
           <li>Each dump is a zip of a plain-SQL dump under <code>pg_backup/&lt;database&gt;/BACKUP_&lt;timestamp&gt;.zip</code>. The inspector itself writes nothing.</li>
           <li><b>Download</b> serves that zip as it is, and <b>Upload backup</b> stores one you picked as a manual entry, so a database moves between hosts: download here, upload there, restore there.</li>
           <li>A database page has a <b>Backup</b> and a <b>SQL</b> tab. SQL runs whatever you type as the role dboss connects with, <code>Cmd/Ctrl+Enter</code> runs it, a pasted batch runs in order and shows the last result set, and 500 rows travel while the full count is still reported. A run is bounded by a 30 second <code>statement_timeout</code>, and because it can write, every run is audited as <code>pg-query</code> with the statement.</li>
-          <li><code>postgres</code> is a host key but applies without a daemon restart. The console writes the selection to the server-only <code>dboss.local.yaml</code>.</li>
+          <li><code>postgres</code> is a host key but applies without a daemon restart. The console writes the selection to the server-only <code>dboss-server.local.yaml</code>.</li>
           <li>The box needs <code>pg_dump</code> and <code>psql</code> on the service user's <code>PATH</code>, and a role that can read every selected database.</li>
         </ul>
       </section>
@@ -1183,7 +1183,7 @@
         <div class="help-cmd"><code>check</code><span>validate the config and every app without starting anything</span></div>
         <div class="help-cmd"><code>pages</code><span>list which file renders each dboss page, or write the built-in ones out to edit</span></div>
         <div class="help-cmd"><code>doctor</code><span>preflight a box: tools, writable directories, valid config, clear ports</span></div>
-        <div class="help-cmd"><code>rescan</code><span>re-read the apps directory and every dboss.yaml</span></div>
+        <div class="help-cmd"><code>rescan</code><span>re-read dboss-server.yaml, the apps directory and every app dboss.yaml</span></div>
         <div class="help-cmd"><code>ports</code><span>show the live port table, one fixed port per process</span></div>
         <div class="help-cmd"><code>password</code><span>print a bcrypt hash for basic_auth</span></div>
       </section>

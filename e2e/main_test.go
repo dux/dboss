@@ -31,7 +31,7 @@ const (
 
 // host is the one session every test drives.
 var host struct {
-	root       string // temp host folder: dboss.yaml, apps/, .dboss/
+	root       string // temp host folder: dboss-server.yaml, apps/, .dboss/
 	bin        string
 	config     string
 	proxy      string // 127.0.0.1:<port> of proxy.listen
@@ -105,14 +105,14 @@ func build() error {
 	return nil
 }
 
-// prepareHost copies the demo apps and writes a host file from ./demo/dboss.yaml with the
+// prepareHost copies the demo apps and writes a host file from ./demo/dboss-server.yaml with the
 // addresses moved: a free port window, a loopback proxy port and the test's notify sink.
 func prepareHost() error {
 	demo := filepath.Join(repoRoot(), "demo")
 	if err := copyApps(filepath.Join(demo, "apps"), filepath.Join(host.root, "apps")); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(filepath.Join(demo, "dboss.yaml"))
+	data, err := os.ReadFile(filepath.Join(demo, "dboss-server.yaml"))
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func prepareHost() error {
 	if err != nil {
 		return err
 	}
-	host.config = filepath.Join(host.root, "dboss.yaml")
+	host.config = filepath.Join(host.root, "dboss-server.yaml")
 	return os.WriteFile(host.config, out, 0o644)
 }
 

@@ -426,6 +426,13 @@ func TestUnresolvedExceptionCount(t *testing.T) {
 	if count, err = store.UnresolvedExceptionCount("demo"); err != nil || count != 1 {
 		t.Fatalf("count after resolve = %d, err %v, want 1", count, err)
 	}
+	// A group last seen before the window is left out, like the page's default range.
+	if err := store.AppendExceptions("demo", singleMinuteBatch("c", minute.Add(-ExceptionBadgeWindow-time.Hour), 1)); err != nil {
+		t.Fatal(err)
+	}
+	if count, err = store.UnresolvedExceptionCount("demo"); err != nil || count != 1 {
+		t.Fatalf("count with an old group = %d, err %v, want 1", count, err)
+	}
 	// An app that never logged has no database and reads as zero, not an error.
 	if count, err = store.UnresolvedExceptionCount("absent"); err != nil || count != 0 {
 		t.Fatalf("missing app = %d, err %v, want 0", count, err)

@@ -19,6 +19,10 @@ const ExceptionLimit = 100
 // ExceptionMinuteLimit caps the minute rows returned per group to the most recent ones.
 const ExceptionMinuteLimit = 50
 
+// ExceptionBadgeWindow is how far back the app card counts open groups. It matches the
+// Exceptions page's default range, which the card links to.
+const ExceptionBadgeWindow = 24 * time.Hour
+
 // ExceptionFilter narrows ExceptionGroups. A zero Since means every group, an empty ExpUID every
 // fingerprint; Limit is clamped to ExceptionLimit.
 type ExceptionFilter struct {
@@ -120,12 +124,13 @@ func (s *Store) Exceptions(app string, filter ExceptionFilter) ([]ExceptionSumma
 	return summaries, attachExceptionMinutes(db, summaries, index, uids)
 }
 
-// UnresolvedExceptionCount counts the exception groups still flagged unresolved for one app. It
+// UnresolvedExceptionCount counts one app's open groups seen within ExceptionBadgeWindow. It
 // reads without creating a database and treats a database written before the feature as zero.
 func (s *Store) UnresolvedExceptionCount(app string) (int, error) {
 	count := 0
+	since := time.Now().Add(-ExceptionBadgeWindow).UnixMilli()
 	err := s.read(app, func(db *sql.DB) error {
-		return db.QueryRow(`SELECT COUNT(*) FROM exceptions WHERE is_resolved = 0`).Scan(&count)
+		return db.QueryRow(`SELECT COUNT(*) FROM exceptions WHERE is_resolved = 0 AND last_at >= ?`, since).Scan(&count)
 	})
 	if err != nil && strings.Contains(err.Error(), "no such table") {
 		return 0, nil

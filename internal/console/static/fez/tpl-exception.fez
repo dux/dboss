@@ -140,7 +140,11 @@
     }
 
     copyDump() {
-      this.copy(this.state.row?.dump || this.state.row?.message, 'Stacktrace')
+      const row = this.state.row
+      const trace = row?.dump || row?.message
+      if (!trace) return
+      const request = row.latest ? `${row.latest.method} ${row.latest.url}`.trim() : ''
+      this.copy(request ? `${request}\n\n${trace}` : trace, 'Stacktrace')
     }
 
     async copy(value, label) {

@@ -10,32 +10,33 @@ import (
 	"testing"
 )
 
-// The vibe demo serves the harness behind its own password, while the site itself stays public;
-// the MCP endpoint behind its token edits and reads the app through dboss, and the start step made
-// the folder its own repository, so Changes and Reset see exactly the harness's edits.
+// The vibe demo sits behind the app's own password, and whoever passes it gets the site with the
+// vibe shell docked on every page; the MCP endpoint behind its token edits and reads the app through
+// dboss, and the start step made the folder its own repository, so Changes and Reset see exactly the
+// harness's edits.
 func TestVibeHarness(t *testing.T) {
 	ensureRunning(t, "vibe")
-	expectBody(t, serving(t, "vibe.lvh.me", "/"), "Corner Bakery")
+	expectStatus(t, html(t, "vibe.lvh.me", "/_dboss_/vibe/panel"), http.StatusUnauthorized)
+	signed := passwordLogin(t, "vibe.lvh.me", "vibe")
 
-	page := html(t, "vibe.lvh.me", "/_dboss_/vibe")
-	expectStatus(t, page, http.StatusUnauthorized)
-	expectBody(t, page, "vibe vibe", `action="/_dboss_/vibe/login"`)
-
-	form := url.Values{"password": {"vibe"}, "to": {"/_dboss_/vibe"}}
-	login := call{method: http.MethodPost, host: "vibe.lvh.me", path: "/_dboss_/vibe/login", body: []byte(form.Encode()), header: map[string]string{"Content-Type": "application/x-www-form-urlencoded"}}.do(t)
-	expectStatus(t, login, http.StatusSeeOther)
-	cookie, _, _ := strings.Cut(login.Header.Get("Set-Cookie"), ";")
-	if !strings.HasPrefix(cookie, "dboss_vibe=") {
-		t.Fatalf("vibe login set %q", login.Header.Get("Set-Cookie"))
+	navigate := map[string]string{"Cookie": signed["Cookie"], "Sec-Fetch-Dest": "document", "Accept-Encoding": "gzip"}
+	page := servingCall(t, call{host: "vibe.lvh.me", path: "/", header: navigate})
+	expectBody(t, page, "Corner Bakery", `<script src="/_dboss_/vibe/assets/shell.js" defer></script></head>`)
+	if page.Header.Get("Cache-Control") != "no-store" || page.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("page headers = %v", page.Header)
 	}
-	signed := map[string]string{"Cookie": cookie}
-
-	harness := call{host: "vibe.lvh.me", path: "/_dboss_/vibe", header: signed}.do(t)
-	expectStatus(t, harness, http.StatusOK)
-	expectBody(t, harness, "<vibe-app>")
-	if harness.Header.Get("X-Frame-Options") != "DENY" {
-		t.Fatalf("harness page headers = %v", harness.Header)
+	if fetched := (call{host: "vibe.lvh.me", path: "/", header: signed}).do(t); strings.Contains(fetched.Body, "shell.js") {
+		t.Fatal("a fetch got the shell")
 	}
+	expectStatus(t, call{host: "vibe.lvh.me", path: "/_dboss_/vibe", header: signed}.do(t), http.StatusNotFound)
+
+	panel := call{host: "vibe.lvh.me", path: "/_dboss_/vibe/panel", header: signed}.do(t)
+	expectStatus(t, panel, http.StatusOK)
+	expectBody(t, panel, "<vibe-app>")
+	if panel.Header.Get("X-Frame-Options") != "SAMEORIGIN" {
+		t.Fatalf("panel headers = %v", panel.Header)
+	}
+	expectStatus(t, call{host: "vibe.lvh.me", path: "/_dboss_/vibe/assets/shell.js", header: signed}.do(t), http.StatusOK)
 	expectStatus(t, call{host: "vibe.lvh.me", path: "/_dboss_/vibe/assets/console/fez.min.js", header: signed}.do(t), http.StatusOK)
 
 	state := call{host: "vibe.lvh.me", path: "/_dboss_/vibe/api/state", header: signed}.do(t)
@@ -78,7 +79,7 @@ func TestVibeHarness(t *testing.T) {
 	write := rpc(endpoint.Path, `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"notes.txt","content":"hello\n"}}}`)
 	expectBody(t, write, "notes.txt")
 	expectBody(t, reply{Body: changes()}, `"path":"notes.txt"`)
-	post := map[string]string{"Cookie": cookie, "X-Dboss-Vibe": "1", "Content-Type": "application/json"}
+	post := map[string]string{"Cookie": signed["Cookie"], "X-Dboss-Vibe": "1", "Content-Type": "application/json"}
 	reset := call{method: http.MethodPost, host: "vibe.lvh.me", path: "/_dboss_/vibe/api/reset", body: []byte("{}"), header: post}.do(t)
 	expectStatus(t, reset, http.StatusOK)
 	if body := changes(); strings.Contains(body, "notes.txt") {

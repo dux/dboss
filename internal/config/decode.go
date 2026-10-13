@@ -74,7 +74,7 @@ var envRef = regexp.MustCompile(`\$[A-Z_][A-Z0-9_]*`)
 // expandEnv replaces $NAME in every string value with the matching process environment
 // variable, leaving the text as written when NAME is unset. Procfile and cron commands are
 // runtime shell lines, so they are skipped; the other keys of a procfile entry (password,
-// basic_auth, vibe) expand like any value. It reports whether any value changed, which tells
+// basic_auth) expand like any value. It reports whether any value changed, which tells
 // decode to read the mutated tree instead of the original bytes.
 func expandEnv(node *yaml.Node, path string) bool {
 	changed := false

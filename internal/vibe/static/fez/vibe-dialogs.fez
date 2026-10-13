@@ -107,7 +107,7 @@
         Toast.show(`Reset ${count} file${count === 1 ? '' : 's'}. Saved as ${result.stash}: git stash pop brings them back.`)
         VibeApp.closeDiff()
         VibeApp.refreshGit()
-        VibeApp.reloadFrame()
+        VibeApp.reloadPage()
       })
     }
 

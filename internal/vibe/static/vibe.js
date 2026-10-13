@@ -1,4 +1,4 @@
-// Shared helpers of the vibe harness page, loaded before the components: the API call, the chat's
+// Shared helpers of the vibe panel, loaded before the components: the API call, the chat's
 // markdown and the unified diff parser.
 (() => {
   const escapeHTML = (text) => String(text).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
@@ -21,8 +21,9 @@
         : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dboss-Vibe': '1' }, body: JSON.stringify(body) }
       const response = await fetch(`${this.base}/api/${path}`, options)
       const data = await response.json().catch(() => null)
+      // The app's own gate let the session lapse: the page asks again.
       if (response.status === 401) {
-        window.location.reload()
+        window.top.location.reload()
       }
       if (!response.ok) throw new Error(data?.error || response.statusText || `HTTP ${response.status}`)
       return data

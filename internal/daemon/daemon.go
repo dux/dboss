@@ -177,7 +177,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 		closeRegistry(registry)
 		return nil, err
 	}
-	harness, err := vibe.New(service, flow, cfg.StateDir, cfg.RuntimeDir, cfg.Proxy.Cloudflare, console.Assets())
+	harness, err := vibe.New(service, cfg.StateDir, cfg.RuntimeDir, cfg.Proxy.Cloudflare, console.Assets())
 	if err != nil {
 		notifier.Close()
 		manager.Close()
@@ -373,9 +373,9 @@ func managementAddress(port int) string { return "127.0.0.1:" + strconv.Itoa(por
 func edgeHandler(cfg config.Config, flow *authcog.Flow, manager *supervisor.Manager, logs proxy.Recorder, management *console.Handler, channels *pubsub.Service, harness *vibe.Service) (*proxy.Handler, http.Handler, error) {
 	appProxy, err := proxy.New(cfg, flow, manager, logs, proxy.Modules{
 		Authorizers: []proxy.Authorizer{channels, harness},
-		Early:       []proxy.Filter{harness.Filter},
-		Extra:       []proxy.Filter{channels.Filter},
-		Responses:   []proxy.ResponseHook{harness.FrameHeaders},
+		Early:       []proxy.Filter{harness.MCPFilter},
+		Extra:       []proxy.Filter{channels.Filter, harness.Filter},
+		Responses:   []proxy.ResponseHook{harness.Inject},
 	})
 	if err != nil {
 		return nil, nil, err

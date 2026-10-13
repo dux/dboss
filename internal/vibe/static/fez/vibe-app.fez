@@ -1,12 +1,11 @@
 <script>
-  // Tools that can change the app; an MCP client's successful call reloads the frame.
+  // Tools that can change the app; an MCP client's successful call reloads the page.
   const CHANGING = ['write_file', 'edit_file', 'run', 'restart', 'commit']
 
   class {
     GLOBAL = 'VibeApp'
 
     init() {
-      const path = new URLSearchParams(window.location.search).get('path') || '/'
       this.globalState.vibeStatus = null
       this.globalState.vibeChat = { entries: [], running: false, pending: null }
       this.globalState.vibeGit = null
@@ -14,18 +13,13 @@
       this.globalState.vibeDiff = null
       this.globalState.vibeDiffVersion = 0
       this.state.tab = 'chat'
-      this.state.collapsed = false
       this.state.busy = ''
-      this.state.path = path.startsWith('/') ? path : '/'
       this.state.source = null
       this.state.gitTimer = null
       this.state.reloadTimer = null
     }
 
     onMount() {
-      this.on(this.state.frame, 'load', () => this.frameLoaded())
-      this.state.pathInput.value = this.state.path
-      this.state.frame.src = this.state.path
       this.loadState()
       this.refreshGit()
       this.connect()
@@ -84,7 +78,7 @@
           this.globalState.vibeChat = { ...chat, running: data.running, pending: data.running ? chat.pending : null }
           if (!data.running) {
             Fez.publish('vibe:live', '')
-            if (data.wrote) this.reloadFrame()
+            if (data.wrote) this.reloadPage()
             this.refreshGit()
             this.loadState()
           }
@@ -111,57 +105,39 @@
       if (this.globalState.vibeDiff) this.globalState.vibeDiffVersion++
     }
 
-    frameLoaded() {
-      let path
-      try {
-        const location = this.state.frame.contentWindow.location
-        path = location.pathname + location.search + location.hash
-      } catch {
-        this.state.pathInput.value = '(another site)'
-        return
-      }
-      this.state.path = path
-      this.state.pathInput.value = path
-      window.history.replaceState(null, '', path === '/' ? Vibe.base : `${Vibe.base}?path=${encodeURIComponent(path)}`)
+    // The panel is a same-origin frame of the app page; the shell script on that page listens.
+    tell(kind, value) {
+      if (window.parent !== window) window.parent.postMessage({ dbossVibe: kind, value }, window.location.origin)
     }
 
-    go(event) {
-      event.preventDefault()
-      let path = this.state.pathInput.value.trim() || '/'
-      if (!path.startsWith('/')) path = `/${path}`
-      this.closeDiff()
-      this.state.frame.src = path
-    }
-
-    reloadFrame() {
-      try {
-        this.state.frame.contentWindow.location.reload()
-      } catch {
-        this.state.frame.src = this.state.path
-      }
+    reloadPage() {
+      window.parent.location.reload()
     }
 
     reloadSoon() {
       window.clearTimeout(this.state.reloadTimer)
-      this.state.reloadTimer = this.setTimeout(() => this.reloadFrame(), 500)
+      this.state.reloadTimer = this.setTimeout(() => this.reloadPage(), 500)
     }
 
-    toggleSide() {
-      this.state.collapsed = !this.state.collapsed
+    collapse() {
+      this.tell('open', false)
     }
 
     setTab(tab) {
       this.state.tab = tab
-      this.state.collapsed = false
       if (tab === 'changes') this.refreshGit()
     }
 
     openDiff(path, commit = '') {
+      // The panel keeps its width as a sidebar while the frame spreads over the site.
+      if (!this.globalState.vibeDiff) document.documentElement.style.setProperty('--side', `${window.innerWidth}px`)
       this.globalState.vibeDiff = { path, commit }
+      this.tell('wide', true)
     }
 
     closeDiff() {
       this.globalState.vibeDiff = null
+      this.tell('wide', false)
     }
 
     async run(name, action) {
@@ -180,7 +156,7 @@
       this.run('restart', async () => {
         await Vibe.api('restart', {})
         Toast.show('Restarted')
-        this.reloadFrame()
+        this.reloadPage()
         this.loadState()
       })
     }
@@ -203,87 +179,65 @@
   }
 </script>
 
-<div class="vibe-shell" class:side-collapsed={state.collapsed}>
+<div class="vibe-shell" class:diff-open={globalState.vibeDiff}>
   <header class="vibe-top">
-    <button class="btn btn-ghost btn-icon btn-sm" type="button" onclick="fez.toggleSide()" title={state.collapsed ? 'Show the side panel' : 'Hide the side panel'} aria-label="Toggle the side panel">
-      <svg class="icon"><use href="#i-sidebar"></use></svg>
-    </button>
     <div class="vibe-brand">
       <img class="vibe-logo" src="/.well-known/dboss/logo.svg" alt="">
       {#if globalState.vibeStatus}
-        <strong>{globalState.vibeStatus.app}</strong>
-        {#if globalState.vibeStatus.multi}
-          <span class="text-muted">/{globalState.vibeStatus.process}</span>
-        {/if}
         <span class={'badge ' + state.stateClass}>{globalState.vibeStatus.state}</span>
       {/if}
     </div>
-    <form class="vibe-path" onsubmit="fez.go(event)">
-      <input fez:this="pathInput" fez:keep="path" type="text" spellcheck="false" autocomplete="off" aria-label="Page path">
-      <button class="btn btn-ghost btn-icon btn-sm" type="button" onclick="fez.reloadFrame()" title="Reload the page" aria-label="Reload the page">
-        <svg class="icon"><use href="#i-refresh"></use></svg>
-      </button>
-      <a class="btn btn-ghost btn-icon btn-sm" href={state.path} target="_blank" rel="noopener" title="Open in a new tab" aria-label="Open in a new tab">
-        <svg class="icon"><use href="#i-external"></use></svg>
-      </a>
-    </form>
-    <div class="vibe-actions">
-      <button class="btn btn-sm vibe-changed" type="button" onclick="fez.setTab('changes')" class:has-changes={state.changes > 0} title="Show the changed files">
-        {state.changes} changed
-      </button>
-      <button class="btn btn-sm" type="button" onclick="fez.restart()" disabled={Boolean(state.busy)} title="Restart the app">
-        <svg class="icon"><use href="#i-rotate"></use></svg>
-        <span class="vibe-label">{state.busy === 'restart' ? 'Restarting' : 'Restart'}</span>
-      </button>
-      <button class="btn btn-sm" type="button" onclick="fez.commit()" disabled={Boolean(state.busy || !state.changes)} title="Commit every change">
-        <svg class="icon"><use href="#i-commit"></use></svg>
-        <span class="vibe-label">Commit</span>
-      </button>
-      <button class="btn btn-sm" type="button" onclick="fez.push()" disabled={Boolean(state.busy || !state.canPush)} title={globalState.vibeGit && !globalState.vibeGit.upstream ? 'The branch has no upstream' : 'Push the unpushed commits'}>
-        <svg class="icon"><use href="#i-upload"></use></svg>
-        <span class="vibe-label">{state.busy === 'push' ? 'Pushing' : 'Push'}</span>
-        {#if state.ahead}
-          <span class="vibe-count">{state.ahead}</span>
-        {/if}
-      </button>
-      <button class="btn btn-sm btn-primary" type="button" onclick="fez.handover()" title="Copy a prompt that connects any AI agent to this app">
-        <svg class="icon"><use href="#i-sparkles"></use></svg>
-        <span class="vibe-label">AI handover</span>
-      </button>
-      {#if globalState.vibeStatus?.password}
-        <a class="btn btn-ghost btn-icon btn-sm" href="/_dboss_/vibe/logout" title="Sign out" aria-label="Sign out">
-          <svg class="icon"><use href="#i-logout"></use></svg>
-        </a>
-      {/if}
-    </div>
+    <span class="vibe-grow"></span>
+    <button class="btn btn-sm btn-primary btn-icon" type="button" onclick="fez.handover()" title="AI handover: copy a prompt that connects any AI agent to this app" aria-label="AI handover">
+      <svg class="icon"><use href="#i-sparkles"></use></svg>
+    </button>
+    <button class="btn btn-ghost btn-icon btn-sm" type="button" onclick="fez.reloadPage()" title="Reload the page" aria-label="Reload the page">
+      <svg class="icon"><use href="#i-refresh"></use></svg>
+    </button>
+    <button class="btn btn-ghost btn-icon btn-sm" type="button" onclick="fez.collapse()" title="Hide the panel" aria-label="Hide the panel">
+      <svg class="icon"><use href="#i-sidebar"></use></svg>
+    </button>
   </header>
-  <div class="vibe-main">
-    <aside class="vibe-side">
-      <nav class="vibe-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={state.tab === 'chat' ? 'true' : 'false'} class:active={state.tab === 'chat'} onclick="fez.setTab('chat')">Chat</button>
-        <button type="button" role="tab" aria-selected={state.tab === 'changes' ? 'true' : 'false'} class:active={state.tab === 'changes'} onclick="fez.setTab('changes')">
-          Changes
-          {#if state.changes}
-            <span class="vibe-count">{state.changes}</span>
-          {/if}
-        </button>
-      </nav>
-      <div class="vibe-panel" class:d-none={state.tab !== 'chat'}>
-        <div class="vibe-keep" fez:keep="chat">
-          <vibe-chat></vibe-chat>
-        </div>
-      </div>
-      {#if state.tab === 'changes'}
-        <div class="vibe-panel">
-          <vibe-changes></vibe-changes>
-        </div>
+  <div class="vibe-actions">
+    <button class="btn btn-sm vibe-changed" type="button" onclick="fez.setTab('changes')" class:has-changes={state.changes > 0} title="Show the changed files">
+      {state.changes} changed
+    </button>
+    <button class="btn btn-sm" type="button" onclick="fez.restart()" disabled={Boolean(state.busy)} title="Restart the app">
+      <svg class="icon"><use href="#i-rotate"></use></svg>
+      <span class="vibe-label">{state.busy === 'restart' ? 'Restarting' : 'Restart'}</span>
+    </button>
+    <button class="btn btn-sm" type="button" onclick="fez.commit()" disabled={Boolean(state.busy || !state.changes)} title="Commit every change">
+      <svg class="icon"><use href="#i-commit"></use></svg>
+      <span class="vibe-label">Commit</span>
+    </button>
+    <button class="btn btn-sm" type="button" onclick="fez.push()" disabled={Boolean(state.busy || !state.canPush)} title={globalState.vibeGit && !globalState.vibeGit.upstream ? 'The branch has no upstream' : 'Push the unpushed commits'}>
+      <svg class="icon"><use href="#i-upload"></use></svg>
+      <span class="vibe-label">{state.busy === 'push' ? 'Pushing' : 'Push'}</span>
+      {#if state.ahead}
+        <span class="vibe-count">{state.ahead}</span>
       {/if}
-    </aside>
-    <section class="vibe-stage">
-      <iframe class="vibe-frame" fez:this="frame" fez:keep="frame" title="App preview"></iframe>
-      {#if globalState.vibeDiff}
-        <vibe-diff path={globalState.vibeDiff.path} commit={globalState.vibeDiff.commit} version={globalState.vibeDiffVersion}></vibe-diff>
-      {/if}
-    </section>
+    </button>
   </div>
+  <nav class="vibe-tabs" role="tablist">
+    <button type="button" role="tab" aria-selected={state.tab === 'chat' ? 'true' : 'false'} class:active={state.tab === 'chat'} onclick="fez.setTab('chat')">Chat</button>
+    <button type="button" role="tab" aria-selected={state.tab === 'changes' ? 'true' : 'false'} class:active={state.tab === 'changes'} onclick="fez.setTab('changes')">
+      Changes
+      {#if state.changes}
+        <span class="vibe-count">{state.changes}</span>
+      {/if}
+    </button>
+  </nav>
+  <div class="vibe-panel" class:d-none={state.tab !== 'chat'}>
+    <div class="vibe-keep" fez:keep="chat">
+      <vibe-chat></vibe-chat>
+    </div>
+  </div>
+  {#if state.tab === 'changes'}
+    <div class="vibe-panel">
+      <vibe-changes></vibe-changes>
+    </div>
+  {/if}
+  {#if globalState.vibeDiff}
+    <vibe-diff path={globalState.vibeDiff.path} commit={globalState.vibeDiff.commit} version={globalState.vibeDiffVersion}></vibe-diff>
+  {/if}
 </div>

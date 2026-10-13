@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dboss/internal/config"
 	"dboss/internal/git"
 	"dboss/internal/supervisor"
 )
@@ -35,7 +34,7 @@ func (s *Service) handover(base string, app supervisor.Snapshot, web supervisor.
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are working on the web app %q, served by dboss at %s.\n", app.Name, base)
-	fmt.Fprintf(&b, "The owner watches it live at %s%s.\n\n", base, config.VibePath)
+	fmt.Fprintf(&b, "The owner watches it live at %s, with the vibe panel on every page.\n\n", base)
 	if status, err := git.Status(context.Background(), app.Dir); err == nil {
 		fmt.Fprintf(&b, "Branch: %s (%d uncommitted changes, %d unpushed commits)\n", status.Branch, len(status.Changes), status.Ahead)
 	}

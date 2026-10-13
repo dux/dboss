@@ -51,9 +51,9 @@
 
 <div class="vibe-diff">
   <div class="vibe-diff-head">
-    <button class="btn btn-sm" type="button" onclick="fez.back()" title="Back to the app (Esc)">
+    <button class="btn btn-sm" type="button" onclick="fez.back()" title="Back to the site (Esc)">
       <svg class="icon"><use href="#i-arrow-left"></use></svg>
-      Back to preview
+      Back to site
     </button>
     <svg class="icon text-muted"><use href="#i-file"></use></svg>
     <strong class="vibe-diff-path">{props.path}</strong>

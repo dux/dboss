@@ -51,7 +51,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Web console** - live state, start/stop, log search, config editing with history, and an audit row for every action.
 * **PostgreSQL** - inspection, SQL prompt, scheduled backups, rotation and restore.
 * **PubSub** - realtime channels over WebSocket or SSE.
-* **Vibe** - an AI harness on the app's own host: the app in a frame, a chat that edits it, its diffs, Restart, Reset, Commit and Push, and MCP for any agent.
+* **Vibe** - an AI panel docked on the app's pages: a chat that edits it, its diffs, Restart, Reset, Commit and Push, and MCP for any agent.
 * **HTTP API** - every CLI action as `POST /api/<action>` with a bearer token, a guide at `GET /api` and an OpenAPI export.
 * **Metrics and alerts** - Prometheus `/metrics`, `/healthz`, `/readyz`, and webhook alerts on crashes, OOM kills, full disks, error rates and slow responses.
 * **Resource limits** - per-process memory and CPU limits on a cgroup v2 host.
@@ -794,24 +794,25 @@ The secret is accepted as `?token=`, `Authorization: Bearer` or `X-Pubsub-Token`
 
 ## Vibe: an AI harness on the app
 
-A web process can serve an AI harness at `/_dboss_/vibe` on its own hosts.
-The page shows the app in a frame, a chat on the left that edits it, and Restart, Commit, Push and **AI handover** on top.
+A web process with `vibe: true` gets an AI panel docked on the left of every page it serves.
+The panel holds a chat that edits the app, and Restart, Commit, Push and **AI handover**, right next to the live page.
 The same tools are served over MCP, so Claude Code, Codex, Cursor or a web chat connector can work on the app too, and what they do shows up live in the chat.
 
 ```yaml
 deepseek_api_key: $DEEPSEEK_API_KEY   # the built-in chat; or under host defaults: for every app
+password: $SHOP_PASSWORD              # the app's gate is the harness's too
 procfile:
   web:
     command: ./start.sh
     hosts: [staging.shop.example.com]
-    vibe:
-      password: $VIBE_PASSWORD    # plain or a bcrypt hash from `dboss password`
+    vibe: true
 ```
 
-The harness has its own password, so the app itself may stay public.
-A signed-in owner passes the app's own `password`, `basic_auth` and `auth` gates on that web process, so the framed app opens, and the proxy drops `X-Frame-Options` and CSP `frame-ancestors` from the answers the owner gets, so an app that refuses framing still renders.
-Outside a dev session the password is required, because the tools run commands on the box; `vibe: true` (no password) is for a dev session only.
-The harness and the app share one origin, so script on an app page can call the harness from the owner's browser: put `vibe` on a dedicated checkout behind a password when the app serves real users.
+dboss adds one `<script>` tag before `</head>` of every HTML page a browser navigates to; frames, fragments, compressed and non-200 answers pass untouched, and the app's CSP is dropped on the pages that carry the tag.
+The app stays the top-level page, so its redirects and sign-ins work as usual; the panel is a same-origin frame under `/_dboss_/vibe`, so the app's CSS and scripts never meet it.
+It can be resized and collapsed, and remembers both.
+The harness has no gate of its own: whoever passes the app's `password`, `basic_auth` or `auth` gets it.
+Outside a dev session one of those gates is required, because the tools run commands on the box; put `vibe` on a dedicated checkout when the app serves real users.
 
 * **Chat** - DeepSeek with a fixed tool set; it reads and edits files, runs commands, restarts the app, reads logs and exceptions and checks pages with `http_get`. A turn stops after 40 tool steps or 5 minutes; one chat per web process lives under `dir/state/<app>/`. Without `deepseek_api_key` the chat is off and everything else works.
 * **Changes** - the uncommitted files with their line counts and diffs, and the commits Push would send with theirs.
@@ -829,7 +830,7 @@ claude mcp add --transport http shop https://staging.shop.example.com/_dboss_/vi
 
 Commit, push and reset are also actions of their own (`git-commit`, `git-push`, `git-reset`) on the HTTP API and the control socket.
 Git actions need the app folder to be the root of its own repository, so an app inside a larger checkout never commits or stashes another project's files.
-The demo's `vibe` app (`./demo/apps/vibe`, a one-page site that makes itself a repository on its first start) serves it at `http://vibe.lvh.me/_dboss_/vibe` with the password `vibe`.
+The demo's `vibe` app (`./demo/apps/vibe`, a one-page site that makes itself a repository on its first start) serves it at `http://vibe.lvh.me` behind the password `vibe`.
 
 ## Health and metrics
 

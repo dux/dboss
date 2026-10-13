@@ -169,7 +169,7 @@ func fit(messages []Message, budget int) []Message {
 // systemPrompt is rebuilt for every turn, so it always carries the app's current files and state.
 func (s *Service) systemPrompt(app supervisor.Snapshot, web supervisor.WebProcessSnapshot) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, `You are the coding agent of the dboss vibe harness. You change the web app %q, which runs under dboss; the owner watches it live in a frame next to this chat.
+	fmt.Fprintf(&b, `You are the coding agent of the dboss vibe harness. You change the web app %q, which runs under dboss; the owner watches it live, with this chat docked on its pages.
 
 Work in small verified steps:
 * Read before you change: list_files, search and read_file. Prefer edit_file for small changes and write_file for new files.

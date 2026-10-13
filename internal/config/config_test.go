@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -694,15 +693,12 @@ func TestEnvExpansionReachesProcfileSecrets(t *testing.T) {
     command: run $DBOSS_TEST_SECRET
     hosts: [demo.test]
     password: $DBOSS_TEST_SECRET
-    vibe:
-      password: $DBOSS_TEST_SECRET
 `), "/srv/apps/demo/dboss.yaml", Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	web := app.WebProcesses[0]
-	if web.Password != "s3cret" || web.Vibe.Password != "s3cret" {
-		t.Errorf("password = %q, vibe password = %q, want both expanded", web.Password, web.Vibe.Password)
+	if web := app.WebProcesses[0]; web.Password != "s3cret" {
+		t.Errorf("password = %q, want it expanded", web.Password)
 	}
 	if app.Procfile["web"].Command != "run $DBOSS_TEST_SECRET" {
 		t.Errorf("command expanded: %q", app.Procfile["web"].Command)
@@ -906,25 +902,28 @@ func TestPubsubConfig(t *testing.T) {
 
 func TestVibeConfig(t *testing.T) {
 	defaults := Default().Defaults
-	app, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  admin:\n    command: ./admin\n    hosts: [admin.test]\n    vibe:\n      password: pw\n"), "dboss.yaml", defaults)
+	app, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  admin:\n    command: ./admin\n    hosts: [admin.test]\n    password: pw\n    vibe: true\n"), "dboss.yaml", defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, web := range app.WebProcesses {
-		want := Vibe{}
-		if web.Name == "admin" {
-			want = Vibe{Enabled: true, Password: "pw"}
-		}
-		if web.Vibe != want {
-			t.Errorf("%s vibe = %+v, want %+v", web.Name, web.Vibe, want)
+		if web.Vibe.Enabled != (web.Name == "admin") {
+			t.Errorf("%s vibe = %+v", web.Name, web.Vibe)
 		}
 	}
-	// A host session refuses the harness without a password, a worker and an unknown key.
+	// Any of the app's gates is enough on a host.
+	for _, gate := range []string{"password: pw\n", "basic_auth: {ana: pw}\n", "auth: [ana@example.com]\n"} {
+		data := gate + "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: true\n"
+		if _, err := ParseApp([]byte(data), "dboss.yaml", defaults); err != nil {
+			t.Errorf("gate %q: %v", gate, err)
+		}
+	}
+	// A host session refuses the harness on an ungated process, on a worker, and a mapping.
 	for _, data := range []string{
 		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: true\n",
-		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  worker:\n    command: ./jobs\n    vibe: {password: pw}\n",
-		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: {password: pw, model: x}\n",
-		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: on\n",
+		"procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    password: pw\n    basic_auth: {}\n  admin:\n    command: ./admin\n    hosts: [admin.test]\n    password: \"\"\n    vibe: true\n",
+		"password: pw\nprocfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  worker:\n    command: ./jobs\n    vibe: true\n",
+		"password: pw\nprocfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    vibe: {password: pw}\n",
 	} {
 		if _, err := ParseApp([]byte(data), "dboss.yaml", defaults); err == nil {
 			t.Errorf("expected an error for:\n%s", data)
@@ -934,24 +933,13 @@ func TestVibeConfig(t *testing.T) {
 	if err != nil || off.WebProcesses[0].Vibe.Enabled {
 		t.Fatalf("vibe: false = %+v, %v", off.WebProcesses, err)
 	}
-	// A dev session may run the harness without a password.
+	// A dev session runs the harness with no gate.
 	dev, err := Parse([]byte("procfile:\n  web:\n    command: ./server\n    vibe: true\n"), filepath.Join(t.TempDir(), "dboss.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if web := dev.App.WebProcesses[0]; !web.Vibe.Enabled || web.Vibe.Password != "" {
+	if web := dev.App.WebProcesses[0]; !web.Vibe.Enabled {
 		t.Fatalf("dev vibe = %+v", web.Vibe)
-	}
-}
-
-// The password stays out of JSON, the switch does not.
-func TestVibeSpecJSONHidesPassword(t *testing.T) {
-	data, err := json.Marshal(ProcessSpec{Command: "./server", Hosts: List{"demo.test"}, Vibe: &VibeSpec{Enabled: true, Password: "pw"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "pw") || !strings.Contains(string(data), `"vibe":true`) {
-		t.Fatalf("json = %s", data)
 	}
 }
 

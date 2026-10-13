@@ -49,8 +49,8 @@ type ProcessSpec struct {
 	// inherits, an empty value turns the gate off here.
 	BasicAuth map[string]string `yaml:"basic_auth,omitempty" json:"-"`
 	Password  *string           `yaml:"password,omitempty" json:"-"`
-	// Vibe serves the AI harness at VibePath on this web process's hosts.
-	Vibe *VibeSpec `yaml:"vibe,omitempty" json:"vibe,omitempty"`
+	// Vibe docks the AI harness shell onto every page this web process serves.
+	Vibe bool `yaml:"vibe,omitempty" json:"vibe,omitempty"`
 }
 
 // MaxCount bounds procfile count, so one typo cannot claim the whole port range.
@@ -86,7 +86,7 @@ func (p *ProcessSpec) UnmarshalYAML(node *yaml.Node) error {
 
 // commandOnly reports whether the process only runs a command, which marshals as a scalar.
 func (p ProcessSpec) commandOnly() bool {
-	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.BasicAuth == nil && p.Password == nil && p.Vibe == nil
+	return len(p.Hosts) == 0 && len(p.HostPrefix) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.BasicAuth == nil && p.Password == nil && !p.Vibe
 }
 
 // MarshalYAML writes a scalar command when the process only runs a command, else the full mapping,
@@ -232,57 +232,10 @@ func validPubsubKey(key string) bool {
 // VibePath is where a web process with vibe serves the harness, on each of its own hosts.
 const VibePath = "/_dboss_/vibe"
 
-// VibeSpec is the web process's AI harness option: true turns it on with no password (a dev
-// session only), a {password} mapping turns it on behind that password, false or absent is off.
-type VibeSpec struct {
-	Enabled  bool
-	Password string
-}
-
-// UnmarshalYAML accepts true, false or a {password} mapping.
-func (v *VibeSpec) UnmarshalYAML(node *yaml.Node) error {
-	switch node.Kind {
-	case yaml.ScalarNode:
-		switch node.Tag {
-		case "!!bool":
-			v.Enabled = node.Value == "true"
-			return nil
-		case "!!null":
-			return nil
-		}
-	case yaml.MappingNode:
-		var fields struct {
-			Password string `yaml:"password"`
-		}
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			if key := node.Content[i].Value; key != "password" {
-				return &Error{Line: node.Content[i].Line, Key: "vibe", Message: fmt.Sprintf("unknown key %q", key), Hint: "valid keys here: password"}
-			}
-		}
-		if err := node.Decode(&fields); err != nil {
-			return err
-		}
-		v.Enabled, v.Password = true, fields.Password
-		return nil
-	}
-	return &Error{Line: node.Line, Key: "vibe", Message: "must be true, false or a {password} mapping"}
-}
-
-// MarshalYAML writes the mapping when a password is set, else the switch.
-func (v VibeSpec) MarshalYAML() (any, error) {
-	if v.Enabled && v.Password != "" {
-		return map[string]string{"password": v.Password}, nil
-	}
-	return v.Enabled, nil
-}
-
-// MarshalJSON writes only the switch, so the password never reaches a JSON reader.
-func (v VibeSpec) MarshalJSON() ([]byte, error) { return json.Marshal(v.Enabled) }
-
-// Vibe is a web process's resolved AI harness: on or off, and the password that guards it.
+// Vibe is a web process's resolved AI harness. It has no gate of its own: whoever passes the web
+// process's password, basic_auth or auth gets the shell with the app.
 type Vibe struct {
-	Enabled  bool   `json:"enabled"`
-	Password string `json:"-"`
+	Enabled bool `json:"enabled"`
 }
 
 // WebProcess is one procfile entry that answers proxied traffic: the hosts it serves, the
@@ -522,21 +475,21 @@ func (a *App) resolvePubsub() error {
 }
 
 // resolveVibe resolves every web process's vibe option onto its WebProcess. Outside a dev session
-// the harness needs a password, since its tools run commands on the box.
+// the web process needs a gate (password, basic_auth or auth), since the harness runs commands on
+// the box and anyone the app lets in gets it.
 func (a *App) resolveVibe(dev bool) error {
 	for index := range a.WebProcesses {
 		web := &a.WebProcesses[index]
-		spec := a.Procfile[web.Name].Vibe
-		if spec == nil || !spec.Enabled {
+		if !a.Procfile[web.Name].Vibe {
 			continue
 		}
-		if spec.Password == "" && !dev {
-			return &Error{Key: "procfile." + web.Name + ".vibe.password", Message: "is required outside a dev session", Hint: "the harness runs commands on the box: vibe: {password: $VIBE_PASSWORD}"}
+		if !dev && web.Password == "" && len(web.BasicAuth) == 0 && len(a.Web.Auth) == 0 {
+			return &Error{Key: "procfile." + web.Name + ".vibe", Message: "needs a gate outside a dev session", Hint: "the harness runs commands on the box: set password, basic_auth or auth on this app"}
 		}
-		web.Vibe = Vibe{Enabled: true, Password: spec.Password}
+		web.Vibe = Vibe{Enabled: true}
 	}
 	for _, name := range processNames(a.Procfile) {
-		if spec := a.Procfile[name].Vibe; spec != nil && spec.Enabled && !a.IsWeb(name) {
+		if a.Procfile[name].Vibe && !a.IsWeb(name) {
 			return &Error{Key: "procfile." + name + ".vibe", Message: "vibe needs hosts on the same process", Hint: "add hosts or host_prefix to this process, or move vibe to a web process"}
 		}
 	}

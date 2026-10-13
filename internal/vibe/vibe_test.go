@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"dboss/internal/authcog"
 	"dboss/internal/config"
 	"dboss/internal/logstore"
 	"dboss/internal/ops"
@@ -61,8 +60,6 @@ func (f *fakeOps) Exceptions(string, logstore.ExceptionFilter) ([]logstore.Excep
 	return nil, nil
 }
 
-func (f *fakeOps) HostPages() string { return "" }
-
 func (f *fakeOps) methods() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -75,24 +72,24 @@ func (f *fakeOps) methods() []string {
 	return methods
 }
 
-func testSnapshot(dir, password string) supervisor.Snapshot {
+func testSnapshot(dir string) supervisor.Snapshot {
 	return supervisor.Snapshot{
 		Name:  "shop",
 		Dir:   dir,
 		State: supervisor.Running,
 		WebProcesses: []supervisor.WebProcessSnapshot{
-			{Name: "web", Hosts: []string{"shop.test"}, Vibe: config.Vibe{Enabled: true, Password: password}},
+			{Name: "web", Hosts: []string{"shop.test"}, Vibe: config.Vibe{Enabled: true}},
 			{Name: "admin", Hosts: []string{"admin.shop.test"}},
 		},
 		Web: config.Web{SessionTTL: config.Duration(time.Hour)},
 	}
 }
 
-func newTestService(t *testing.T, password string) (*Service, *fakeOps, string) {
+func newTestService(t *testing.T) (*Service, *fakeOps, string) {
 	t.Helper()
 	dir := t.TempDir()
-	fake := &fakeOps{snapshot: testSnapshot(dir, password)}
-	service, err := New(fake, authcog.NewWithKey([]byte("01234567890123456789012345678901")), t.TempDir(), filepath.Join(dir, ".dboss"), false, nil)
+	fake := &fakeOps{snapshot: testSnapshot(dir)}
+	service, err := New(fake, t.TempDir(), filepath.Join(dir, ".dboss"), false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +105,7 @@ func serve(service *Service, app supervisor.Snapshot, request *http.Request) (*h
 }
 
 func TestConfineKeepsPathsInsideTheApp(t *testing.T) {
-	service, _, dir := newTestService(t, "")
+	service, _, dir := newTestService(t)
 	outside := t.TempDir()
 	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
 		t.Fatal(err)
@@ -128,97 +125,114 @@ func TestConfineKeepsPathsInsideTheApp(t *testing.T) {
 	}
 }
 
-func TestFilterSignsInWithTheVibePassword(t *testing.T) {
-	service, _, dir := newTestService(t, "pw")
-	app := testSnapshot(dir, "pw")
+func TestFilterServesTheHarnessBehindTheAppGates(t *testing.T) {
+	service, _, dir := newTestService(t)
+	app := testSnapshot(dir)
 
 	// Another path or a web process without vibe is the app's.
 	if _, passed := serve(service, app, httptest.NewRequest(http.MethodGet, "http://shop.test/cart", nil)); !passed {
 		t.Fatal("a normal path did not pass through")
 	}
-	if _, passed := serve(service, app, httptest.NewRequest(http.MethodGet, "http://admin.shop.test"+config.VibePath, nil)); !passed {
+	if _, passed := serve(service, app, httptest.NewRequest(http.MethodGet, "http://admin.shop.test"+config.VibePath+"/panel", nil)); !passed {
 		t.Fatal("a web process without vibe answered the harness")
 	}
 
-	page := httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath+"?path=/cart", nil)
-	page.Header.Set("Accept", "text/html")
-	recorder, _ := serve(service, app, page)
-	if recorder.Code != http.StatusUnauthorized || !strings.Contains(recorder.Body.String(), `action="/_dboss_/vibe/login"`) || !strings.Contains(recorder.Body.String(), `value="/_dboss_/vibe?path=/cart"`) {
-		t.Fatalf("sign-in page = %d %s", recorder.Code, recorder.Body.String())
-	}
-	if recorder, _ := serve(service, app, httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath+"/api/state", nil)); recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("api without a session = %d", recorder.Code)
-	}
-
-	login := func(password, ip string) *httptest.ResponseRecorder {
-		form := url.Values{"password": {password}, "to": {config.VibePath + "?path=/cart"}}
-		request := httptest.NewRequest(http.MethodPost, "http://shop.test"+config.VibePath+"/login", strings.NewReader(form.Encode()))
-		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		request.RemoteAddr = ip + ":1234"
-		recorder, _ := serve(service, app, request)
-		return recorder
-	}
-	// A failed attempt asks again for the same target, never for the login route itself.
-	if wrong := login("nope", "192.0.2.1"); wrong.Code != http.StatusUnauthorized || len(wrong.Result().Cookies()) != 0 || !strings.Contains(wrong.Body.String(), `value="/_dboss_/vibe?path=/cart"`) {
-		t.Fatalf("wrong password = %d %s", wrong.Code, wrong.Body.String())
-	}
-	if again, _ := serve(service, app, httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath+"/login", nil)); again.Code != http.StatusSeeOther || again.Header().Get("Location") != config.VibePath {
-		t.Fatalf("GET login = %d %s", again.Code, again.Header().Get("Location"))
-	}
-	for _, target := range []string{config.VibePath + "/login", config.VibePath + "/logout?x=1"} {
-		if got := safeTarget(target); got != config.VibePath {
-			t.Errorf("safeTarget(%q) = %q", target, got)
+	// The shell lives on the app's pages: the bare path and the old sign-in routes are gone.
+	for _, gone := range []string{"", "/login", "/logout"} {
+		if recorder, passed := serve(service, app, httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath+gone, nil)); passed || recorder.Code != http.StatusNotFound {
+			t.Errorf("%q = %d", gone, recorder.Code)
 		}
 	}
-	right := login("pw", "192.0.2.2")
-	if right.Code != http.StatusSeeOther || right.Header().Get("Location") != config.VibePath+"?path=/cart" {
-		t.Fatalf("right password = %d %s", right.Code, right.Header().Get("Location"))
+	recorder, _ := serve(service, app, httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath+"/panel", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'") || recorder.Header().Get("X-Frame-Options") != "SAMEORIGIN" || !strings.Contains(recorder.Body.String(), "<vibe-app>") {
+		t.Fatalf("panel = %d %v", recorder.Code, recorder.Header())
 	}
-	cookies := right.Result().Cookies()
-
-	signed := httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath, nil)
-	for _, cookie := range cookies {
-		signed.AddCookie(cookie)
-	}
-	recorder, _ = serve(service, app, signed)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") || recorder.Header().Get("X-Frame-Options") != "DENY" {
-		t.Fatalf("harness page = %d %v", recorder.Code, recorder.Header())
+	if recorder, _ := serve(service, app, httptest.NewRequest(http.MethodGet, "http://shop.test"+config.VibePath+"/assets/shell.js", nil)); recorder.Code != http.StatusOK {
+		t.Fatalf("shell.js = %d", recorder.Code)
 	}
 
-	// The session lets the owner past the app's own gates on this web process only.
-	framed := httptest.NewRequest(http.MethodGet, "http://shop.test/cart", nil)
-	for _, cookie := range cookies {
-		framed.AddCookie(cookie)
+	// A page navigation asks the app for an uncompressed answer; a fetch keeps its encoding.
+	page := httptest.NewRequest(http.MethodGet, "http://shop.test/cart", nil)
+	page.Header.Set("Sec-Fetch-Dest", "document")
+	page.Header.Set("Accept-Encoding", "gzip, br")
+	page.Header.Set("If-None-Match", `W/"1"`)
+	serve(service, app, page)
+	if page.Header.Get("Accept-Encoding") != "" || page.Header.Get("If-None-Match") != "" {
+		t.Fatalf("a page navigation kept %v", page.Header)
 	}
-	if !service.Authorizes(framed, app) {
-		t.Fatal("the vibe session did not open the framed app")
+	fetch := httptest.NewRequest(http.MethodGet, "http://shop.test/cart", nil)
+	fetch.Header.Set("Accept-Encoding", "gzip")
+	serve(service, app, fetch)
+	if fetch.Header.Get("Accept-Encoding") != "gzip" {
+		t.Fatal("a fetch lost Accept-Encoding")
 	}
+
+	// The harness vouches only for its own http_get, never for a visitor.
 	if service.Authorizes(httptest.NewRequest(http.MethodGet, "http://shop.test/cart", nil), app) {
-		t.Fatal("a visitor without a session was authorized")
+		t.Fatal("a visitor was authorized")
+	}
+}
+
+func TestInjectDocksTheShellOntoPages(t *testing.T) {
+	service, _, dir := newTestService(t)
+	app := testSnapshot(dir)
+	// dest "html" is a plain-http navigation: no Sec-Fetch-Dest, an Accept that wants HTML.
+	respond := func(host, dest string, status int, contentType, encoding, body string) *http.Response {
+		request := httptest.NewRequest(http.MethodGet, "http://"+host+"/cart", nil)
+		if dest == "html" {
+			request.Header.Set("Accept", "text/html,application/xhtml+xml")
+		} else if dest != "" {
+			request.Header.Set("Sec-Fetch-Dest", dest)
+		}
+		response := &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}, "Content-Security-Policy": {"default-src 'self'"}}, Body: io.NopCloser(strings.NewReader(body)), ContentLength: int64(len(body))}
+		if encoding != "" {
+			response.Header.Set("Content-Encoding", encoding)
+		}
+		service.Inject(request, app, response)
+		return response
+	}
+	read := func(response *http.Response) string {
+		data, _ := io.ReadAll(response.Body)
+		return string(data)
 	}
 
-	// Frame headers go for the owner and stay for everyone else.
-	header := http.Header{"X-Frame-Options": {"DENY"}, "Content-Security-Policy": {"default-src 'self'; frame-ancestors 'none'; img-src *"}}
-	service.FrameHeaders(framed, app, header)
-	if header.Get("X-Frame-Options") != "" || header.Get("Content-Security-Policy") != "default-src 'self'; img-src *" {
-		t.Fatalf("owner headers = %v", header)
+	page := respond("shop.test", "document", http.StatusOK, "text/html; charset=utf-8", "", "<html><HEAD><title>x</title></HEAD><body>hi</body></html>")
+	body := read(page)
+	if body != "<html><HEAD><title>x</title>"+shellTag+"</HEAD><body>hi</body></html>" || page.Header.Get("Content-Length") != fmt.Sprint(len(body)) || page.ContentLength != int64(len(body)) {
+		t.Fatalf("page = %q, length %s", body, page.Header.Get("Content-Length"))
 	}
-	visitor := http.Header{"X-Frame-Options": {"DENY"}}
-	service.FrameHeaders(httptest.NewRequest(http.MethodGet, "http://shop.test/cart", nil), app, visitor)
-	if visitor.Get("X-Frame-Options") != "DENY" {
-		t.Fatal("a visitor lost the app's frame header")
+	if page.Header.Get("Cache-Control") != "no-store" || page.Header.Get("Content-Security-Policy") != "" {
+		t.Fatalf("page headers = %v", page.Header)
+	}
+	if got := read(respond("shop.test", "document", http.StatusOK, "text/html", "", `<body class="x">hi`)); got != `<body class="x">`+shellTag+"hi" {
+		t.Fatalf("no head = %q", got)
+	}
+	if got := read(respond("shop.test", "html", http.StatusOK, "text/html", "", "<head></head>")); got != "<head>"+shellTag+"</head>" {
+		t.Fatalf("plain http navigation = %q", got)
+	}
+	if got := read(respond("shop.test", "document", http.StatusOK, "text/html", "", "<p>hi</p>")); got != "<p>hi</p>" {
+		t.Fatalf("fragment = %q", got)
 	}
 
-	// A changed password ends every session.
-	changed := testSnapshot(dir, "other")
-	if service.Authorizes(framed, changed) {
-		t.Fatal("a session survived a password change")
+	// Everything else passes untouched: a fetch, a frame, JSON, an error, a compressed page and a
+	// web process without vibe.
+	for name, response := range map[string]*http.Response{
+		"fetch":   respond("shop.test", "", http.StatusOK, "text/html", "", "<head></head>"),
+		"frame":   respond("shop.test", "iframe", http.StatusOK, "text/html", "", "<head></head>"),
+		"json":    respond("shop.test", "document", http.StatusOK, "application/json", "", "<head></head>"),
+		"error":   respond("shop.test", "document", http.StatusInternalServerError, "text/html", "", "<head></head>"),
+		"gzip":    respond("shop.test", "document", http.StatusOK, "text/html", "gzip", "<head></head>"),
+		"no vibe": respond("admin.shop.test", "document", http.StatusOK, "text/html", "", "<head></head>"),
+	} {
+		if got := read(response); got != "<head></head>" || response.Header.Get("Content-Security-Policy") == "" {
+			t.Errorf("%s = %q %v", name, got, response.Header)
+		}
 	}
 }
 
 func TestPostNeedsTheHarnessHeader(t *testing.T) {
-	service, _, dir := newTestService(t, "")
-	app := testSnapshot(dir, "")
+	service, _, dir := newTestService(t)
+	app := testSnapshot(dir)
 	request := httptest.NewRequest(http.MethodPost, "http://shop.test"+config.VibePath+"/api/restart", strings.NewReader("{}"))
 	if recorder, _ := serve(service, app, request); recorder.Code != http.StatusForbidden {
 		t.Fatalf("POST without the header = %d", recorder.Code)
@@ -232,7 +246,7 @@ func TestPostNeedsTheHarnessHeader(t *testing.T) {
 }
 
 func TestToolsEditTheAppAndRecordTheChat(t *testing.T) {
-	service, fake, dir := newTestService(t, "")
+	service, fake, dir := newTestService(t)
 	h := service.harness("shop", "web")
 	c := &call{s: service, app: "shop", web: "web", actor: "vibe:shop/web", harness: h}
 	ctx := context.Background()
@@ -316,11 +330,11 @@ func fakeDeepSeek(t *testing.T) (*httptest.Server, *[]completionRequest) {
 
 func TestChatTurnRunsToolsUntilTheModelAnswers(t *testing.T) {
 	_, requests := fakeDeepSeek(t)
-	service, _, dir := newTestService(t, "")
+	service, _, dir := newTestService(t)
 	if err := os.WriteFile(filepath.Join(dir, "app.rb"), []byte("puts 'hi'\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	app := testSnapshot(dir, "")
+	app := testSnapshot(dir)
 	app.Web.DeepseekAPIKey = "sk-test"
 	h := service.harness("shop", "web")
 	_, events, done := h.subscribe()
@@ -379,8 +393,8 @@ func TestChatTurnRunsToolsUntilTheModelAnswers(t *testing.T) {
 }
 
 func TestChatNeedsAKey(t *testing.T) {
-	service, _, dir := newTestService(t, "")
-	app := testSnapshot(dir, "")
+	service, _, dir := newTestService(t)
+	app := testSnapshot(dir)
 	if err := service.startTurn(app, app.WebProcesses[0], "hi"); err == nil || !strings.Contains(err.Error(), "deepseek_api_key") {
 		t.Fatalf("a turn without a key = %v", err)
 	}
@@ -425,11 +439,11 @@ func TestRepairAndFitKeepRequestsValid(t *testing.T) {
 }
 
 func TestMCPServesTheToolsBehindItsToken(t *testing.T) {
-	service, _, dir := newTestService(t, "pw")
+	service, _, dir := newTestService(t)
 	if err := os.WriteFile(filepath.Join(dir, "app.rb"), []byte("puts 'hi'\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	app := testSnapshot(dir, "pw")
+	app := testSnapshot(dir)
 	token, err := service.Token("shop", "web")
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +454,8 @@ func TestMCPServesTheToolsBehindItsToken(t *testing.T) {
 		request.Header.Set("Accept", "application/json, text/event-stream")
 		request.Header.Set("MCP-Protocol-Version", "2025-06-18")
 		request.RemoteAddr = "192.0.2.10:1"
-		recorder, _ := serve(service, app, request)
+		recorder := httptest.NewRecorder()
+		service.MCPFilter(recorder, request, app, func() { t.Fatal("the MCP path passed through") })
 		return recorder
 	}
 	if recorder := rpc(config.VibePath+"/mcp/wrong", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`); recorder.Code != http.StatusUnauthorized {
@@ -465,8 +480,8 @@ func TestDiffOnlyShowsListedChanges(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	service, _, dir := newTestService(t, "")
-	app := testSnapshot(dir, "")
+	service, _, dir := newTestService(t)
+	app := testSnapshot(dir)
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "start"}} {
 		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)

@@ -1,6 +1,6 @@
-// Package vibe is the AI harness a web process serves at /_dboss_/vibe on its own hosts: the app
-// in a frame, a chat that edits it through a fixed tool set, the changed files with their diffs,
-// Restart, Reset, Commit and Push. The same tools are served over MCP, so any LLM client can drive
+// Package vibe is the AI harness of a web process: a shell docked onto every page the app serves,
+// with a chat that edits it through a fixed tool set, the changed files with their diffs, Restart,
+// Reset, Commit and Push. It sits behind the app's own gates, under /_dboss_/vibe on its hosts. The same tools are served over MCP, so any LLM client can drive
 // the app, and the AI handover prompt tells an outside agent how to connect.
 package vibe
 
@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"dboss/internal/authcog"
 	"dboss/internal/logstore"
 	"dboss/internal/ops"
 	"dboss/internal/secret"
@@ -26,23 +25,22 @@ type Ops interface {
 	Audit(actor, app, action, detail string, err error)
 	SearchLogs(app string, filter logstore.LogFilter) ([]logstore.LogEntry, error)
 	Exceptions(app string, filter logstore.ExceptionFilter) ([]logstore.ExceptionSummary, error)
-	HostPages() string
 }
 
 // Service owns every harness of the session. It is a module, so a running chat turn ends with the
-// daemon, and a proxy stage, an authorizer and a response hook for the app proxy.
+// daemon, and proxy stages, an authorizer and a response hook for the app proxy.
 type Service struct {
 	ops        Ops
-	flow       *authcog.Flow
 	secrets    *secret.Store
 	stateDir   string
 	runtimeDir string
 	cloudflare bool
 	assets     fs.FS
 	console    fs.FS
-	logins     *throttle.Throttle
-	client     *http.Client
-	proxy      http.Handler
+	// guesses throttles MCP token checks per client IP.
+	guesses *throttle.Throttle
+	client  *http.Client
+	proxy   http.Handler
 
 	mu        sync.Mutex
 	ctx       context.Context
@@ -52,16 +50,16 @@ type Service struct {
 }
 
 // New builds the service. console is the management console's static folder, whose fez runtime
-// and stylesheet the harness page shares.
-func New(service Ops, flow *authcog.Flow, stateDir, runtimeDir string, cloudflare bool, console fs.FS) (*Service, error) {
+// and stylesheet the panel shares.
+func New(service Ops, stateDir, runtimeDir string, cloudflare bool, console fs.FS) (*Service, error) {
 	secrets, err := secret.Open(filepath.Join(stateDir, "vibe-secrets.json"))
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
-		ops: service, flow: flow, secrets: secrets, stateDir: stateDir, runtimeDir: runtimeDir, cloudflare: cloudflare,
-		assets: staticFS(), console: console, logins: throttle.New(), client: &http.Client{},
+		ops: service, secrets: secrets, stateDir: stateDir, runtimeDir: runtimeDir, cloudflare: cloudflare,
+		assets: staticFS(), console: console, guesses: throttle.New(), client: &http.Client{},
 		ctx: ctx, cancel: cancel, harnesses: map[string]*harness{},
 	}, nil
 }

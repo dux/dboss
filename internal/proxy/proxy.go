@@ -61,9 +61,9 @@ type Authorizer interface {
 	Authorizes(r *http.Request, app supervisor.Snapshot) bool
 }
 
-// ResponseHook sees the headers of every app response the proxy forwards, after the configured
-// headers are applied.
-type ResponseHook func(r *http.Request, app supervisor.Snapshot, header http.Header)
+// ResponseHook sees every app response the proxy forwards, after the configured headers are
+// applied. It may change the headers and replace the body.
+type ResponseHook func(r *http.Request, app supervisor.Snapshot, response *http.Response)
 
 // Modules are what features outside the proxy hook into it; every field is optional.
 type Modules struct {
@@ -398,7 +398,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, snapshot super
 	reverse.ModifyResponse = func(response *http.Response) error {
 		applyHeaders(response.Header, snapshot.Web.Headers)
 		for _, hook := range h.modules.Responses {
-			hook(r, snapshot, response.Header)
+			hook(r, snapshot, response)
 		}
 		replaceAppError(response, r, snapshot)
 		return nil

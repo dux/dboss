@@ -1,32 +1,26 @@
 package vibe
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"html"
+	"bytes"
+	"io"
 	"io/fs"
-	"math"
 	"mime"
 	"net/http"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
-	"time"
 
-	"dboss/internal/authcog"
 	"dboss/internal/config"
-	"dboss/internal/httpx"
-	"dboss/internal/pages"
-	"dboss/internal/secret"
 	"dboss/internal/supervisor"
 )
 
 const (
-	sessionCookie = "dboss_vibe"
-	maxLoginForm  = 4 << 10
-	// pageCSP keeps the harness page to its own origin; the frame loads the app on the same one.
-	pageCSP = "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self'; img-src 'self' data:; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'"
+	// panelCSP keeps the panel to its own origin; only the app's pages on that origin may frame it.
+	panelCSP = "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'self'; img-src 'self' data:; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'"
+	// maxShellPage bounds the HTML page read whole to dock the shell; a larger one passes untouched.
+	maxShellPage = 8 << 20
+	shellTag     = `<script src="` + config.VibePath + `/assets/shell.js" defer></script>`
 )
 
 // route reports whether p is under the harness path and returns the rest after it.
@@ -37,9 +31,26 @@ func route(p string) (string, bool) {
 	return strings.CutPrefix(p, config.VibePath+"/")
 }
 
-// Filter is the early proxy stage. It answers the harness path of a web process with vibe and
-// lets every other request through. MCP carries its own token; everything else needs the vibe
-// session (or no password, in a dev session).
+// MCPFilter is the early proxy stage for the MCP endpoint, which carries its own token and so runs
+// ahead of the app's gates. Every other harness path waits for Filter, behind them.
+func (s *Service) MCPFilter(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
+	web, ok := app.WebForHost(r.Host)
+	if !ok || !web.Vibe.Enabled {
+		next()
+		return
+	}
+	rest, ok := route(r.URL.Path)
+	if !ok || rest != "mcp" && !strings.HasPrefix(rest, "mcp/") {
+		next()
+		return
+	}
+	s.serveMCP(w, r, app, web, strings.TrimPrefix(strings.TrimPrefix(rest, "mcp"), "/"))
+}
+
+// Filter runs behind the app's own gates, so whoever the app lets in gets the harness with it. It
+// answers the panel, its assets and its API; the bare harness path has no page, the shell lives on
+// the app's pages. A page navigation to the app asks for a fresh, uncompressed answer, so Inject
+// can read it and a cached copy without the shell is never reused.
 func (s *Service) Filter(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
 	web, ok := app.WebForHost(r.Host)
 	if !ok || !web.Vibe.Enabled {
@@ -48,31 +59,18 @@ func (s *Service) Filter(w http.ResponseWriter, r *http.Request, app supervisor.
 	}
 	rest, ok := route(r.URL.Path)
 	if !ok {
+		if document(r) {
+			// The transport then asks for gzip itself and hands Inject the decoded body.
+			r.Header.Del("Accept-Encoding")
+			r.Header.Del("If-None-Match")
+			r.Header.Del("If-Modified-Since")
+		}
 		next()
 		return
 	}
-	if rest == "mcp" || strings.HasPrefix(rest, "mcp/") {
-		s.serveMCP(w, r, app, web, strings.TrimPrefix(strings.TrimPrefix(rest, "mcp"), "/"))
-		return
-	}
-	if rest == "login" {
-		s.login(w, r, app, web)
-		return
-	}
-	if !s.signedIn(r, app, web) {
-		if rest == "" && r.Method == http.MethodGet {
-			s.loginPage(w, r, app, web, http.StatusUnauthorized, "", safeTarget(r.URL.RequestURI()))
-			return
-		}
-		http.Error(w, "vibe password required", http.StatusUnauthorized)
-		return
-	}
 	switch {
-	case rest == "":
-		s.servePage(w, r)
-	case rest == "logout":
-		s.flow.ClearSession(w, r, s.gate(app, web))
-		http.Redirect(w, r, config.VibePath, http.StatusSeeOther)
+	case rest == "panel":
+		s.servePanel(w, r)
 	case strings.HasPrefix(rest, "assets/"):
 		s.serveAsset(w, r, strings.TrimPrefix(rest, "assets/"))
 	case strings.HasPrefix(rest, "api/"):
@@ -82,145 +80,105 @@ func (s *Service) Filter(w http.ResponseWriter, r *http.Request, app supervisor.
 	}
 }
 
-// Authorizes lets the signed-in owner of a web process's harness past the app's own password,
-// basic_auth and auth gates, so the framed app opens. A harness with no password (a dev session)
-// vouches for nobody: the app's gates apply as usual.
+// Authorizes lets the harness's own http_get past the app's gates, so the agent can check any
+// page it changed. Everyone else passes the gates like any visitor.
 func (s *Service) Authorizes(r *http.Request, app supervisor.Snapshot) bool {
 	web, ok := app.WebForHost(r.Host)
-	if !ok || !web.Vibe.Enabled {
-		return false
-	}
-	if internal(r, app, web) {
-		return true
-	}
-	if web.Vibe.Password == "" {
-		return false
-	}
-	_, ok = s.flow.Session(r, s.gate(app, web))
-	return ok
+	return ok && web.Vibe.Enabled && internal(r, app, web)
 }
 
-// FrameHeaders drops X-Frame-Options and the CSP frame-ancestors directive from app responses to
-// the harness owner, so an app that refuses framing still renders in the harness. Every other
-// visitor gets the app's headers unchanged.
-func (s *Service) FrameHeaders(r *http.Request, app supervisor.Snapshot, header http.Header) {
+// Inject docks the harness shell onto an HTML page the app answers to a page navigation: one
+// script tag before </head>. A compressed, non-HTML, non-200 or very large answer, and an HTML
+// fragment with neither head nor body, passes untouched. The app's CSP goes for that page, since
+// it would refuse the shell and its panel.
+func (s *Service) Inject(r *http.Request, app supervisor.Snapshot, response *http.Response) {
 	web, ok := app.WebForHost(r.Host)
-	if !ok || !web.Vibe.Enabled || !s.signedIn(r, app, web) {
+	if !ok || !web.Vibe.Enabled || !document(r) || response.StatusCode != http.StatusOK || response.Header.Get("Content-Encoding") != "" || response.ContentLength > maxShellPage {
 		return
 	}
-	header.Del("X-Frame-Options")
-	for _, name := range []string{"Content-Security-Policy", "Content-Security-Policy-Report-Only"} {
-		values := header.Values(name)
-		if len(values) == 0 {
-			continue
-		}
-		header.Del(name)
-		for _, value := range values {
-			if kept := withoutFrameAncestors(value); kept != "" {
-				header.Add(name, kept)
+	if mediaType, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type")); mediaType != "text/html" {
+		return
+	}
+	page, err := io.ReadAll(io.LimitReader(response.Body, maxShellPage+1))
+	if err != nil || len(page) > maxShellPage {
+		// Hand on what was read and the rest, so the visitor still gets the page or the error.
+		response.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(page), response.Body), response.Body}
+		return
+	}
+	_ = response.Body.Close()
+	docked, ok := withShell(page)
+	if !ok {
+		response.Body = io.NopCloser(bytes.NewReader(page))
+		return
+	}
+	page = docked
+	response.Body = io.NopCloser(bytes.NewReader(page))
+	response.ContentLength = int64(len(page))
+	response.Header.Set("Content-Length", strconv.Itoa(len(page)))
+	response.Header.Set("Cache-Control", "no-store")
+	response.Header.Del("ETag")
+	response.Header.Del("Content-Security-Policy")
+	response.Header.Del("Content-Security-Policy-Report-Only")
+}
+
+// document reports whether r is a page navigation, the only request the shell docks onto: not a
+// fetch, not a frame, not a HEAD. Browsers send Sec-Fetch-Dest to secure origins only, so on plain
+// http (a dev session on lvh.me) a GET that accepts HTML counts; withShell then skips fragments,
+// and shell.js stays out of frames by itself.
+func document(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" {
+		return dest == "document"
+	}
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+// withShell puts the shell's script tag before </head>, else right after <body ...>. A page with
+// neither is a fragment and reports false.
+func withShell(page []byte) ([]byte, bool) {
+	lower := asciiLower(page)
+	at := bytes.Index(lower, []byte("</head>"))
+	if at < 0 {
+		if body := bytes.Index(lower, []byte("<body")); body >= 0 {
+			if end := bytes.IndexByte(page[body:], '>'); end >= 0 {
+				at = body + end + 1
 			}
 		}
 	}
+	if at < 0 {
+		return nil, false
+	}
+	return slices.Concat(page[:at], []byte(shellTag), page[at:]), true
 }
 
-// withoutFrameAncestors removes the frame-ancestors directive from one CSP header value.
-func withoutFrameAncestors(policy string) string {
-	var kept []string
-	for _, directive := range strings.Split(policy, ";") {
-		directive = strings.TrimSpace(directive)
-		if directive == "" || strings.EqualFold(strings.Fields(directive)[0], "frame-ancestors") {
-			continue
+// asciiLower lowercases only A-Z, so every index into the result is an index into page.
+func asciiLower(page []byte) []byte {
+	lower := make([]byte, len(page))
+	for i, c := range page {
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
 		}
-		kept = append(kept, directive)
+		lower[i] = c
 	}
-	return strings.Join(kept, "; ")
+	return lower
 }
 
-// gate is the vibe session of one web process. The audience carries a digest of the password, so
-// changing it signs everyone out, and a session for one harness never opens another.
-func (s *Service) gate(app supervisor.Snapshot, web supervisor.WebProcessSnapshot) authcog.Gate {
-	digest := sha256.Sum256([]byte(web.Vibe.Password))
-	return authcog.Gate{
-		Audience:      "vibe:" + app.Name + "/" + web.Name + ":" + hex.EncodeToString(digest[:8]),
-		SessionCookie: sessionCookie,
-		TTL:           app.Web.SessionTTL.Value(),
-	}
-}
-
-func (s *Service) signedIn(r *http.Request, app supervisor.Snapshot, web supervisor.WebProcessSnapshot) bool {
-	if web.Vibe.Password == "" {
-		return true
-	}
-	_, ok := s.flow.Session(r, s.gate(app, web))
-	return ok
-}
-
-// login checks the vibe password. Every check books a slot in the per-IP throttle, so the password
-// cannot be guessed fast. A GET (a reload or Back on a failed attempt's page) goes to the harness,
-// which asks again when there is no session.
-func (s *Service) login(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, web supervisor.WebProcessSnapshot) {
-	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		http.Redirect(w, r, config.VibePath, http.StatusSeeOther)
-		return
-	}
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxLoginForm)
-	to := safeTarget(r.PostFormValue("to"))
-	slot, ok := s.logins.Reserve(httpx.ClientIP(r, s.cloudflare))
-	if !ok {
-		seconds := int(math.Ceil(slot.Wait.Seconds()))
-		w.Header().Set("Retry-After", strconv.Itoa(seconds))
-		s.loginPage(w, r, app, web, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", seconds), to)
-		return
-	}
-	time.Sleep(slot.Wait)
-	if web.Vibe.Password == "" || !secret.Matches(web.Vibe.Password, r.PostFormValue("password")) {
-		s.loginPage(w, r, app, web, http.StatusUnauthorized, "Wrong password.", to)
-		return
-	}
-	s.logins.Release(slot)
-	if err := s.flow.SetSession(w, r, s.gate(app, web), ""); err != nil {
-		http.Error(w, "could not start a session", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, to, http.StatusSeeOther)
-}
-
-// safeTarget keeps the post-sign-in redirect inside the harness and off the sign-in routes.
-func safeTarget(target string) string {
-	if rest, ok := route(strings.SplitN(target, "?", 2)[0]); !ok || rest == "login" || rest == "logout" || strings.Contains(target, "//") || strings.Contains(target, "\\") {
-		return config.VibePath
-	}
-	return target
-}
-
-func (s *Service) loginPage(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, web supervisor.WebProcessSnapshot, status int, problem, to string) {
-	w.Header().Set("Cache-Control", "no-store")
-	action := `<form class="password" method="post" action="` + config.VibePath + `/login">`
-	if problem != "" {
-		action += `<p class="error">` + html.EscapeString(problem) + `</p>`
-	}
-	action += `<input type="password" name="password" aria-label="Password" placeholder="Password" autocomplete="current-password" autofocus required>` +
-		`<input type="hidden" name="to" value="` + html.EscapeString(to) + `">` +
-		`<button type="submit">Open</button></form>`
-	pages.Page{Name: pages.Vibe, App: app.Name, Status: status, Action: action}.Write(w, app.Pages, s.ops.HostPages())
-}
-
-// servePage answers the harness page itself, which must never be framed.
-func (s *Service) servePage(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(s.assets, "index.html")
+// servePanel answers the shell's panel, which only the app's own pages may frame.
+func (s *Service) servePanel(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(s.assets, "panel.html")
 	if err != nil {
-		http.Error(w, "harness page missing", http.StatusInternalServerError)
+		http.Error(w, "harness panel missing", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Security-Policy", pageCSP)
-	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", panelCSP)
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	_, _ = w.Write(data)
 }

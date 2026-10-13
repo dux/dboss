@@ -22,19 +22,18 @@ const (
 
 var commitHash = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
-// stateResponse is what the harness page reads on load.
+// stateResponse is what the panel reads on load.
 type stateResponse struct {
-	App      string `json:"app"`
-	Process  string `json:"process"`
-	Multi    bool   `json:"multi"`
-	State    string `json:"state"`
-	Chat     bool   `json:"chat"`
-	Model    string `json:"model"`
-	Password bool   `json:"password"`
-	MCPURL   string `json:"mcp_url"`
+	App     string `json:"app"`
+	Process string `json:"process"`
+	Multi   bool   `json:"multi"`
+	State   string `json:"state"`
+	Chat    bool   `json:"chat"`
+	Model   string `json:"model"`
+	MCPURL  string `json:"mcp_url"`
 }
 
-// serveAPI answers the harness page's JSON calls. A POST must carry the X-Dboss-Vibe header and,
+// serveAPI answers the panel's JSON calls. A POST must carry the X-Dboss-Vibe header and,
 // when the browser sends one, the harness's own Origin, so another site cannot drive it.
 func (s *Service) serveAPI(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, web supervisor.WebProcessSnapshot, route string) {
 	base := authcog.Scheme(r) + "://" + r.Host
@@ -54,7 +53,7 @@ func (s *Service) serveAPI(w http.ResponseWriter, r *http.Request, app superviso
 			writeFailure(w, err)
 			return
 		}
-		writeJSON(w, stateResponse{App: app.Name, Process: web.Name, Multi: len(app.WebProcesses) > 1, State: string(app.State), Chat: chatKey(app) != "", Model: deepseekModel, Password: web.Vibe.Password != "", MCPURL: mcpURL(base, token)})
+		writeJSON(w, stateResponse{App: app.Name, Process: web.Name, Multi: len(app.WebProcesses) > 1, State: string(app.State), Chat: chatKey(app) != "", Model: deepseekModel, MCPURL: mcpURL(base, token)})
 	case "GET events":
 		s.serveEvents(w, r, h)
 	case "GET changes":

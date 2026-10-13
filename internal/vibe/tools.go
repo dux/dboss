@@ -48,8 +48,8 @@ type Tool struct {
 	Name        string
 	Description string
 	Params      []param
-	// Changes marks a tool that can change the app, so the page re-reads the working tree and
-	// reloads the frame after it.
+	// Changes marks a tool that can change the app, so the panel re-reads the working tree and
+	// reloads the page after it.
 	Changes bool
 	Run     func(ctx context.Context, c *call, args arguments) (string, error)
 }

@@ -1,5 +1,5 @@
-/* The vibe harness. It loads the console's app.css first for its tokens, buttons, badges, modal
-   and toast, and lays out a full-viewport workbench on top: top bar, side panel, app frame. */
+/* The vibe panel, docked onto the app page by shell.js. It loads the console's app.css first for
+   its tokens, buttons, badges, modal and toast, and fills its frame: header, actions, tabs. */
 
 html:has(body.vibe) {
   overflow: hidden;
@@ -17,9 +17,16 @@ body.vibe {
 }
 
 .vibe-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  background: var(--card);
+}
+
+.vibe-shell.diff-open {
+  width: var(--side);
+  border-right: 1px solid var(--border);
 }
 
 .vibe-grow {
@@ -41,16 +48,15 @@ body.vibe {
   line-height: 1;
 }
 
-/* --- Top bar ---------------------------------------------------------------- */
+/* --- Header ------------------------------------------------------------------- */
 
 .vibe-top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  padding: 8px 12px;
+  gap: 4px;
+  min-height: 48px;
+  padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--card);
 }
 
 .vibe-brand {
@@ -61,42 +67,19 @@ body.vibe {
   white-space: nowrap;
 }
 
-.vibe-brand strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.vibe-brand .text-muted {
-  margin-left: -6px;
-}
-
 .vibe-logo {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
 }
 
-.vibe-path {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 2px;
-  min-width: 140px;
-}
-
-.vibe-path input {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  font-family: var(--mono);
-  font-size: 13px;
-}
-
 .vibe-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .vibe-changed {
@@ -109,27 +92,7 @@ body.vibe {
   background: rgb(245 159 0 / 10%);
 }
 
-/* --- Layout ------------------------------------------------------------------- */
-
-.vibe-main {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.vibe-side {
-  display: flex;
-  flex: 0 0 420px;
-  flex-direction: column;
-  width: 420px;
-  min-height: 0;
-  border-right: 1px solid var(--border);
-  background: var(--card);
-}
-
-.side-collapsed .vibe-side {
-  display: none;
-}
+/* --- Tabs ---------------------------------------------------------------------- */
 
 .vibe-tabs {
   display: flex;
@@ -175,22 +138,6 @@ body.vibe {
 
 .vibe-panel.d-none {
   display: none;
-}
-
-.vibe-stage {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  background: #fff;
-}
-
-.vibe-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: #fff;
 }
 
 /* --- Chat ---------------------------------------------------------------------- */
@@ -417,13 +364,8 @@ body.vibe {
 .vibe-composer-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-}
-
-.vibe-hint {
-  flex: 1;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 /* --- Changes ------------------------------------------------------------------- */
@@ -556,8 +498,11 @@ body.vibe {
 /* --- Diff ------------------------------------------------------------------------ */
 
 .vibe-diff {
-  position: absolute;
-  inset: 0;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--side);
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -731,42 +676,10 @@ body.vibe {
   font-size: var(--text-size-small);
 }
 
-/* --- Narrow screens ------------------------------------------------------------------ */
+/* --- Narrow panel ------------------------------------------------------------------ */
 
-@media (max-width: 1100px) {
+@media (max-width: 400px) {
   .vibe-label {
-    display: none;
-  }
-
-  .vibe-side {
-    flex-basis: 360px;
-    width: 360px;
-  }
-}
-
-@media (max-width: 760px) {
-  .vibe-top {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .vibe-path {
-    order: 3;
-    flex-basis: 100%;
-  }
-
-  .vibe-actions {
-    margin-left: auto;
-  }
-
-  .vibe-side {
-    flex: 1 1 auto;
-    width: 100%;
-    border-right: 0;
-  }
-
-  /* one pane at a time: the panel, or the app once the panel is hidden */
-  .vibe-shell:not(.side-collapsed) .vibe-stage {
     display: none;
   }
 }

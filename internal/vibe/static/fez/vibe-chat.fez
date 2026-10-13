@@ -156,7 +156,6 @@
     <form class="vibe-composer" onsubmit="fez.send(event)">
       <textarea fez:this="input" fez:keep="input" rows="3" placeholder="Describe a change, e.g. make the header blue" aria-label="Message" onkeydown="fez.keydown(event)"></textarea>
       <div class="vibe-composer-actions">
-        <span class="vibe-hint">Enter sends, Shift+Enter adds a line</span>
         <button class="btn btn-ghost btn-sm" type="button" onclick="fez.newChat()" disabled={Boolean(globalState.vibeChat.running || !globalState.vibeChat.entries.length)} title="Start a new chat">
           <svg class="icon"><use href="#i-plus"></use></svg>
           New chat

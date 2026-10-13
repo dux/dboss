@@ -43,7 +43,7 @@ func (s *Service) serveMCP(w http.ResponseWriter, r *http.Request, app superviso
 		http.Error(w, "mcp token unavailable", http.StatusInternalServerError)
 		return
 	}
-	slot, ok := s.logins.Reserve(httpx.ClientIP(r, s.cloudflare))
+	slot, ok := s.guesses.Reserve(httpx.ClientIP(r, s.cloudflare))
 	if !ok {
 		http.Error(w, "too many attempts", http.StatusTooManyRequests)
 		return
@@ -53,7 +53,7 @@ func (s *Service) serveMCP(w http.ResponseWriter, r *http.Request, app superviso
 		http.Error(w, "invalid mcp token", http.StatusUnauthorized)
 		return
 	}
-	s.logins.Release(slot)
+	s.guesses.Release(slot)
 	server := s.mcpServer(app.Name, web.Name)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless:    true,

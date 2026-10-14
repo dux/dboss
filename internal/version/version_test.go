@@ -27,4 +27,8 @@ func TestStringUsesVersion(t *testing.T) {
 	if got := String(); got != "v11.2.3" {
 		t.Fatalf("String() = %q, want v11.2.3", got)
 	}
+	Version = "v1.4.4"
+	if got := String(); got != "v1.4.4" {
+		t.Fatalf("String() = %q, want v1.4.4", got)
+	}
 }

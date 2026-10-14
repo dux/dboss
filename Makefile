@@ -1,6 +1,7 @@
 GO ?= go
 WATCH ?= watchexec
 GH ?= gh
+VSTAMP ?= vstamp
 BIN_DIR := ./bin
 BINARY := $(BIN_DIR)/dboss
 DIST_DIR := ./dist
@@ -9,14 +10,15 @@ CMD := ./cmd/dboss
 # dboss_<os>_<arch>, which is exactly what the updater asks GitHub for.
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
-# The version is the number of commits in main. HEAD and 0 only cover a checkout without a
-# main branch, so a build outside a normal clone still succeeds.
-VERSION := v$(shell git rev-list --count main 2>/dev/null || git rev-list --count HEAD 2>/dev/null || echo 0)
-LDFLAGS := -X dboss/internal/version.Version=$(VERSION)
+# The version lives in .version, stamped by `vstamp count --release` during `make release`. Both
+# are recursively expanded so the release recipe reads .version after the stamp; dev only covers
+# a checkout without the file.
+VERSION = $(or $(addprefix v,$(shell sed -n 's/^version: *\([^ \#]*\).*/\1/p' .version 2>/dev/null)),dev)
+LDFLAGS = -X dboss/internal/version.Version=$(VERSION)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test e2e fmt vet lint check assets release-ready release demo demo-watch seed kill clean
+.PHONY: help build test e2e fmt vet lint check assets release-ready release-stamp release demo demo-watch seed kill clean
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -54,24 +56,32 @@ assets: ## Build every release asset (dboss_<os>_<arch>) and checksums.txt into 
 	@cd $(DIST_DIR) && { command -v sha256sum >/dev/null 2>&1 && sha256sum dboss_* || shasum -a 256 dboss_*; } > checksums.txt
 	@echo "  wrote $(DIST_DIR)/checksums.txt"
 
-# The version is the commit count, so a release is only cut from a clean main: anything
-# uncommitted would ship under the previous commit's number.
+# The release is the tagged HEAD, so it is only cut from a clean main: anything uncommitted
+# would not ship in the tagged commit.
 release-ready:
 	@[ "$$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "release from main, not $$(git rev-parse --abbrev-ref HEAD)"; exit 1; }
-	@[ -z "$$(git status --porcelain)" ] || { echo "commit or stash first: the version is the commit count"; git status --short; exit 1; }
+	@[ -z "$$(git status --porcelain)" ] || { echo "commit or stash first: the release is the tagged HEAD"; git status --short; exit 1; }
+	@command -v $(VSTAMP) >/dev/null 2>&1 || { echo "$(VSTAMP) not found in PATH"; exit 1; }
 	@command -v $(GH) >/dev/null 2>&1 || { echo "$(GH) not found in PATH"; exit 1; }
 	@$(GH) auth status >/dev/null 2>&1 || { echo "$(GH) is not authenticated"; exit 1; }
 
-# One release per version, published by hand: ./bin/dboss and every platform asset are rebuilt
-# as $(VERSION), main is pushed, and the release is tagged on that exact commit. Every other
+# Stamps .version from the commit count on main, amends it into HEAD (or adds a "release X.Y.Z"
+# commit when HEAD is already pushed), tags vX.Y.Z and pushes main and the tag together. A HEAD
+# that is already tagged is only pushed again, so a failed publish can be rerun.
+release-stamp: release-ready
+	$(VSTAMP) count --release
+
+# One release per version, published by hand: after the stamp, ./bin/dboss and every platform
+# asset are rebuilt as $(VERSION) in a sub-make, so they read the new .version, and the release is
+# created on the tag vstamp pushed. A rerun replaces that release but keeps its tag. Every other
 # release (and its tag) is removed, so GitHub always carries exactly the latest build and
-# `dboss update` finds it as `latest`. Needs an authenticated gh (repo + admin scopes).
-release: release-ready build assets ## From a clean main: build, push main and publish it as the only GitHub release
+# `dboss update` finds it as `latest`. Needs vstamp and an authenticated gh (repo + admin scopes).
+release: release-stamp ## From a clean main: stamp, tag and push the version, then publish it as the only GitHub release
+	$(MAKE) build assets
 	@set -e; \
-	git push origin main; \
-	$(GH) release delete "$(VERSION)" --yes --cleanup-tag 2>/dev/null || true; \
+	$(GH) release delete "$(VERSION)" --yes 2>/dev/null || true; \
 	echo "  publishing $(VERSION)"; \
-	$(GH) release create "$(VERSION)" $(DIST_DIR)/* --target "$$(git rev-parse HEAD)" --title "$(VERSION)" --generate-notes; \
+	$(GH) release create "$(VERSION)" $(DIST_DIR)/* --verify-tag --title "$(VERSION)" --generate-notes; \
 	for tag in $$($(GH) release list --limit 100 --json tagName --jq '.[].tagName'); do \
 		[ "$$tag" = "$(VERSION)" ] && continue; \
 		echo "  removing old release $$tag"; \

@@ -3,21 +3,21 @@ package version
 
 import "strings"
 
-// Version is the build version: v<number of commits in main>, injected by `make build` and
-// `make assets` with -ldflags "-X dboss/internal/version.Version=v81". A plain
+// Version is the build version: v<X.Y.Z> from .version, injected by `make build` and
+// `make assets` with -ldflags "-X dboss/internal/version.Version=v1.4.4". A plain
 // `go build` leaves it at "dev", which is what marks a from-source binary.
 var Version = Dev
 
 // Dev is the version a build without the ldflag reports.
 const Dev = "dev"
 
-// String returns the build version rendered as v<a>.<b>.<c>, where b and c are the last two digits
-// of the commit count and a is everything before them: v123 -> v1.2.3, v1123 -> v11.2.3. A shorter
-// count is left-padded, so v5 is v0.0.5.
+// String returns the build version rendered as v<a>.<b>.<c>; see Format.
 func String() string { return Format(Version) }
 
-// Format renders a v<digits> version string as v<a>.<b>.<c>; anything else (dev, a dotted tag) is
-// returned unchanged.
+// Format renders an old v<count> tag as v<a>.<b>.<c>, where b and c are the last two digits of
+// the count and a is everything before them: v123 -> v1.2.3, v1123 -> v11.2.3, and a shorter
+// count is left-padded, so v5 is v0.0.5. That is the same mapping vstamp stamps into .version,
+// so anything else (dev, a dotted version) is returned unchanged.
 func Format(version string) string {
 	count, ok := strings.CutPrefix(version, "v")
 	if !ok || count == "" {

@@ -147,25 +147,25 @@ The running daemon keeps the old binary in memory until it is restarted, which i
 
 ### Versions
 
-The version is the number of commits in `main` when the binary was built, rendered as `v<a>.<b>.<c>` where `b` and `c` are the last two digits and `a` is everything before them:
+The version lives in `.version`, stamped by `vstamp count --release` during `make release` from the number of commits in `main`: `b` and `c` are the last two digits and `a` is everything before them, so 81 commits is `0.8.1`:
 
 ```sh
 $ dboss version
 v0.8.1
 ```
 
-The release tag still carries the whole count (`v81`), and `dboss update` compares that integer, so there is no separate major/minor/patch to maintain.
+The release tag carries the same `v0.8.1`, and `dboss update` compares it with older tags that carry the whole count (`v81`) through that count, so there is no separate major/minor/patch to maintain.
 `make build` and `make assets` both inject it; a binary built straight from source with `go build` reports `dev`, and `dboss update` refuses to replace one without `--force`.
 
-Releases are built and published by `make release` from a clean `main` with an authenticated `gh`; it refuses uncommitted changes, since they would ship under the previous commit's number.
-It rebuilds `./bin/dboss` and one asset per platform plus `checksums.txt`, pushes `main`, tags the release on that commit and removes every older release, so `latest` is always the newest build.
+Releases are built and published by `make release` from a clean `main` with `vstamp` and an authenticated `gh`; it refuses uncommitted changes, since they would not ship in the tagged commit.
+It stamps `.version`, amends it into `HEAD` (or commits it when `HEAD` is already pushed), tags `vX.Y.Z` and pushes `main` and the tag, then rebuilds `./bin/dboss` and one asset per platform plus `checksums.txt`, publishes them on that tag and removes every older release, so `latest` is always the newest build.
 Building from source is still the option below and needs Go 1.25+.
 
 ## Build and run the demo
 
 ```sh
 make build            # ./bin/dboss
-make release          # from a clean main: rebuild, push main, publish ./dist as the only GitHub release
+make release          # from a clean main: stamp, tag and push the version, publish ./dist as the only GitHub release
 make demo             # builds, then runs the host session on ./demo/dboss-server.yaml
 ```
 
@@ -1240,7 +1240,7 @@ internal/sysinfo/     read-only host inspection: OS, load, memory, disks and ins
 internal/pg/          PostgreSQL inspection, scheduled dumps, retention and restore
 internal/metrics/     Prometheus text rendered from the app snapshots
 internal/notify/      debounced operator webhook for crash and failure events
-internal/version/     build version: the commit count in main, injected at build time
+internal/version/     build version: .version, injected at build time
 internal/release/     the GitHub release source: the latest tag, its URLs and tag comparison
 internal/console/     management console: auth, JSON API, embedded fez frontend
 internal/ctl/         control socket protocol, server and client

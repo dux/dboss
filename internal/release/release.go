@@ -88,12 +88,22 @@ type StatusError struct {
 
 func (e StatusError) Error() string { return fmt.Sprintf("GET %s: %s", e.URL, e.Status) }
 
-// Number turns a v<count> tag into its number. Anything else, "dev" included, is not comparable
-// and never blocks an install.
+// Number turns a tag into the commit count it was released at: an old v<count> tag as is, and a
+// vA.B.C tag stamped by vstamp as A*100+B*10+C (v1.4.4 is 144), so both compare. Anything else,
+// "dev" and a two-digit minor or patch included, is not comparable and never blocks an install.
 func Number(tag string) (int, bool) {
-	number, err := strconv.Atoi(strings.TrimPrefix(tag, "v"))
-	if err != nil || !strings.HasPrefix(tag, "v") {
+	rest, ok := strings.CutPrefix(tag, "v")
+	parts := strings.Split(rest, ".")
+	if !ok || len(parts) != 1 && len(parts) != 3 {
 		return 0, false
+	}
+	number := 0
+	for i, part := range parts {
+		digits, err := strconv.ParseUint(part, 10, 32)
+		if err != nil || i > 0 && digits > 9 {
+			return 0, false
+		}
+		number = number*10 + int(digits)
 	}
 	return number, true
 }

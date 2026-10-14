@@ -62,7 +62,7 @@ func (c CLI) update(args []string) error {
 		}
 	}
 
-	// The displayed version is dotted (v0.8.4); compare the raw injected count instead.
+	// Old tags carry the bare count (v143) and new ones are dotted (v1.4.4); compare the count both map to.
 	latest, haveLatest := release.Number(tag)
 	running, haveRunning := release.Number(version.Version)
 	comparable := haveLatest && haveRunning

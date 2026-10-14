@@ -52,7 +52,16 @@ func TestNumber(t *testing.T) {
 		{"v0", 0, true},
 		{"dev", 0, false},
 		{"81", 0, false},
-		{"v0.1.0", 0, false},
+		{"v0.1.0", 10, true},
+		{"v1.4.4", 144, true},
+		{"v11.2.3", 1123, true},
+		{"v0.0.5", 5, true},
+		{"v1.10.0", 0, false},
+		{"v1.2", 0, false},
+		{"v1.2.3.4", 0, false},
+		{"v1..3", 0, false},
+		{"1.4.4", 0, false},
+		{"v-1", 0, false},
 		{"", 0, false},
 	} {
 		number, ok := Number(item.tag)

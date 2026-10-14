@@ -97,7 +97,7 @@ func repoRoot() string {
 
 func build() error {
 	host.bin = filepath.Join(host.root, "dboss")
-	cmd := exec.Command("go", "build", "-ldflags", "-X dboss/internal/version.Version=v1", "-o", host.bin, "./cmd/dboss")
+	cmd := exec.Command("go", "build", "-ldflags", "-X dboss/internal/version.Version=v0.0.1", "-o", host.bin, "./cmd/dboss")
 	cmd.Dir = repoRoot()
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build: %v\n%s", err, output)

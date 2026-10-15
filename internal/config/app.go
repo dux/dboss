@@ -21,7 +21,7 @@ const DefaultStatic = "./public"
 // serves for it: <name>.html per page, template.html for every page.
 const DefaultPages = "./public/error_pages"
 
-// DevDomain is the suffix a single-app config that declares no hosts binds to: `<app>.lvh.me`,
+// DevDomain is the suffix a single-app config that declares no host or subdomain binds to: `<app>.lvh.me`,
 // so `dboss start` inside an app folder serves it with no config.
 const DevDomain = "lvh.me"
 
@@ -246,8 +246,11 @@ type Vibe struct {
 // canonical hostname its other hosts redirect to, and its realtime hub. An app may have several,
 // each bound to its own PORT.
 type WebProcess struct {
-	Name          string
-	Hosts         List
+	Name  string
+	Hosts List
+	// Subdomain marks hosts derived from subdomain + domain; they yield to a host claimed with
+	// `host`, in this app or another one.
+	Subdomain     bool
 	CanonicalHost string
 	Pubsub        Pubsub
 	// Static is the directory served straight from disk; empty disables it.
@@ -333,9 +336,9 @@ func (a *App) deriveWeb() error {
 		if len(spec.Host) == 0 && len(spec.Subdomain) == 0 {
 			continue
 		}
-		a.WebProcesses = append(a.WebProcesses, WebProcess{Name: name, Hosts: spec.Host, CanonicalHost: spec.CanonicalHost})
+		a.WebProcesses = append(a.WebProcesses, WebProcess{Name: name, Hosts: spec.Host, Subdomain: len(spec.Subdomain) > 0, CanonicalHost: spec.CanonicalHost})
 	}
-	if a.Domain != "" && !slices.ContainsFunc(a.WebProcesses, func(web WebProcess) bool { return len(a.Procfile[web.Name].Subdomain) > 0 }) {
+	if a.Domain != "" && !slices.ContainsFunc(a.WebProcesses, func(web WebProcess) bool { return web.Subdomain }) {
 		return &Error{Key: "domain", Message: "is set but no procfile entry has a subdomain", Hint: "add subdomain: www to the web process (www also serves the bare domain)"}
 	}
 	return nil
@@ -343,14 +346,12 @@ func (a *App) deriveWeb() error {
 
 // resolveHosts builds each web process's final host list: its host as written, or each subdomain
 // prepended to the app's domain (lvh.me in a dev session with no domain). A "www" or "*"
-// subdomain also serves the bare domain. It unions the result onto App.Hosts and rejects a
-// pattern two processes share.
+// subdomain also serves the bare domain. A pattern a host process claims is dropped from the
+// subdomain processes; two host processes, or two subdomain processes, sharing one is an error.
 func (a *App) resolveHosts(dev bool) error {
-	seen := map[string]string{}
-	a.Hosts = nil
 	for index := range a.WebProcesses {
 		web := &a.WebProcesses[index]
-		if len(web.Hosts) == 0 {
+		if web.Subdomain {
 			domain := a.Domain
 			if domain == "" && dev {
 				domain = DevDomain
@@ -360,30 +361,108 @@ func (a *App) resolveHosts(dev bool) error {
 			}
 			web.Hosts = subdomainHosts(domain, a.Procfile[web.Name].Subdomain)
 		}
-		own := map[string]bool{}
-		kept := web.Hosts[:0]
-		for _, host := range web.Hosts {
-			normalized := NormalizePattern(host)
-			if own[normalized] {
-				continue
-			}
-			own[normalized] = true
-			kept = append(kept, host)
-		}
-		web.Hosts = kept
+		web.Hosts = uniquePatterns(web.Hosts)
 		for _, host := range web.Hosts {
 			if !validHostPattern(host) {
 				return keyErr("procfile."+web.Name+".subdomain", "produces invalid host pattern %q", host)
 			}
-			normalized := NormalizePattern(host)
-			if owner, ok := seen[normalized]; ok {
-				return &Error{Key: "procfile." + web.Name, Message: fmt.Sprintf("host pattern %q is already used by process %q", host, owner)}
-			}
-			seen[normalized] = web.Name
-			a.Hosts = append(a.Hosts, host)
 		}
 	}
+	explicit := map[string]string{}
+	for _, web := range a.WebProcesses {
+		if web.Subdomain {
+			continue
+		}
+		for _, host := range web.Hosts {
+			normalized := NormalizePattern(host)
+			if owner, ok := explicit[normalized]; ok {
+				return &Error{Key: "procfile." + web.Name, Message: fmt.Sprintf("host pattern %q is already used by process %q", host, owner)}
+			}
+			explicit[normalized] = web.Name
+		}
+	}
+	derived := map[string]string{}
+	for index := range a.WebProcesses {
+		web := &a.WebProcesses[index]
+		if !web.Subdomain {
+			continue
+		}
+		kept := List{}
+		taker := ""
+		for _, host := range web.Hosts {
+			normalized := NormalizePattern(host)
+			if owner, ok := explicit[normalized]; ok {
+				taker = owner
+				continue
+			}
+			if owner, ok := derived[normalized]; ok {
+				return &Error{Key: "procfile." + web.Name, Message: fmt.Sprintf("host pattern %q is already used by process %q", host, owner)}
+			}
+			derived[normalized] = web.Name
+			kept = append(kept, host)
+		}
+		if len(kept) == 0 {
+			return &Error{Key: "procfile." + web.Name + ".subdomain", Message: fmt.Sprintf("every host it produces is served by process %q through host", taker)}
+		}
+		web.Hosts = kept
+	}
+	a.collectHosts()
 	return nil
+}
+
+// Yield drops a subdomain-derived host pattern that another app claims with host. It fails when a
+// process would be left with no host or lose its canonical_host, so the app is refused instead of
+// quietly serving less than its file says.
+func (a *App) Yield(pattern, owner string) error {
+	pattern = NormalizePattern(pattern)
+	webs := slices.Clone(a.WebProcesses)
+	for index := range webs {
+		web := &webs[index]
+		if !web.Subdomain {
+			continue
+		}
+		kept := List{}
+		for _, host := range web.Hosts {
+			if NormalizePattern(host) != pattern {
+				kept = append(kept, host)
+			}
+		}
+		if len(kept) == len(web.Hosts) {
+			continue
+		}
+		if len(kept) == 0 {
+			return fmt.Errorf("procfile.%s: every host of its subdomain is served by app %s through host", web.Name, owner)
+		}
+		if web.CanonicalHost != "" && !hostAllowed(web.CanonicalHost, kept) {
+			return fmt.Errorf("procfile.%s.canonical_host: %s is served by app %s through host", web.Name, web.CanonicalHost, owner)
+		}
+		web.Hosts = kept
+	}
+	a.WebProcesses = webs
+	a.collectHosts()
+	return nil
+}
+
+// collectHosts unions every web process's hosts onto App.Hosts, in process order.
+func (a *App) collectHosts() {
+	a.Hosts = nil
+	for _, web := range a.WebProcesses {
+		a.Hosts = append(a.Hosts, web.Hosts...)
+	}
+}
+
+// uniquePatterns drops repeated patterns, keeping the first spelling, in a new slice so the
+// procfile's own list is never rewritten.
+func uniquePatterns(hosts List) List {
+	seen := map[string]bool{}
+	out := make(List, 0, len(hosts))
+	for _, host := range hosts {
+		if normalized := NormalizePattern(host); !seen[normalized] {
+			seen[normalized] = true
+			out = append(out, host)
+		}
+	}
+	return out
 }
 
 // resolveStatic copies the app-level static directory onto every web process, so the option lives

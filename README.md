@@ -246,6 +246,10 @@ procfile:
 ```
 
 An app may have several web processes, each serving its own hostnames. `host` and `subdomain` on one entry is an error, and so is a `domain` no subdomain uses. In a dev session `domain` defaults to `lvh.me`, and an app that declares neither key binds its first process to `<app>.lvh.me`.
+
+A `host` beats a hostname derived from `subdomain`, in the same app or in another one: a landing app with `host: myapp.com` takes the bare domain from a tenant app with `subdomain: "*"`, which keeps `*.myapp.com`.
+Two `host` claims, or two `subdomain` claims, of one hostname are still an error (between apps, the one that sorts first wins and the other is refused), and so is a subdomain process left with no hostname or without its `canonical_host`.
+A request goes to the most specific match, so `host: api.myapp.com` also beats `*.myapp.com`.
 Every key that takes a list also accepts a single value, so `allow_ips: 10.0.0.0/8` equals `allow_ips: [10.0.0.0/8]`.
 A leading `*.` in a host matches subdomains only; a leading `.` matches the bare domain and every subdomain, so `host: .myapp.com` covers `myapp.com` and `*.myapp.com`.
 The web process can also set `canonical_host` (one of its hosts); every other host answers 301 to it, so `www` never serves content.
@@ -636,7 +640,7 @@ Without `--branch` the remote's default branch is cloned.
 `--host` serves the app on that host instead of the hosts in its `dboss.yaml`: the checkout's file is copied to `dboss.local.yaml` next to it with `host` set on the single web process (and its `subdomain`, `canonical_host` and the app `domain` dropped), so the repository's own domain never goes live on this box.
 It needs exactly one web process.
 
-dboss clones, validates the file against the host `defaults`, refuses a host another app already serves (a rescan would otherwise hand the host to whichever app sorts first), rescans and starts the app, so its `lifecycle.create` step runs.
+dboss clones, validates the file against the host `defaults`, refuses a host another app already claims the same way (both `host`, or both `subdomain`; a rescan would otherwise hand it to whichever app sorts first), lets a `host` take a hostname a running app only derives from its `subdomain`, rescans and starts the app, so its `lifecycle.create` step runs.
 When anything fails after the clone, the folder is removed again and the reason is shown; the action is audited as `add` with the URL.
 Secrets are not in the repository: put `.env` or `dboss.local.yaml` in the folder and restart when the first start needs them.
 The clone has a remote, so it gets the automatic `deploy` hook and `dboss deploy git` updates the app from then on.

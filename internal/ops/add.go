@@ -90,12 +90,21 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 		}
 	}
 	// Rescan hands a contested host to whichever app sorts first, which could take it from a
-	// running app and stop that app, so a clash is refused before the rescan.
+	// running app and stop that app, so a clash is refused before the rescan. A host claimed with
+	// `host` against one a running app only derives from its subdomain is no clash: the rescan
+	// moves it to the new app.
 	for _, snapshot := range s.runtime.Snapshots() {
-		for _, owned := range snapshot.Hosts {
-			for _, wanted := range app.Hosts {
-				if config.NormalizePattern(owned) == config.NormalizePattern(wanted) {
-					return supervisor.Snapshot{}, false, fault.Invalidf("host %s is already served by app %s", wanted, snapshot.Name)
+		for _, owned := range snapshot.WebProcesses {
+			for _, web := range app.WebProcesses {
+				if owned.Subdomain != web.Subdomain {
+					continue
+				}
+				for _, host := range owned.Hosts {
+					for _, wanted := range web.Hosts {
+						if config.NormalizePattern(host) == config.NormalizePattern(wanted) {
+							return supervisor.Snapshot{}, false, fault.Invalidf("host %s is already served by app %s", wanted, snapshot.Name)
+						}
+					}
 				}
 			}
 		}

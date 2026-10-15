@@ -55,6 +55,8 @@ type WebProcessSnapshot struct {
 	CanonicalHost string        `json:"canonical_host,omitempty"`
 	Static        string        `json:"static"`
 	Pubsub        config.Pubsub `json:"pubsub"`
+	// Subdomain marks hosts derived from subdomain + domain, which yield to another app's host.
+	Subdomain bool `json:"subdomain,omitempty"`
 	// BasicAuth and Password are the proxy's gates for this web process; never sent as JSON.
 	BasicAuth map[string]string `json:"-"`
 	Password  string            `json:"-"`
@@ -144,7 +146,7 @@ func (s Snapshot) WebForHost(host string) (WebProcessSnapshot, bool) {
 func WebProcessSnapshots(webs []config.WebProcess) []WebProcessSnapshot {
 	result := make([]WebProcessSnapshot, 0, len(webs))
 	for _, web := range webs {
-		result = append(result, WebProcessSnapshot{Name: web.Name, Hosts: web.Hosts, CanonicalHost: web.CanonicalHost, Static: web.Static, Pubsub: web.Pubsub, BasicAuth: web.BasicAuth, Password: web.Password, Vibe: web.Vibe})
+		result = append(result, WebProcessSnapshot{Name: web.Name, Hosts: web.Hosts, Subdomain: web.Subdomain, CanonicalHost: web.CanonicalHost, Static: web.Static, Pubsub: web.Pubsub, BasicAuth: web.BasicAuth, Password: web.Password, Vibe: web.Vibe})
 	}
 	return result
 }

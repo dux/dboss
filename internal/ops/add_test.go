@@ -63,9 +63,16 @@ func addRuntime(t *testing.T, existing ...supervisor.Snapshot) *fakeRuntime {
 			if err != nil {
 				continue
 			}
-			f.snapshots = append(f.snapshots, supervisor.Snapshot{Name: entry.Name(), Hosts: app.Hosts})
+			f.snapshots = append(f.snapshots, supervisor.Snapshot{Name: entry.Name(), Hosts: app.Hosts, WebProcesses: supervisor.WebProcessSnapshots(app.WebProcesses)})
 		}
 	}}
+}
+
+const subdomainApp = "domain: example.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n"
+
+// webSnapshot is a running app with one web process serving hosts.
+func webSnapshot(name string, subdomain bool, hosts ...string) supervisor.Snapshot {
+	return supervisor.Snapshot{Name: name, Hosts: hosts, WebProcesses: []supervisor.WebProcessSnapshot{{Name: "web", Hosts: hosts, Subdomain: subdomain}}}
 }
 
 const webApp = "procfile:\n  web:\n    command: ./server\n    host: [shop.example.com]\n    canonical_host: shop.example.com\n"
@@ -104,6 +111,16 @@ func TestAddHostOverrideWritesLocalFile(t *testing.T) {
 	}
 }
 
+// A host the new app claims with `host` is no clash with one a running app only derives from its
+// subdomain: the rescan moves it to the new app.
+func TestAddHostTakesARunningSubdomainHost(t *testing.T) {
+	source := sourceRepo(t, map[string]string{"dboss.yaml": webApp})
+	runtime := addRuntime(t, webSnapshot("tenant", true, "*.shop.example.com", "shop.example.com"))
+	if _, err := New(runtime, nil, nil, nil, nil, nil).Do(Request{Method: ActionAdd, Repo: source}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAddHostOverrideReplacesSubdomain(t *testing.T) {
 	source := sourceRepo(t, map[string]string{"dboss.yaml": "domain: shop.example.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n"})
 	runtime := addRuntime(t)
@@ -130,7 +147,8 @@ func TestAddRefusesAndCleansUp(t *testing.T) {
 	}{
 		{"no config", map[string]string{"README": "x"}, Request{}, nil, "not a dboss app"},
 		{"invalid config", map[string]string{"dboss.yaml": "procfile: {}\n"}, Request{}, nil, "procfile"},
-		{"host clash", map[string]string{"dboss.yaml": webApp}, Request{}, []supervisor.Snapshot{{Name: "old", Hosts: []string{"SHOP.example.com"}}}, "already served by app old"},
+		{"host clash", map[string]string{"dboss.yaml": webApp}, Request{}, []supervisor.Snapshot{webSnapshot("old", false, "SHOP.example.com")}, "already served by app old"},
+		{"subdomain clash", map[string]string{"dboss.yaml": subdomainApp}, Request{}, []supervisor.Snapshot{webSnapshot("old", true, "example.com")}, "already served by app old"},
 		{"override needs one web", map[string]string{"dboss.yaml": twoWebs}, Request{Host: "x.test"}, nil, "exactly one web process"},
 		{"invalid name", map[string]string{"dboss.yaml": webApp}, Request{App: "Bad Name"}, nil, "invalid app name"},
 	}

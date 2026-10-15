@@ -72,11 +72,56 @@ procfile:
 	}
 }
 
+// A host process takes its patterns from a subdomain process of the same app.
+func TestParseAppHostBeatsSubdomain(t *testing.T) {
+	document := "domain: myapp.com\nprocfile:\n  app:\n    command: ./app\n    subdomain: \"*\"\n  landing:\n    command: ./landing\n    host: myapp.com\n"
+	app, err := ParseApp([]byte(document), "/srv/apps/demo/"+FileName, Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hostsOf(app, "app"); !slices.Equal(got, []string{"*.myapp.com"}) {
+		t.Fatalf("app hosts = %v", got)
+	}
+	if got := hostsOf(app, "landing"); !slices.Equal(got, []string{"myapp.com"}) {
+		t.Fatalf("landing hosts = %v", got)
+	}
+}
+
+func TestAppYield(t *testing.T) {
+	document := "domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"*\"\n    canonical_host: myapp.com\n  admin:\n    command: ./admin\n    host: admin.other.com\n"
+	app, err := ParseApp([]byte(document), "/srv/apps/demo/"+FileName, Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Yield("admin.other.com", "x"); err != nil || len(app.Hosts) != 3 {
+		t.Fatalf("a host pattern never yields: %v %v", err, app.Hosts)
+	}
+	if err := app.Yield("MyApp.com", "landing"); err == nil || !strings.Contains(err.Error(), "canonical_host: myapp.com is served by app landing") {
+		t.Fatalf("losing the canonical host: %v", err)
+	}
+	if got := hostsOf(app, "web"); len(got) != 2 {
+		t.Fatalf("a refused yield must leave the app as it was: %v", got)
+	}
+	plain, err := ParseApp([]byte("domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"*\"\n"), "/srv/apps/demo/"+FileName, Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := plain.Yield("myapp.com", "landing"); err != nil || !slices.Equal(plain.Hosts, []string{"*.myapp.com"}) {
+		t.Fatalf("yield: %v %v", err, plain.Hosts)
+	}
+	if err := plain.Yield("*.myapp.com", "landing"); err == nil || !strings.Contains(err.Error(), "every host") {
+		t.Fatalf("yielding the last host: %v", err)
+	}
+}
+
 func TestParseAppHostRules(t *testing.T) {
 	for _, test := range []struct{ name, document, want string }{
 		{"subdomain needs a domain", "procfile:\n  web:\n    command: ./web\n    subdomain: www\n", "needs a domain"},
 		{"host and subdomain", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    host: example.com\n    subdomain: www\n", "host and subdomain cannot both be set"},
 		{"domain without a subdomain", "domain: foo.bar\nprocfile:\n  web: ./web\n", "no procfile entry has a subdomain"},
+		{"subdomain left empty", "domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: www\n  landing:\n    command: ./landing\n    host: [www.myapp.com, myapp.com]\n", "served by process \"landing\" through host"},
+		{"two hosts", "procfile:\n  a:\n    command: ./a\n    host: myapp.com\n  b:\n    command: ./b\n    host: myapp.com\n", "already used by process"},
+		{"two subdomains", "domain: myapp.com\nprocfile:\n  a:\n    command: ./a\n    subdomain: \"*\"\n  b:\n    command: ./b\n    subdomain: www\n", "already used by process"},
 		{"invalid subdomain", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"a b\"\n", "invalid subdomain"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

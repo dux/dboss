@@ -415,10 +415,14 @@ postgres:
 #   neither    no web traffic: a background process
 # host and subdomain on one entry is an error. An app may have several web processes, each with
 # its own hosts, health, canonical host and realtime hub, and each bound to its own PORT. Hosts
-# are matched against the request Host header, case-insensitive, port stripped, and must be
-# unique across the app's web processes. A leading "*." in a host matches subdomains only; a
-# leading "." matches the bare domain and every subdomain, so ".myapp.com" means "myapp.com" and
-# "*.myapp.com". Longest match wins.
+# are matched against the request Host header, case-insensitive, port stripped. A leading "*."
+# in a host matches subdomains only; a leading "." matches the bare domain and every subdomain,
+# so ".myapp.com" means "myapp.com" and "*.myapp.com". Longest match wins.
+# A host beats a hostname derived from subdomain, in this app or another one: a landing app with
+# host: myapp.com takes the bare domain from a tenant app with subdomain "*", which keeps
+# *.myapp.com. Two host claims, or two subdomain claims, of one hostname are an error (between
+# apps the first in name order wins), and so is a subdomain process left with no hostname or
+# without its canonical_host.
 # In single mode (no host or subdomain anywhere) the first process is bound to <app>.lvh.me for
 # local dev.
 #

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -145,28 +146,91 @@ func Lookup(cfg config.Config, name string) (*App, error) {
 	return nil, fmt.Errorf("unknown app %q", name)
 }
 
+// resolveHosts settles host patterns across apps. A pattern claimed with `host` beats one derived
+// from subdomain + domain, so the subdomain app yields it; two claims of the same kind go to the
+// app that sorts first and refuse the other. An app refused over its subdomain hosts still
+// reserved its own `host` patterns, so the claim runs again without it.
 func resolveHosts(found []*App, invalid []error) ([]*App, []error, error) {
-	owners := map[string]string{}
-	valid := found[:0]
+	for {
+		valid, configs, clashes, late := claimHosts(found)
+		if len(late) == 0 {
+			for _, app := range valid {
+				app.Config = configs[app]
+			}
+			return valid, append(invalid, clashes...), nil
+		}
+		dropped := map[string]bool{}
+		for _, err := range late {
+			invalid = append(invalid, err)
+			dropped[err.Name] = true
+		}
+		found = slices.DeleteFunc(found, func(app *App) bool { return dropped[app.Name] })
+	}
+}
+
+// claimHosts is one pass of resolveHosts: `host` patterns first, then subdomain patterns, which
+// yield to them. It works on copies of the configs, so a pass that has to run again leaves every
+// config as it was loaded. clashes are refusals over `host` patterns, late those over subdomains.
+func claimHosts(found []*App) (valid []*App, configs map[*App]config.App, clashes []error, late []ScanError) {
+	explicit := map[string]string{}
+	claimed := make([]*App, 0, len(found))
 	for _, app := range found {
 		conflict := ""
-		for _, host := range app.Config.Hosts {
-			normalized := config.NormalizePattern(host)
-			if owner := owners[normalized]; owner != "" {
+		for _, host := range hostsOf(app.Config, false) {
+			if owner := explicit[config.NormalizePattern(host)]; owner != "" {
 				conflict = fmt.Sprintf("host pattern %q is already owned by %s", host, owner)
 				break
 			}
 		}
 		if conflict != "" {
-			invalid = append(invalid, ScanError{Name: app.Name, Err: errors.New(conflict)})
+			clashes = append(clashes, ScanError{Name: app.Name, Err: errors.New(conflict)})
 			continue
 		}
-		for _, host := range app.Config.Hosts {
-			owners[config.NormalizePattern(host)] = app.Name
+		for _, host := range hostsOf(app.Config, false) {
+			explicit[config.NormalizePattern(host)] = app.Name
 		}
+		claimed = append(claimed, app)
+	}
+	derived := map[string]string{}
+	configs = map[*App]config.App{}
+	for _, app := range claimed {
+		cfg := app.Config
+		var err error
+		for _, host := range hostsOf(app.Config, true) {
+			normalized := config.NormalizePattern(host)
+			if owner := explicit[normalized]; owner != "" {
+				if err = cfg.Yield(host, owner); err != nil {
+					break
+				}
+				continue
+			}
+			if owner := derived[normalized]; owner != "" {
+				err = fmt.Errorf("host pattern %q is already owned by %s", host, owner)
+				break
+			}
+		}
+		if err != nil {
+			late = append(late, ScanError{Name: app.Name, Err: err})
+			continue
+		}
+		for _, host := range hostsOf(cfg, true) {
+			derived[config.NormalizePattern(host)] = app.Name
+		}
+		configs[app] = cfg
 		valid = append(valid, app)
 	}
-	return valid, invalid, nil
+	return valid, configs, clashes, late
+}
+
+// hostsOf lists an app's host patterns of one kind: derived from a subdomain, or claimed with host.
+func hostsOf(cfg config.App, subdomain bool) []string {
+	var hosts []string
+	for _, web := range cfg.WebProcesses {
+		if web.Subdomain == subdomain {
+			hosts = append(hosts, web.Hosts...)
+		}
+	}
+	return hosts
 }
 
 // loadRootApp re-reads the root file so a rescan in single mode picks up edits to it.

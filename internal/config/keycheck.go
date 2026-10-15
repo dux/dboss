@@ -101,6 +101,9 @@ var movedKeys = map[string]string{
 	"management.auth.realm":                  "moved to authcog_realm",
 	"management.auth.session_ttl":            "moved to defaults.session_ttl",
 	"proxy.upstream.response_header_timeout": "moved to proxy.timeout",
+	"base_host":                              "renamed to domain",
+	"procfile.hosts":                         "renamed to host",
+	"procfile.host_prefix":                   "renamed to subdomain",
 }
 
 // movedHint returns the replacement note for a dropped key, looked up by its own path and then

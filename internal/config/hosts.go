@@ -85,35 +85,17 @@ func WebURL(scheme, port, canonical string, hosts []string) string {
 	return scheme + "://" + host
 }
 
-// prefixHosts returns the host patterns a web process serves: each host with each prefix
-// prepended. A "www" or "*" prefix also serves the bare host, so the apex and every subdomain
-// both answer. A host already written as a pattern keeps its leading "*." or "." marker
-// outermost.
-func prefixHosts(hosts, prefixes []string) []string {
-	if len(prefixes) == 0 {
-		return hosts
-	}
-	out := make([]string, 0, len(hosts)*(len(prefixes)+1))
-	for _, host := range hosts {
-		for _, prefix := range prefixes {
-			out = append(out, prefixHost(prefix, host))
-			if prefix == "www" || prefix == "*" {
-				out = append(out, host)
-			}
+// subdomainHosts returns the host patterns a web process serves: each subdomain prepended to the
+// domain. A "www" or "*" subdomain also serves the bare domain, so the apex answers too.
+func subdomainHosts(domain string, subdomains []string) []string {
+	out := make([]string, 0, len(subdomains)+1)
+	for _, subdomain := range subdomains {
+		out = append(out, subdomain+"."+domain)
+		if subdomain == "www" || subdomain == "*" {
+			out = append(out, domain)
 		}
 	}
 	return out
-}
-
-func prefixHost(prefix, host string) string {
-	switch {
-	case strings.HasPrefix(host, "*."):
-		return "*." + prefix + "." + host[2:]
-	case strings.HasPrefix(host, "."):
-		return "." + prefix + "." + host[1:]
-	default:
-		return prefix + "." + host
-	}
 }
 
 func hostAllowed(host string, patterns []string) bool {

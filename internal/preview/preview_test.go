@@ -16,7 +16,7 @@ func TestExpandContexts(t *testing.T) {
 	}{
 		"identifier":   {key: "name", want: "feature_x"},
 		"braces":       {key: "name", want: "feature_x_erpx"},
-		"host slashes": {key: "hosts", want: "pr-feature-x.lvh.me"},
+		"host slashes": {key: "host", want: "pr-feature-x.lvh.me"},
 	}
 	for name, want := range cases {
 		var input string
@@ -36,15 +36,15 @@ func TestExpandContexts(t *testing.T) {
 
 func TestExpandHostUnderscoreBecomesDash(t *testing.T) {
 	vars := map[string]string{"QS_BRANCH": "feature_x"}
-	if got := expand("pr-$QS_BRANCH.example.com", vars, "hosts"); got != "pr-feature-x.example.com" {
+	if got := expand("pr-$QS_BRANCH.example.com", vars, "host"); got != "pr-feature-x.example.com" {
 		t.Fatalf("host = %q", got)
 	}
 }
 
-func TestRenderTemplateAppliesTopHosts(t *testing.T) {
+func TestRenderTemplateAppliesTopHost(t *testing.T) {
 	template := map[string]any{
 		"name":      "$QS_BRANCH",
-		"hosts":     []any{"pr-$QS_BRANCH.lvh.me"},
+		"host":      []any{"pr-$QS_BRANCH.lvh.me"},
 		"autostart": false,
 		"procfile": map[string]any{
 			"web": map[string]any{"command": "./start.sh"},

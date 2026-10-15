@@ -39,7 +39,7 @@ hooks:
     repo: https://github.com/rudex/odoo-docker.git   # fallback when the request omits repo
     template:
       name: $QS_BRANCH
-      hosts: [pr-$QS_BRANCH.staging.erpxo.rudex.hr]
+      host: [pr-$QS_BRANCH.staging.erpxo.rudex.hr]
       autostart: false
       deletable: true
       idle_stop: 6h

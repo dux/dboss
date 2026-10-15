@@ -3,7 +3,7 @@
 procfile:
   web:
     command: ./start.sh
-    hosts:
+    host:
       - scratch.lvh.me
     health: /up
 

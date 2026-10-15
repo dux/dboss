@@ -43,23 +43,37 @@ func (Procgroup) Release(string, string) error { return nil }
 
 func (Procgroup) OOMKills(string, string) int64 { return 0 }
 
+// Stats sums the whole process group of each pid. Every child leads its own session, so the
+// group is the leader plus everything it forked; the sh -c wrapper alone is a few MB.
 func (Procgroup) Stats(_ string, _ string, pids []int) (Stats, error) {
+	output, err := exec.Command("ps", "-A", "-o", "pgid=,rss=,%cpu=").Output()
+	if err != nil {
+		return Stats{Approximate: true}, nil
+	}
+	return groupStats(string(output), pids), nil
+}
+
+// groupStats sums every `pgid rss %cpu` row whose pgid is one of pids.
+func groupStats(output string, pids []int) Stats {
 	stats := Stats{Approximate: true}
+	groups := map[int64]bool{}
 	for _, pid := range pids {
-		output, err := exec.Command("ps", "-o", "rss=,%cpu=", "-p", strconv.Itoa(pid)).Output()
-		if err != nil {
+		groups[int64(pid)] = true
+	}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
 			continue
 		}
-		fields := strings.Fields(string(output))
-		if len(fields) != 2 {
+		if group, _ := strconv.ParseInt(fields[0], 10, 64); !groups[group] {
 			continue
 		}
-		rss, _ := strconv.ParseInt(fields[0], 10, 64)
-		cpu, _ := strconv.ParseFloat(strings.ReplaceAll(fields[1], ",", "."), 64)
+		rss, _ := strconv.ParseInt(fields[1], 10, 64)
+		cpu, _ := strconv.ParseFloat(strings.ReplaceAll(fields[2], ",", "."), 64)
 		stats.MemoryBytes += rss * 1024
 		stats.CPUPercent += cpu
 	}
-	return stats, nil
+	return stats
 }
 
 func Signal(name string) (syscall.Signal, error) {

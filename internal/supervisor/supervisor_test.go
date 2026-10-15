@@ -502,7 +502,7 @@ func supervisorTestConfigApp(t *testing.T, portRange [2]int, extraYAML string) c
 	if err := os.MkdirAll(appDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	appConfig := fmt.Sprintf("procfile:\n  web:\n    command: %s -test.run=TestSupervisorHelperProcess\n    hosts: [demo.test]\n%s", os.Args[0], extraYAML)
+	appConfig := fmt.Sprintf("procfile:\n  web:\n    command: %s -test.run=TestSupervisorHelperProcess\n    host: [demo.test]\n%s", os.Args[0], extraYAML)
 	if err := os.WriteFile(filepath.Join(appDir, config.FileName), []byte(appConfig), 0o640); err != nil {
 		t.Fatal(err)
 	}
@@ -618,7 +618,7 @@ func TestRescanReloadsDefaultsAndReportsHostKeys(t *testing.T) {
 	if err := os.MkdirAll(appDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(appDir, config.FileName), []byte("procfile:\n  web:\n    command: /usr/bin/true\n    hosts: [one.test]\n"), 0o640); err != nil {
+	if err := os.WriteFile(filepath.Join(appDir, config.FileName), []byte("procfile:\n  web:\n    command: /usr/bin/true\n    host: [one.test]\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(root, config.ServerFileName)

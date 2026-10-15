@@ -67,7 +67,7 @@
     procfile:
       web:
         command: ./start.sh
-        hosts: [shop.example.com]
+        host: [shop.example.com]
         health: /up
     `,
     configDev: `
@@ -94,7 +94,7 @@
     procfile:
       web:
         command: bundle exec puma -p $PORT
-        hosts: [shop.example.com]
+        host: [shop.example.com]
         health: /up
         count: 3
       worker:
@@ -110,13 +110,16 @@
     idle_stop: 0s
     `,
     routing: `
+    domain: shop.example.com
     procfile:
       web:
         command: ./start.sh
-        hosts:
-          - shop.example.com
-          - www.shop.example.com
+        subdomain: www      # www.shop.example.com and shop.example.com
         canonical_host: shop.example.com
+      admin:
+        command: ./admin.sh
+        host: admin.example.net
+      worker: ./jobs.sh     # no host or subdomain: no web traffic
     max_body: 50m
     headers:
       X-Frame-Options: DENY
@@ -132,7 +135,7 @@
     procfile:
       admin:
         command: ./start.sh
-        hosts: [admin.example.com]
+        host: [admin.example.com]
         basic_auth: {}      # admin: only the password page
     allow_ips:
       - 10.0.0.0/8
@@ -153,7 +156,7 @@
     procfile:
       web:
         command: ./start.sh
-        hosts: [shop.example.com]
+        host: [shop.example.com]
 
     # ./public by default; a path, or false to disable. Served at the same URL,
     # so public/foo/bar.png answers /foo/bar.png.
@@ -164,7 +167,7 @@
     procfile:
       web:
         command: ./start.sh
-        hosts: [shop.example.com]
+        host: [shop.example.com]
 
     # The folder dboss reads its pages from; ./public/error_pages by default.
     pages: ./public/error_pages
@@ -249,7 +252,7 @@
         repo: https://github.com/owner/repo.git   # fallback when the ping omits repo
         template:
           name: $QS_BRANCH
-          hosts: [pr-$QS_BRANCH.example.com]
+          host: [pr-$QS_BRANCH.example.com]
           autostart: false
           deletable: true
           lifecycle:
@@ -274,7 +277,7 @@
     procfile:
       web:
         command: ./start.sh
-        hosts: [shop.example.com]
+        host: [shop.example.com]
         pubsub:
           path: /socketio
           replay: 10
@@ -300,7 +303,7 @@
     procfile:
       web:
         command: ./start.sh
-        hosts: [staging.shop.example.com]
+        host: [staging.shop.example.com]
         vibe: true
     `,
     vibeMCP: `
@@ -440,7 +443,7 @@
     {#if state.topic === 'how'}
       <section>
         <h2>How it works</h2>
-        <p>One <code>dboss</code> process owns the ports, the proxy and the console. Each app is a folder with an <code>dboss.yaml</code>; its <code>procfile</code> maps a process name to a command. Dboss gives every process a fixed <code>PORT</code> and routes each request to the app whose <code>hosts</code> match.</p>
+        <p>One <code>dboss</code> process owns the ports, the proxy and the console. Each app is a folder with an <code>dboss.yaml</code>; its <code>procfile</code> maps a process name to a command. Dboss gives every process a fixed <code>PORT</code> and routes each request to the app whose hosts match.</p>
         <ul>
           <li>A stopped app starts on the first request and answers with a starting page that refreshes.</li>
           <li>An idle app stops after <code>idle_stop</code> and wakes the same way.</li>
@@ -488,7 +491,7 @@
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.supervision" />
         <h3>Details</h3>
-        <p>All process types run at once; every process that declares <code>hosts</code> is a web process and gets proxied traffic on those hosts. An app may run several web processes, each with its own hosts, health check, canonical host and realtime hub. They start first, then the rest by name. A process with no <code>hosts</code> is background-only. Dboss injects <code>PORT</code> (fixed per app, process and copy), <code>APP_NAME</code>, <code>PROC_TYPE</code>, <code>PROC_INSTANCE</code> and <code>DBOSS_SOCKET</code> into every process.</p>
+        <p>All process types run at once; every process that declares <code>host</code> or <code>subdomain</code> is a web process and gets proxied traffic on those hosts. An app may run several web processes, each with its own hosts, health check, canonical host and realtime hub. They start first, then the rest by name. A process with neither is background-only. Dboss injects <code>PORT</code> (fixed per app, process and copy), <code>APP_NAME</code>, <code>PROC_TYPE</code>, <code>PROC_INSTANCE</code> and <code>DBOSS_SOCKET</code> into every process.</p>
         <ul>
           <li><code>autostart: false</code> keeps an app down until <code>dboss run</code>, the console, or a request starts it. <code>autostart: button</code> is the same, except a request answers a start button and only its POST starts the app, so crawler and favicon GETs never do.</li>
           <li><code>health</code> on a web process is the readiness check: a path such as <code>/up</code> that must answer 2xx, or omit it for a plain TCP connect. A process that never passes it within <code>health_timeout</code> is restarted.</li>
@@ -553,7 +556,7 @@
     {#if state.topic === 'routing'}
       <section>
         <h2>Routing</h2>
-        <p>Each web process lists the hostnames it answers in <code>hosts</code>. The proxy reads the request <code>Host</code>, picks the app, then forwards to the web process that owns that host. Background processes never get traffic.</p>
+        <p>Each web process names the hostnames it answers with <code>host</code> (full hostnames, served as written) or else <code>subdomain</code> (prepended to the app's <code>domain</code>); an entry with neither gets no web traffic. The proxy reads the request <code>Host</code>, picks the app, then forwards to the web process that owns that host. Background processes never get traffic.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>Hosting many sites on one port 80 without writing an nginx vhost per app.</li>
@@ -563,12 +566,12 @@
           <li>Adding or removing response headers and limiting the request body for every response, without touching the app.</li>
         </ul>
         <h3>Config keys</h3>
-        <div fez:keep="keys-routing"><db-config-keys paths="headers,max_body,proxy.listen,proxy.timeout" /></div>
+        <div fez:keep="keys-routing"><db-config-keys paths="domain,headers,max_body,proxy.listen,proxy.timeout" /></div>
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.routing" />
         <h3>Details</h3>
-        <p>A leading <code>*.</code> matches subdomains only; a leading <code>.</code> matches the bare domain and every subdomain, so <code>hosts: .example.com</code> is <code>example.com</code> plus <code>*.example.com</code>. A single value is accepted like a list, and in single-app dev mode a process with no hosts is bound to <code>&#60;app&#62;.lvh.me</code>.</p>
-        <p>Instead of writing hosts, an app can set <code>base_host</code> and give each web process a <code>host_prefix</code> (a label or wildcard pattern, or a list) prepended to it. <code>www</code> and <code>*</code> also answer the bare host, so <code>base_host: foo.bar</code> with <code>host_prefix: [www, api]</code> serves <code>www.foo.bar</code>, <code>foo.bar</code> and <code>api.foo.bar</code>, and <code>host_prefix: "*"</code> serves the apex plus every subdomain.</p>
+        <p>A leading <code>*.</code> matches subdomains only; a leading <code>.</code> matches the bare domain and every subdomain, so <code>host: .example.com</code> is <code>example.com</code> plus <code>*.example.com</code>. A single value is accepted like a list, and in single-app dev mode an app with no host or subdomain anywhere binds its first process to <code>&#60;app&#62;.lvh.me</code>.</p>
+        <p>A <code>subdomain</code> is a label or wildcard pattern, or a list, prepended to <code>domain</code>. <code>www</code> and <code>*</code> also answer the bare domain with no redirect, so <code>domain: foo.bar</code> with <code>subdomain: [www, api]</code> serves <code>www.foo.bar</code>, <code>foo.bar</code> and <code>api.foo.bar</code>, and <code>subdomain: "*"</code> serves the apex plus every subdomain. <code>host</code> and <code>subdomain</code> on one entry is an error, and so is a <code>domain</code> no subdomain uses; a dev session with no <code>domain</code> uses <code>lvh.me</code>.</p>
         <p><code>maintenance on</code> answers every request with the maintenance page while the app keeps running. A stopped app gets the starting page, then the real response once it is healthy. A host no app matches gets the host's <code>404</code> page.</p>
         <p>Each request walks the stages in this order: canonical redirect, <code>allow_ips</code>, <code>deny</code>, health endpoint, <code>rate_limit</code>, <code>authcog</code> login, <code>auth</code> sign-in, <code>basic_auth</code>, <code>password</code>, maintenance, static files, body buffer, then wake or forward. Forwarded headers (<code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>, <code>X-Real-IP</code>) are added only when missing, so Cloudflare's values win.</p>
       </section>
@@ -936,7 +939,7 @@
         <ul>
           <li>The URL may be <code>https://host/owner/repo</code>, <code>ssh://...</code>, <code>git@host:owner/repo</code> or the GitHub shorthand <code>owner/repo</code>. An ssh remote uses the service user's key; local paths and other schemes are refused.</li>
           <li>The name defaults to the repository name and must be a new folder under <code>apps</code>. An existing app is updated with a deploy, never by adding it again.</li>
-          <li>A host is written into a <code>dboss.local.yaml</code> next to the app's file, a full copy with the single web process's <code>hosts</code> set and its <code>canonical_host</code> dropped. It needs exactly one web process.</li>
+          <li>A host is written into a <code>dboss.local.yaml</code> next to the app's file, a full copy with the single web process's <code>host</code> set and its <code>subdomain</code>, <code>canonical_host</code> and the app <code>domain</code> dropped. It needs exactly one web process.</li>
           <li>A host another app already serves is refused before the rescan, so a running app never loses its host.</li>
           <li>When anything fails after the clone the folder is removed again, and the reason stays in the dialog. The action is audited as <code>add</code> with the URL.</li>
           <li>Secrets are not in the repository: put <code>.env</code> or <code>dboss.local.yaml</code> in the app folder and restart when the first start needs them. The clone gets the automatic <code>deploy</code> hook, so <code>dboss deploy git</code> and the card's <strong>Redeploy</strong> update the app afterwards.</li>
@@ -967,7 +970,7 @@
           <li><code>action</code>, <code>branch</code>, <code>repo</code> and <code>num</code> become <code>QS_ACTION</code>, <code>QS_BRANCH</code>, <code>QS_REPO</code> and <code>QS_NUM</code> for the hook; <code>repo</code> falls back to the hook's own <code>repo</code>.</li>
           <li><code>action=closed</code> destroys the app, which runs its <code>destroy</code> step and removes the checkout; the template needs <code>deletable: true</code>. Any other action checks out the branch tip, writes the app from <code>template</code> and restarts it, which runs its <code>create</code> and <code>start</code> steps.</li>
           <li><code>template</code> is an app file with <code>$VAR</code> and <code>$&#123;VAR&#125;</code> interpolation. Its <code>name</code> is required and names the app folder; <code>main</code> and <code>development</code> are refused.</li>
-          <li>A value in <code>hosts</code> or <code>canonical_host</code> is sanitized as a DNS label (<code>/</code> and <code>_</code> become <code>-</code>); everywhere else it is an identifier (<code>/</code> becomes <code>_</code>). A top-level <code>hosts</code> is the default for every procfile entry that declares none.</li>
+          <li>A value in <code>host</code> or <code>canonical_host</code> is sanitized as a DNS label (<code>/</code> and <code>_</code> become <code>-</code>); everywhere else it is an identifier (<code>/</code> becomes <code>_</code>). A top-level <code>host</code> is the default for every procfile entry that declares no <code>host</code> or <code>subdomain</code>.</li>
           <li>A private <code>repo</code> over HTTPS is pulled with <code>tokens.github</code>; a fork PR works because the ping passes the head repo's clone URL. Pings for one branch run one at a time, while different branches deploy in parallel.</li>
           <li>Every step is audited under actor <code>hook:github_pr</code>. The preview is a normal app, so the console, <code>dboss ls</code>, the request log and <code>/metrics</code> all see it.</li>
         </ul>

@@ -69,33 +69,35 @@ const (
 )
 
 // Render expands every string in the template and drops the preview-only `name` key,
-// leaving a valid app file. A top-level `hosts` is the default for every procfile entry that
-// declares none, so one host covers the usual single web process.
+// leaving a valid app file. A top-level `host` is the default for every procfile entry that
+// declares no host or subdomain, so one host covers the usual single web process.
 func Render(template map[string]any, vars map[string]string) ([]byte, error) {
 	body := make(map[string]any, len(template))
-	var topHosts any
+	var topHost any
 	for key, value := range template {
 		switch key {
 		case "name":
 			continue
-		case "hosts":
-			topHosts = interpolateValue(value, vars, "hosts")
+		case "host":
+			topHost = interpolateValue(value, vars, "host")
 			continue
 		}
 		body[key] = interpolateValue(value, vars, key)
 	}
-	if topHosts != nil {
+	if topHost != nil {
 		procfile, ok := body["procfile"].(map[string]any)
 		if !ok {
-			return nil, errors.New("template sets hosts but has no procfile mapping")
+			return nil, errors.New("template sets host but has no procfile mapping")
 		}
 		for _, entry := range procfile {
 			fields, ok := entry.(map[string]any)
 			if !ok {
 				continue
 			}
-			if _, has := fields["hosts"]; !has {
-				fields["hosts"] = topHosts
+			_, hasHost := fields["host"]
+			_, hasSubdomain := fields["subdomain"]
+			if !hasHost && !hasSubdomain {
+				fields["host"] = topHost
 			}
 		}
 	}
@@ -130,7 +132,7 @@ func expand(s string, vars map[string]string, key string) string {
 		return s
 	}
 	ctx := ctxIdentifier
-	if key == "hosts" || key == "canonical_host" {
+	if key == "host" || key == "canonical_host" {
 		ctx = ctxHost
 	}
 	var b strings.Builder

@@ -68,7 +68,7 @@ func TestHostGithubPRHook(t *testing.T) {
     repo: https://github.com/example/repo.git
     template:
       name: $QS_BRANCH
-      hosts: [pr-$QS_BRANCH.example.com]
+      host: [pr-$QS_BRANCH.example.com]
       procfile:
         web: ./start.sh
 `

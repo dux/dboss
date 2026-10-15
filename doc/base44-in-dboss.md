@@ -28,7 +28,7 @@ deepseek_api_key: $DEEPSEEK_API_KEY     # optional, wins over the host's default
 procfile:
   web:
     command: bundle exec puma
-    host_prefix: www
+    subdomain: www
     vibe:
       password: $VIBE_PASSWORD      # plain or a bcrypt hash from `dboss password`
   worker: bundle exec sidekiq
@@ -42,7 +42,7 @@ defaults:
 
 * `vibe` is a procfile entry option, like `pubsub`, `password` and `health`: the web process that declares it owns the harness on its own hosts.
   There is no top-level or `web` vibe key, the same rule `pubsub` follows.
-* `vibe` on an entry that is not a web process (no `hosts`, no `host_prefix`) fails `dboss check`: a worker has no host to serve the page on.
+* `vibe` on an entry that is not a web process (no `host`, no `subdomain`) fails `dboss check`: a worker has no host to serve the page on.
 * No `vibe` on a web process, no harness there: `/_dboss_/vibe` on its hosts falls through to the app like any other path.
   An app with two web processes (say `web` and `admin`) can turn it on for one only, and each one that has it gets its own harness, chat and MCP token.
 * The DeepSeek key is the plain app key `deepseek_api_key`, in the `web` block's scope (`both`), so a host sets it for every app through `defaults.deepseek_api_key` and an app's own value wins, the way every other app key already inherits.

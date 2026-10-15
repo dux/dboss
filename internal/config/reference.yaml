@@ -276,8 +276,8 @@ defaults:
 
   # --- Web keys: what nginx or Caddy did in front of the app. Shared by every web process. ----
   # Set here for every app, or at the top level of one app's file to override it there. The
-  # per-process web keys (hosts, pubsub, health, canonical_host) live on the procfile entry, and
-  # a web procfile entry may set its own basic_auth and password to replace the app's.
+  # per-process web keys (host, subdomain, pubsub, health, canonical_host) live on the procfile
+  # entry, and a web procfile entry may set its own basic_auth and password to replace the app's.
   # Cloudflare owns TLS, compression, caching, WAF and rate limiting, so those are not here.
   # Order per request: canonical redirect -> allow_ips -> deny -> health endpoint -> rate_limit
   # -> authcog login -> auth -> basic_auth -> password -> maintenance -> static
@@ -408,20 +408,25 @@ postgres:
 # Required process map. Keys are process names and values are commands.
 # Names must match [a-z][a-z0-9_-]* and commands must not be empty.
 # Command strings are not env-expanded; $VAR is passed to the shell at run time.
-# A scalar value is a background process. A mapping adds hosts; every process that declares
-# hosts is a web process that receives proxied traffic on those hosts, and its command must
-# not be empty. An app may have several web processes, each with its own hosts, health,
-# canonical host and realtime hub, and each bound to its own PORT. An app with no hosts
-# anywhere is background-only. Hosts are matched against the request Host header,
-# case-insensitive, port stripped, and must be unique across the app's web processes. A leading
-# "*." matches subdomains only; a leading "." matches the bare domain and every subdomain, so
-# ".myapp.com" means "myapp.com" and "*.myapp.com". Longest match wins.
-# In single mode (no hosts declared) the first process is bound to <app>.lvh.me for local dev.
+# A scalar value is a background process. A mapping is a web process when it says where its
+# traffic comes from, checked in this order:
+#   host       the full hostname, or a list of them, served exactly as written
+#   subdomain  else each label is prepended to the app's domain (below)
+#   neither    no web traffic: a background process
+# host and subdomain on one entry is an error. An app may have several web processes, each with
+# its own hosts, health, canonical host and realtime hub, and each bound to its own PORT. Hosts
+# are matched against the request Host header, case-insensitive, port stripped, and must be
+# unique across the app's web processes. A leading "*." in a host matches subdomains only; a
+# leading "." matches the bare domain and every subdomain, so ".myapp.com" means "myapp.com" and
+# "*.myapp.com". Longest match wins.
+# In single mode (no host or subdomain anywhere) the first process is bound to <app>.lvh.me for
+# local dev.
 #
-# The app's own domain. A web process that declares no hosts serves this, and its host_prefix is
-# prepended to it: base_host foo.bar with host_prefix [www, api] serves www.foo.bar, foo.bar and
-# api.foo.bar. A dev session with no base_host uses lvh.me.
-base_host: myapp.com
+# The app's own domain, the base every web process's subdomain is prepended to: domain foo.bar
+# with subdomain [www, api] serves www.foo.bar, foo.bar and api.foo.bar. A process with a host
+# ignores it, and a domain no subdomain uses is an error. A dev session with no domain uses
+# lvh.me.
+domain: myapp.com
 #
 # The git branch the app's checkout must run. Applies only when the app folder holds its own
 # .git, so an app inside a larger repository never touches it, and never in a dev session. Every
@@ -434,10 +439,9 @@ base_host: myapp.com
 # another branch.
 branch: main
 #
-# A web process may set `host_prefix`, one label or wildcard pattern or a list, prepended to
-# every host it serves. "www" and "*" also answer the bare host: "*" is the apex plus every
-# subdomain, and "www" is just the apex (so it never needs a redirect). A host written as a
-# pattern keeps its leading "*." or "." outermost.
+# A web process may set `subdomain`, one label or wildcard pattern or a list, prepended to the
+# domain. "www" and "*" also answer the bare domain: "*" is the apex plus every subdomain, and
+# "www" is www plus the apex, both served with no redirect (add canonical_host for one).
 #
 # The static directory is an app key (see the Web keys above); every web process serves it.
 #
@@ -499,14 +503,14 @@ branch: main
 procfile:
   web:
     command: bundle exec puma -C config/puma.rb
-    host_prefix: [www, api]
+    subdomain: [www, api]
     pubsub: true
     health: /up
     canonical_host: www.myapp.com
     count: 2
   admin:
     command: bundle exec puma -C config/admin.rb
-    hosts: [admin.myapp.com]
+    host: admin.myapp.com
     password: $ADMIN_PASSWORD
     vibe: true
   worker: bundle exec lux jobs:work

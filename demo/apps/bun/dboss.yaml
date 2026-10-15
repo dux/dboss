@@ -1,7 +1,7 @@
 procfile:
   web:
     command: ./start.sh
-    hosts:
+    host:
       - bun.lvh.me
     health: /up
     # Two copies, web.1 and web.2, each on its own port; the proxy sends a request to the one with
@@ -11,7 +11,7 @@ procfile:
   # password: the browser gets a dboss page asking for "demo", while bun.lvh.me stays open.
   admin:
     command: ./start.sh
-    hosts:
+    host:
       - admin.bun.lvh.me
     health: /up
     password: demo

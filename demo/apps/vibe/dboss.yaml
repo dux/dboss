@@ -14,7 +14,7 @@ password: vibe
 procfile:
   web:
     command: ./start.sh
-    hosts:
+    host:
       - vibe.lvh.me
     health: /up
     vibe: true

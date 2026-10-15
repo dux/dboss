@@ -216,7 +216,7 @@ App file (`./demo/apps/bun/dboss.yaml`):
 procfile:
   web:
     command: ./start.sh
-    hosts: [bun.lvh.me]
+    host: [bun.lvh.me]
     health: /up
 ```
 
@@ -224,10 +224,30 @@ The proxy listens on `:80` by default and owns that port for every app; the demo
 When it does not have either and stdout is a terminal, the proxy falls back to the first free port of `ports` instead of exiting, so developing against an app needs no sudo; under systemd stdout is a pipe and the bind failure is still fatal.
 A dev session (`dboss start` in an app folder) never takes `:80` unless asked: it ignores `proxy.listen` and serves on the next free port, so the app opens as `http://myapp.lvh.me:3110`.
 `dboss start --https` listens on `:80` and `:443` instead and fails when either is taken.
-Every process that declares `hosts` or `host_prefix` is a web process, and an app may have several, each serving its own hostnames; a process with only a command is a background worker. Running dboss inside an app folder with no hosts binds the first process to `<app>.lvh.me`.
-An app can name its own domain with `base_host` and give each web process a `host_prefix` (one label or wildcard pattern, or a list) prepended to every host it serves; `www` also answers the bare host, so `base_host: foo.bar` with `host_prefix: [www, api]` serves `www.foo.bar`, `foo.bar` and `api.foo.bar`, and `host_prefix: "*"` serves the apex plus every subdomain. A process with no `hosts` serves `base_host` (with its prefixes), and in a dev session `base_host` defaults to `lvh.me`.
+A procfile entry gets web traffic from `host` or `subdomain`, checked in that order:
+
+* `host` - the full hostname, or a list, served as written.
+* `subdomain` - else each label (or wildcard pattern) is prepended to the app's `domain`; `www` and `*` also answer the bare domain, with no redirect.
+* neither - no web traffic, a background process.
+
+```yaml
+domain: myapp.com
+procfile:
+  web:
+    command: bundle exec puma
+    subdomain: www          # www.myapp.com and myapp.com
+  api:
+    command: bin/api
+    subdomain: api          # api.myapp.com
+  admin:
+    command: bin/admin
+    host: admin.other.com   # as written, domain ignored
+  worker: bin/jobs          # no web traffic
+```
+
+An app may have several web processes, each serving its own hostnames. `host` and `subdomain` on one entry is an error, and so is a `domain` no subdomain uses. In a dev session `domain` defaults to `lvh.me`, and an app that declares neither key binds its first process to `<app>.lvh.me`.
 Every key that takes a list also accepts a single value, so `allow_ips: 10.0.0.0/8` equals `allow_ips: [10.0.0.0/8]`.
-A leading `*.` in a host matches subdomains only; a leading `.` matches the bare domain and every subdomain, so `hosts: .myapp.com` covers `myapp.com` and `*.myapp.com`.
+A leading `*.` in a host matches subdomains only; a leading `.` matches the bare domain and every subdomain, so `host: .myapp.com` covers `myapp.com` and `*.myapp.com`.
 The web process can also set `canonical_host` (one of its hosts); every other host answers 301 to it, so `www` never serves content.
 `proxy.listen` and `management.host` are such lists: several listen addresses each get a listener with the same routing, and several console hostnames are all accepted.
 A `$NAME` in a value is replaced with that variable from the daemon's environment at load time, so `url: $ALERT_WEBHOOK_URL` keeps a secret out of the file; only all-uppercase names expand, an unset name stays as written, and `procfile` and cron commands are never expanded because they are runtime shell lines.
@@ -613,7 +633,7 @@ Local paths and other schemes are refused.
 
 The name defaults to the repository name (lowercased, other characters become `-`) and must be a new folder under `apps`; to update an app that is already there, deploy to it.
 Without `--branch` the remote's default branch is cloned.
-`--host` serves the app on that host instead of the hosts in its `dboss.yaml`: the checkout's file is copied to `dboss.local.yaml` next to it with the host set on the single web process (and its `canonical_host` dropped), so the repository's own domain never goes live on this box.
+`--host` serves the app on that host instead of the hosts in its `dboss.yaml`: the checkout's file is copied to `dboss.local.yaml` next to it with `host` set on the single web process (and its `subdomain`, `canonical_host` and the app `domain` dropped), so the repository's own domain never goes live on this box.
 It needs exactly one web process.
 
 dboss clones, validates the file against the host `defaults`, refuses a host another app already serves (a rescan would otherwise hand the host to whichever app sorts first), rescans and starts the app, so its `lifecycle.create` step runs.
@@ -710,7 +730,7 @@ hooks:
     repo: https://github.com/owner/repo.git       # fallback when the ping omits repo
     template:
       name: $QS_BRANCH
-      hosts: [pr-$QS_BRANCH.example.com]
+      host: [pr-$QS_BRANCH.example.com]
       autostart: false
       deletable: true
       lifecycle:
@@ -733,8 +753,8 @@ A private `repo` over HTTPS is pulled with `tokens.github`; a fork PR works beca
 Events for one branch are serialized, so two pushes cannot race the same checkout, while different branches deploy in parallel.
 
 `template` is an app file with `$VAR` and `${VAR}` interpolation.
-A value in a `hosts` or `canonical_host` field is sanitized as a DNS label (`/` and `_` become `-`); every other field is an identifier (`/` becomes `_`).
-A top-level `hosts` is the default for every procfile entry that declares none.
+A value in a `host` or `canonical_host` field is sanitized as a DNS label (`/` and `_` become `-`); every other field is an identifier (`/` becomes `_`).
+A top-level `host` is the default for every procfile entry that declares no `host` or `subdomain`.
 The preview-only `name` key names the app folder, sanitized the same way, and `main` and `development` are refused.
 
 Every step is audited under actor `hook:github_pr` (`config-write`, `deploy`, `stop`, `destroy`).
@@ -748,7 +768,7 @@ A web process can serve a pub/sub hub on its hosts. Set `pubsub` and dboss answe
 procfile:
   web:
     command: ./start.sh
-    hosts: [myapp.com]
+    host: [myapp.com]
     pubsub: true            # or /socketio, or a mapping
     # pubsub:
     #   path: /socketio
@@ -804,7 +824,7 @@ password: $SHOP_PASSWORD              # the app's gate is the harness's too
 procfile:
   web:
     command: ./start.sh
-    hosts: [staging.shop.example.com]
+    host: [staging.shop.example.com]
     vibe: true
 ```
 
@@ -936,7 +956,7 @@ Put `docker compose up` or `docker run` in a procfile entry and dboss starts, st
 procfile:
   web:
     command: docker compose up
-    hosts: [shop.example.com]
+    host: [shop.example.com]
 ```
 
 * Publish the web container on the port dboss hands out, bound to loopback: `ports: ["127.0.0.1:${PORT}:3000"]` in the compose file, or `docker run -p 127.0.0.1:$PORT:3000 ...`. `PORT` is in the command's environment, so compose interpolates it.
@@ -973,10 +993,10 @@ deny:
 procfile:
   web:
     command: ./start.sh
-    hosts: [myapp.com]            # open
+    host: [myapp.com]            # open
   admin:
     command: ./start.sh
-    hosts: [admin.myapp.com]
+    host: [admin.myapp.com]
     password: $ADMIN_PASSWORD     # only admin asks, on a dboss page
 ```
 
@@ -1093,7 +1113,7 @@ On the way to an app the proxy adds `X-Forwarded-Proto` and `X-Forwarded-Host` w
 A `CF-Connecting-IP` is passed on only when the connection came from Cloudflare's ranges (or the box itself, e.g. `cloudflared`) or `proxy.cloudflare` is set; otherwise the client wrote it and it is dropped.
 `X-Forwarded-For` is appended by the reverse proxy.
 
-An app's processes start with the web processes (the ones with `hosts`) first, then the rest in name order, so a web process that expects other services to be up still gets that.
+An app's processes start with the web processes (the ones with `host` or `subdomain`) first, then the rest in name order, so a web process that expects other services to be up still gets that.
 
 ## Audit log
 

@@ -46,7 +46,7 @@ func (s *recordingSink) waitFor(t *testing.T, eventType string) notify.Event {
 func TestCrashEmitsNotification(t *testing.T) {
 	fastRestart(t)
 	sink := &recordingSink{}
-	cfg := hookConfig(t, [2]int{32900, 32920}, "procfile:\n  web:\n    command: /usr/bin/false\n    hosts: [demo.test]\nautostart: true\nrestart: on-failure\nmax_restarts: 1\n")
+	cfg := hookConfig(t, [2]int{32900, 32920}, "procfile:\n  web:\n    command: /usr/bin/false\n    host: [demo.test]\nautostart: true\nrestart: on-failure\nmax_restarts: 1\n")
 	manager, _, err := New(cfg, ports.New(cfg.Ports), nil, sink)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestCrashEmitsNotification(t *testing.T) {
 func TestRestartLoopEmitsNotification(t *testing.T) {
 	fastRestart(t)
 	sink := &recordingSink{}
-	cfg := hookConfig(t, [2]int{32920, 32940}, "procfile:\n  web:\n    command: /usr/bin/false\n    hosts: [demo.test]\nautostart: true\nrestart: on-failure\nmax_restarts: 5\n")
+	cfg := hookConfig(t, [2]int{32920, 32940}, "procfile:\n  web:\n    command: /usr/bin/false\n    host: [demo.test]\nautostart: true\nrestart: on-failure\nmax_restarts: 5\n")
 	manager, _, err := New(cfg, ports.New(cfg.Ports), nil, sink)
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func (b *oomBackend) OOMKills(string, string) int64 { return b.reads.Add(1) }
 func TestOOMKillEmitsNotification(t *testing.T) {
 	fastRestart(t)
 	sink := &recordingSink{}
-	cfg := hookConfig(t, [2]int{33620, 33640}, "procfile:\n  web:\n    command: /usr/bin/false\n    hosts: [demo.test]\nautostart: true\nrestart: never\nmemory_max: 64m\n")
+	cfg := hookConfig(t, [2]int{33620, 33640}, "procfile:\n  web:\n    command: /usr/bin/false\n    host: [demo.test]\nautostart: true\nrestart: never\nmemory_max: 64m\n")
 	manager, _, err := New(cfg, ports.New(cfg.Ports), nil, sink)
 	if err != nil {
 		t.Fatal(err)

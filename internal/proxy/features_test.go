@@ -38,7 +38,7 @@ func featureHandler() *Handler {
 func featureSnapshot(t *testing.T, data string) supervisor.Snapshot {
 	t.Helper()
 	dir := t.TempDir()
-	app, err := config.ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    hosts: [demo.test, www.demo.test]\n"+data), filepath.Join(dir, config.FileName), config.Default().Defaults)
+	app, err := config.ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    host: [demo.test, www.demo.test]\n"+data), filepath.Join(dir, config.FileName), config.Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestCanonicalHostRedirect(t *testing.T) {
 
 func TestCanonicalHostPerWebProcess(t *testing.T) {
 	dir := t.TempDir()
-	app, err := config.ParseApp([]byte("procfile:\n  shop:\n    command: ./shop\n    hosts: [shop.test, www.shop.test]\n    canonical_host: shop.test\n  admin:\n    command: ./admin\n    hosts: [admin.test, www.admin.test]\n    canonical_host: admin.test\n"), filepath.Join(dir, config.FileName), config.Default().Defaults)
+	app, err := config.ParseApp([]byte("procfile:\n  shop:\n    command: ./shop\n    host: [shop.test, www.shop.test]\n    canonical_host: shop.test\n  admin:\n    command: ./admin\n    host: [admin.test, www.admin.test]\n    canonical_host: admin.test\n"), filepath.Join(dir, config.FileName), config.Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
 	}

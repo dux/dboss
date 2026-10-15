@@ -23,7 +23,7 @@ func rollConfig(t *testing.T, portRange [2]int, webYAML, extraYAML string) *Mana
 	if err != nil {
 		t.Fatal(err)
 	}
-	patched := strings.Replace(string(data), "    hosts: [demo.test]\n", "    hosts: [demo.test]\n"+webYAML, 1)
+	patched := strings.Replace(string(data), "    host: [demo.test]\n", "    host: [demo.test]\n"+webYAML, 1)
 	if err := os.WriteFile(path, []byte(patched), 0o640); err != nil {
 		t.Fatal(err)
 	}

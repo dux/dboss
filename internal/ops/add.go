@@ -128,14 +128,15 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 }
 
 // overrideHost writes the checkout's config to dboss.local.yaml with host as the single web
-// process's only host. The local file replaces the committed one, so it is a full copy, and the
-// canonical host goes because it must be one of the hosts.
+// process's only host. The local file replaces the committed one, so it is a full copy. The
+// subdomain and domain go because host replaces them, and the canonical host because it must be
+// one of the hosts.
 func overrideHost(app config.App, data []byte, path, host string, defaults config.Defaults) (config.App, error) {
 	if len(app.WebProcesses) != 1 {
 		return config.App{}, fault.Invalidf("a host override needs exactly one web process, the app has %d", len(app.WebProcesses))
 	}
 	web := app.WebProcesses[0].Name
-	patched, err := config.PatchYAML(string(data), map[string]any{"procfile." + web + ".hosts": []string{config.NormalizeHost(host)}}, []string{"procfile." + web + ".canonical_host"})
+	patched, err := config.PatchYAML(string(data), map[string]any{"procfile." + web + ".host": []string{config.NormalizeHost(host)}}, []string{"procfile." + web + ".subdomain", "procfile." + web + ".canonical_host", "domain"})
 	if err != nil {
 		return config.App{}, fmt.Errorf("cannot set the host of procfile.%s: %w", web, err)
 	}

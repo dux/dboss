@@ -12,8 +12,8 @@ const devFile = `procfile:
   web:
     command: ./server -e production
     command_dev: ./server -e development
-    hosts: [demo.test]
-    hosts_dev: [demo.lvh.me]
+    host: [demo.test]
+    host_dev: [demo.lvh.me]
 idle_stop: 6h
 idle_stop_dev: 0s
 proxy:
@@ -41,7 +41,7 @@ func TestDevSuffixOverridesInSingleAppMode(t *testing.T) {
 	if web.Command != "./server -e development" {
 		t.Fatalf("procfile.web.command = %q", web.Command)
 	}
-	if got := strings.Join(web.Hosts, ","); got != "demo.lvh.me" {
+	if got := strings.Join(web.Host, ","); got != "demo.lvh.me" {
 		t.Fatalf("procfile.web.hosts = %q", got)
 	}
 	if cfg.App.IdleStop != 0 {
@@ -66,7 +66,7 @@ func TestDevSuffixDroppedUnderHost(t *testing.T) {
 	if web.Command != "./server -e production" {
 		t.Fatalf("procfile.web.command = %q", web.Command)
 	}
-	if got := strings.Join(web.Hosts, ","); got != "demo.test" {
+	if got := strings.Join(web.Host, ","); got != "demo.test" {
 		t.Fatalf("procfile.web.hosts = %q", got)
 	}
 	if app.IdleStop.Value() != 6*time.Hour {
@@ -96,7 +96,7 @@ func TestDevSuffixDroppedInHostFile(t *testing.T) {
 // A _dev key with no base key sets the value in dev and is absent otherwise.
 func TestDevSuffixWithoutBaseKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
-	document := "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\nheaders_dev:\n  X-Robots-Tag: noindex\n"
+	document := "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\nheaders_dev:\n  X-Robots-Tag: noindex\n"
 	writeConfigFile(t, path, document)
 	cfg, err := Load(path)
 	if err != nil {
@@ -133,7 +133,7 @@ func TestDevSuffixStillRejectsUnknownKey(t *testing.T) {
 func TestDevSuffixExpandsEnvAndIgnoresOrder(t *testing.T) {
 	t.Setenv("DBOSS_TEST_PORT", ":4321")
 	path := filepath.Join(t.TempDir(), FileName)
-	writeConfigFile(t, path, "proxy:\n  listen_dev: $DBOSS_TEST_PORT\n  listen: \":80\"\nprocfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n")
+	writeConfigFile(t, path, "proxy:\n  listen_dev: $DBOSS_TEST_PORT\n  listen: \":80\"\nprocfile:\n  web:\n    command: ./server\n    host: [demo.test]\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestDevSuffixExpandsEnvAndIgnoresOrder(t *testing.T) {
 // it: the console signs a loopback request in by itself.
 func TestDevSessionAlwaysHasAConsole(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
-	writeConfigFile(t, path, "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n")
+	writeConfigFile(t, path, "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestDevSessionAlwaysHasAConsole(t *testing.T) {
 // loopback one. A host without admins is still rejected.
 func TestDevConsoleHostNeedsNoAdminEmails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
-	writeConfigFile(t, path, "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\nmanagement:\n  host: dboss.lvh.me\n")
+	writeConfigFile(t, path, "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\nmanagement:\n  host: dboss.lvh.me\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)

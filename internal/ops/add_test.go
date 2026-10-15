@@ -68,7 +68,7 @@ func addRuntime(t *testing.T, existing ...supervisor.Snapshot) *fakeRuntime {
 	}}
 }
 
-const webApp = "procfile:\n  web:\n    command: ./server\n    hosts: [shop.example.com]\n    canonical_host: shop.example.com\n"
+const webApp = "procfile:\n  web:\n    command: ./server\n    host: [shop.example.com]\n    canonical_host: shop.example.com\n"
 
 func TestAddClonesLoadsAndStarts(t *testing.T) {
 	source := sourceRepo(t, map[string]string{"dboss.yaml": webApp})
@@ -104,8 +104,23 @@ func TestAddHostOverrideWritesLocalFile(t *testing.T) {
 	}
 }
 
+func TestAddHostOverrideReplacesSubdomain(t *testing.T) {
+	source := sourceRepo(t, map[string]string{"dboss.yaml": "domain: shop.example.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n"})
+	runtime := addRuntime(t)
+	if _, err := New(runtime, nil, nil, nil, nil, nil).Do(Request{Method: ActionAdd, Repo: source, App: "store", Host: "store.box.test"}); err != nil {
+		t.Fatal(err)
+	}
+	app, err := config.LoadApp(filepath.Join(runtime.host.Apps, "store", config.LocalFileName), runtime.host.Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.Hosts) != 1 || app.Hosts[0] != "store.box.test" || app.Domain != "" {
+		t.Fatalf("hosts = %v domain = %q", app.Hosts, app.Domain)
+	}
+}
+
 func TestAddRefusesAndCleansUp(t *testing.T) {
-	twoWebs := "procfile:\n  web:\n    command: ./a\n    hosts: [a.test]\n  api:\n    command: ./b\n    hosts: [b.test]\n"
+	twoWebs := "procfile:\n  web:\n    command: ./a\n    host: [a.test]\n  api:\n    command: ./b\n    host: [b.test]\n"
 	cases := []struct {
 		name    string
 		files   map[string]string

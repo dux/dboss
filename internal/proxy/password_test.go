@@ -16,7 +16,7 @@ import (
 func passwordSnapshot(t *testing.T, password string) supervisor.Snapshot {
 	t.Helper()
 	dir := t.TempDir()
-	data := "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n  admin:\n    command: ./server\n    hosts: [admin.demo.test]\n    password: " + password + "\n"
+	data := "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n  admin:\n    command: ./server\n    host: [admin.demo.test]\n    password: " + password + "\n"
 	app, err := config.ParseApp([]byte(data), filepath.Join(dir, config.FileName), config.Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestPasswordGate(t *testing.T) {
 
 func TestBasicAuthPerWebProcess(t *testing.T) {
 	dir := t.TempDir()
-	data := "procfile:\n  web:\n    command: ./server\n    hosts: [demo.test]\n    basic_auth: {}\n  admin:\n    command: ./server\n    hosts: [admin.demo.test]\nbasic_auth:\n  alice: secret\n"
+	data := "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n    basic_auth: {}\n  admin:\n    command: ./server\n    host: [admin.demo.test]\nbasic_auth:\n  alice: secret\n"
 	app, err := config.ParseApp([]byte(data), filepath.Join(dir, config.FileName), config.Default().Defaults)
 	if err != nil {
 		t.Fatal(err)

@@ -57,10 +57,10 @@ func tokenIn(presented string, accepted ...string) bool {
 	return found
 }
 
-// clientIP keys the throttle: the console shares the proxy's listener, so behind Cloudflare the
+// clientIP keys the throttle: the console shares the proxy's listener, so through Cloudflare the
 // connection is the edge and the visitor is CF-Connecting-IP, as for the proxy.
 func (h *Handler) clientIP(r *http.Request) string {
-	return httpx.ClientIP(r, h.cloudflare)
+	return httpx.ClientIP(r)
 }
 
 // tokenRetry is the message of a refused check, matching the Retry-After checkToken set.

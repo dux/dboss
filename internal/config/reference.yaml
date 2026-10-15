@@ -147,10 +147,11 @@ proxy:
   # `dboss start --https`.
   listen: ":80"
 
-  # The box sits behind Cloudflare: only Cloudflare's published ranges
+  # The box sits behind Cloudflare only: just Cloudflare's published ranges
   # (https://www.cloudflare.com/ips/, built in) and loopback may connect, everyone else gets 403,
-  # and the client address comes from CF-Connecting-IP. So the origin cannot be reached around
-  # Cloudflare and the header cannot be spoofed. false (the default) uses the connection's own
+  # so the origin cannot be reached around Cloudflare. Leave it false when some hostname is
+  # DNS-only. Either way a connection from those ranges has its client address read from
+  # CF-Connecting-IP, which nobody else can set there, and any other connection uses its own
   # address.
   cloudflare: false
 
@@ -325,18 +326,23 @@ defaults:
   # When basic_auth is set too, both must pass. Applies to static files too.
   password: ""
 
-  # CIDRs allowed to reach the app; empty = everyone. Behind proxy.cloudflare the client address
-  # is CF-Connecting-IP, not the Cloudflare edge address.
+  # CIDRs allowed to reach the app; empty = everyone. Through Cloudflare the client address is
+  # CF-Connecting-IP, not the Cloudflare edge address.
   allow_ips: []
   #   - 10.0.0.0/8
 
   # Path patterns answered with 403 before the app is contacted, matched against the path without
-  # its query string and ignoring case. *.php refuses any path ending in .php, /admin/* refuses
-  # /admin and everything under it, and a plain /path is exact. Empty refuses nothing.
+  # its query string and ignoring case. *.php refuses any path ending in .php, *text* any path
+  # containing text (*//* any double slash), /admin/* refuses /admin and everything under it, and
+  # a plain /path is exact. A bare segment matches any one segment of the path: .git exactly
+  # (/.git/config, /repo/.git/HEAD), .env* as a prefix (/.env, /.env.local, /api/.env.prod). A
+  # blocked request is counted on the Blocked requests page and never written to the request log.
+  # Empty refuses nothing.
   deny: []
   #   - "*.php"
   #   - /admin/*
   #   - /server-status
+  #   - .env*
 
   # Response headers added to every app and static response. An empty value removes the
   # header, which is how an app drops X-Powered-By. Redirects, auth challenges and error
@@ -704,8 +710,8 @@ rate_limit:
   #   30
   # Sliding window the requests are counted over; at least 1s, at most 24h.
   window: 60s
-  # Path patterns the limit applies to, like deny: *.ext is a suffix, /path/* a subtree and
-  # /path exact. Empty means every path.
+  # Path patterns the limit applies to, like deny: *.ext is a suffix, *text* a substring, /path/*
+  # a subtree, /path exact and a bare name or name* any one segment. Empty means every path.
   paths: []
   #   - /api/*
   # Request methods the limit applies to, case-insensitive. Empty means every method.

@@ -177,7 +177,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 		closeRegistry(registry)
 		return nil, err
 	}
-	harness, err := vibe.New(service, cfg.StateDir, cfg.RuntimeDir, cfg.Proxy.Cloudflare, console.Assets())
+	harness, err := vibe.New(service, cfg.StateDir, cfg.RuntimeDir, console.Assets())
 	if err != nil {
 		notifier.Close()
 		manager.Close()

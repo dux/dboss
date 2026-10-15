@@ -47,8 +47,8 @@ type Web struct {
 	BasicAuth        map[string]string `yaml:"basic_auth" json:"-"`
 	Password         string            `yaml:"password" json:"-"`
 	AllowIPs         List              `yaml:"allow_ips" json:"allow_ips"`
-	// Deny refuses a request path with 403 before the app is contacted: *.ext matches a suffix
-	// and /path/* a subtree.
+	// Deny refuses a request path with 403 before the app is contacted: *.ext matches a suffix,
+	// *text* a substring and /path/* a subtree.
 	Deny      List              `yaml:"deny" json:"deny"`
 	Headers   map[string]string `yaml:"headers" json:"headers"`
 	Alerts    Alerts            `yaml:"alerts" json:"alerts"`

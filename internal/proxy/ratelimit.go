@@ -141,7 +141,7 @@ func (h *Handler) rateLimit(w http.ResponseWriter, r *http.Request, app supervis
 		next()
 		return
 	}
-	ip := httpx.ClientIP(r, h.cfg.Proxy.Cloudflare)
+	ip := httpx.ClientIP(r)
 	if ip == "" {
 		next()
 		return

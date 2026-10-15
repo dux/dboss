@@ -191,8 +191,8 @@
     deny:
       - "*.php"
       - /admin/*
-      - /.git/*
-      - /.env
+      - .git              # any segment: /.git/config, /repo/.git/HEAD
+      - .env*             # any segment prefix: /.env, /api/.env.local
     `,
     logging: `
     # dboss-server.yaml
@@ -606,9 +606,9 @@
           <li>A session is issued for one app: it opens neither another app nor the console.</li>
           <li><code>basic_auth</code> and <code>password</code> are independent: when more than one is set, all must pass.</li>
         </ul>
-        <p><code>basic_auth</code> puts HTTP basic auth in front of the whole app, static files included. It maps a user to a plain password or a bcrypt hash printed by <code>dboss password</code>. <code>password</code> is one shared password, plain or a bcrypt hash, asked on the dboss <code>password</code> page; the right one sets a signed cookie lasting <code>session_ttl</code>, and changing it signs everyone out. Checks from one client IP are spaced 3 seconds apart, so guessing is slow; past 30 seconds of queue the form answers <code>429</code>. A web procfile entry may set its own <code>basic_auth</code> or <code>password</code> to replace the app's for that process only, and an empty value turns the gate off there. <code>allow_ips</code> limits the app to a list of CIDRs (address ranges such as <code>10.0.0.0/8</code>), matched against the client address. <code>deny</code> refuses paths with <code>403</code> before the app is contacted: <code>*.php</code> matches any path ending in <code>.php</code>, <code>/admin/*</code> the path and its subtree, and a plain <code>/path</code> is exact, all case-insensitive.</p>
+        <p><code>basic_auth</code> puts HTTP basic auth in front of the whole app, static files included. It maps a user to a plain password or a bcrypt hash printed by <code>dboss password</code>. <code>password</code> is one shared password, plain or a bcrypt hash, asked on the dboss <code>password</code> page; the right one sets a signed cookie lasting <code>session_ttl</code>, and changing it signs everyone out. Checks from one client IP are spaced 3 seconds apart, so guessing is slow; past 30 seconds of queue the form answers <code>429</code>. A web procfile entry may set its own <code>basic_auth</code> or <code>password</code> to replace the app's for that process only, and an empty value turns the gate off there. <code>allow_ips</code> limits the app to a list of CIDRs (address ranges such as <code>10.0.0.0/8</code>), matched against the client address. <code>deny</code> refuses paths with <code>403</code> before the app is contacted: <code>*.php</code> matches any path ending in <code>.php</code>, <code>/admin/*</code> the path and its subtree, a plain <code>/path</code> is exact, and a bare segment like <code>.env*</code> (a prefix) or <code>.git</code> (exact) matches any one segment of the path, so <code>.env*</code> also refuses <code>/api/.env.local</code>, all case-insensitive.</p>
         <p><code>rate_limit</code> counts requests per client IP over a sliding <code>window</code> and only counts a request that matches both <code>methods</code> and <code>paths</code> (patterns like <code>deny</code>); an empty list matches everything for its dimension, and <code>requests: 0</code> turns it off. Over the cap the proxy answers <code>429</code> with <code>Retry-After</code>, and a browser GET gets the <code>rate_limited</code> page. The management console is never limited.</p>
-        <p><code>proxy.cloudflare: true</code> accepts connections only from Cloudflare's published ranges, built into dboss, and from the box itself; anything else gets <code>403</code>. The client address then comes from <code>CF-Connecting-IP</code>, which only Cloudflare can set. Without it the client address is the connection's own.</p>
+        <p>A connection from Cloudflare's published ranges, built into dboss, or from the box itself takes its client address from <code>CF-Connecting-IP</code>, which nobody else can set there; any other connection uses its own address. <code>proxy.cloudflare: true</code> also refuses every connection outside those ranges with <code>403</code>, so the origin cannot be reached around Cloudflare; leave it off while some hostname is DNS-only.</p>
         <ul>
           <li>A request with no or wrong credentials, or without a sign-in session, stops at the auth stage and never reaches the wake stage, so a crawler or scanner cannot start a protected sleeping app. The first request with valid credentials wakes it.</li>
           <li>With no <code>basic_auth</code> or <code>password</code> any request wakes a stopped app, except an <code>autostart: button</code> app, which only its start button's POST wakes.</li>
@@ -791,7 +791,7 @@
         <db-preview-yaml :text="state.examples.blocked" />
         <h3>Details</h3>
         <ul>
-          <li><code>deny</code> refuses a request with <code>403</code> at the deny stage, before auth and before the app is contacted. A pattern is a suffix (<code>*.php</code>), a subtree (<code>/admin/*</code>) or an exact path (<code>/wp-login.php</code>), all case-insensitive.</li>
+          <li><code>deny</code> refuses a request with <code>403</code> at the deny stage, before auth and before the app is contacted. A pattern is a suffix (<code>*.php</code>), a substring (<code>*//*</code>, <code>*/wp-includes/*</code>), a subtree (<code>/admin/*</code>), an exact path (<code>/wp-login.php</code>) or a path segment anywhere in the path (<code>.env*</code> as a prefix, <code>.git</code> exact), all case-insensitive. A blocked request is counted under Blocked requests and never written to the request log.</li>
           <li>Each refused path is counted in the host's <code>blocked</code> table (<code>path</code>, <code>count</code>), aggregated across every app. The page shows the biggest 200 with each path's share of the total.</li>
           <li>The counters live with the audit rows in <code>_dboss</code> and are never pruned, so they outlive the per-app request retention.</li>
           <li>The page is host-wide, not per app: a path blocked on any host adds to the same count. It is read-only and writes no audit row.</li>
@@ -819,7 +819,7 @@
           <li><code>log_retention</code> (default two weeks) bounds how far back the numbers go; with <code>log_retention: 0</code> the app has no request log and the tab stays empty.</li>
           <li>Latency quantiles are computed over the newest 50,000 requests of the range. Counts are exact.</li>
           <li>A path needs 5 requests in the range to show up under slowest paths, so one slow outlier does not top the list.</li>
-          <li>Countries come from Cloudflare's <code>CF-IPCountry</code> header, and client IPs from <code>CF-Connecting-IP</code> behind <code>proxy.cloudflare</code>.</li>
+          <li>Countries come from Cloudflare's <code>CF-IPCountry</code> header, and client IPs from <code>CF-Connecting-IP</code> on connections from Cloudflare.</li>
           <li>Long-lived pubsub connections are not request rows, so they never skew the latency.</li>
         </ul>
       </section>

@@ -33,7 +33,7 @@ var keySpecs = map[string]KeySpec{
 
 	// --- Proxy ---
 	"proxy.listen":     {Block: "proxy", Name: "Listen addresses", Description: "one or more addresses to listen on; owns port 80 and routes every request to an app, empty disables the proxy", Example: "127.0.0.1:8080"},
-	"proxy.cloudflare": {Block: "proxy", Name: "Behind Cloudflare", Description: "accept connections only from Cloudflare's published ranges (and loopback) and read the client address from CF-Connecting-IP"},
+	"proxy.cloudflare": {Block: "proxy", Name: "Behind Cloudflare", Description: "accept connections only from Cloudflare's published ranges (and loopback); leave off when a hostname is DNS-only. A connection from those ranges always takes its client address from CF-Connecting-IP"},
 	"proxy.tls.listen": {Block: "proxy", Name: "TLS listener", Description: "address for the built-in HTTPS listener with Let's Encrypt certificates; empty means TLS terminates elsewhere (Cloudflare)", Example: ":443"},
 	"proxy.tls.email":  {Block: "proxy", Name: "ACME email", Description: "contact email registered with the certificate authority", Example: "ops@example.com"},
 	"proxy.timeout":    {Block: "proxy", Name: "Upstream timeout", Description: "how long an app may take to start responding", Example: "5m"},
@@ -93,7 +93,7 @@ var keySpecs = map[string]KeySpec{
 	"basic_auth":          {Block: "web", Name: "Basic auth users", Description: "HTTP basic auth users to a plain password or a bcrypt hash from dboss password", Example: "{alice: \"$2a$10$...\"}", Secret: true},
 	"password":            {Block: "web", Name: "Password", Description: "one shared password asked on a dboss page before the app, a plain password or a bcrypt hash from dboss password; empty leaves the app open", Example: "\"$2a$10$...\"", Secret: true},
 	"allow_ips":           {Block: "web", Name: "Allowed IPs", Description: "CIDRs allowed to reach the app; empty allows everyone", Example: "[10.0.0.0/8]"},
-	"deny":                {Block: "web", Name: "Denied paths", Description: "path patterns refused with 403 before the app is contacted: *.ext matches a suffix, /path/* a subtree and /path is exact; empty refuses nothing", Example: "[\"*.php\", /admin/*]"},
+	"deny":                {Block: "web", Name: "Denied paths", Description: "path patterns refused with 403 before the app is contacted: *.ext matches a suffix, *text* a substring (*//* any double slash), /path/* a subtree, /path is exact, and a bare segment (.git, or .env* as a prefix) matches any one segment of the path; a blocked request stays out of the request log; empty refuses nothing", Example: "[\"*.php\", /admin/*]"},
 	"headers":             {Block: "web", Name: "Response headers", Description: "response headers added to every response; an empty value removes one", Example: "{X-Frame-Options: DENY}"},
 	"rate_limit.requests": {Block: "web", Name: "Rate limit", Description: "requests allowed over window per client IP for requests matching paths and methods; 0 disables", Example: "30"},
 	"rate_limit.window":   {Block: "web", Name: "Rate window", Description: "sliding window the limit is counted over", Example: "60s"},

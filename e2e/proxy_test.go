@@ -84,7 +84,7 @@ func TestStoppedAppStillServesStaticAndWakesOnRequest(t *testing.T) {
 }
 
 func TestDenyListRefusesScannerPaths(t *testing.T) {
-	for _, path := range []string{"/wp-login.php", "/.env", "/wp-admin/setup", "/.git/config"} {
+	for _, path := range []string{"/wp-login.php", "/.env", "/api/.env.local", "/wp-admin/setup", "/.git/config", "//x", "/blog/wp-includes/x.js"} {
 		expectStatus(t, get(t, "bun.lvh.me", path), http.StatusForbidden)
 	}
 	// The counters land with the next batch flush of the host database.

@@ -159,9 +159,9 @@ func TestCanonicalHostPerWebProcess(t *testing.T) {
 
 func TestAllowIPsUsesClientIPHeader(t *testing.T) {
 	handler := featureHandler()
-	handler.cfg.Proxy.Cloudflare = true
 	snapshot := featureSnapshot(t, "allow_ips: [10.0.0.0/8]\n")
 	request := httptest.NewRequest(http.MethodGet, "http://demo.test/", nil)
+	request.RemoteAddr = "173.245.48.9:1234"
 	request.Header.Set("Accept", "text/html")
 	request.Header.Set("CF-Connecting-IP", "203.0.113.1")
 	response := serveFeature(t, handler, snapshot, request)
@@ -172,6 +172,11 @@ func TestAllowIPsUsesClientIPHeader(t *testing.T) {
 	if response := serveFeature(t, handler, snapshot, request); response.Code == http.StatusForbidden {
 		t.Fatal("allowed address was rejected")
 	}
+	direct := request.Clone(request.Context())
+	direct.RemoteAddr = "198.51.100.7:1234"
+	if response := serveFeature(t, handler, snapshot, direct); response.Code != http.StatusForbidden {
+		t.Fatalf("a direct client must not pick its address through CF-Connecting-IP: %d", response.Code)
+	}
 	request.Header.Set("CF-Connecting-IP", "203.0.113.1")
 	request.Header.Del("Accept")
 	if response := serveFeature(t, handler, snapshot, request); response.Code != http.StatusForbidden || response.Body.Len() != 0 {
@@ -180,7 +185,7 @@ func TestAllowIPsUsesClientIPHeader(t *testing.T) {
 }
 
 func TestDenyBlocksPaths(t *testing.T) {
-	snapshot := featureSnapshot(t, "deny: [\"*.php\", /admin/*, /server-status]\n")
+	snapshot := featureSnapshot(t, "deny: [\"*.php\", /admin/*, /server-status, \".env*\", .git, \"*//*\", \"*/wp-includes/*\"]\n")
 	get := func(path string, html bool) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodGet, "http://demo.test"+path, nil)
 		request.Host = "demo.test"
@@ -189,7 +194,7 @@ func TestDenyBlocksPaths(t *testing.T) {
 		}
 		return serveFeature(t, featureHandler(), snapshot, request)
 	}
-	for _, path := range []string{"/index.php", "/deep/nested/shell.PHP", "/admin", "/admin/users", "/server-status"} {
+	for _, path := range []string{"/index.php", "/deep/nested/shell.PHP", "/admin", "/admin/users", "/server-status", "/.env", "/.ENV.local", "/api/.env.prod", "/.git", "/repo/.git/config", "//", "//x", "/a//b", "/wp-includes/x.js", "/blog/WP-Includes/js/x.js"} {
 		response := get(path, true)
 		if response.Code != http.StatusForbidden {
 			t.Errorf("%s should be blocked, got %d", path, response.Code)
@@ -201,7 +206,7 @@ func TestDenyBlocksPaths(t *testing.T) {
 	if response := get("/index.php", false); response.Code != http.StatusForbidden || response.Body.Len() != 0 {
 		t.Errorf("non-html client should get an empty 403: %d %q", response.Code, response.Body.String())
 	}
-	for _, path := range []string{"/index.html", "/server-status-page", "/administrator"} {
+	for _, path := range []string{"/index.html", "/server-status-page", "/administrator", "/my.env", "/docs/env", "/.github/x", "/a.git", "/", "/a/b", "/wp-includes", "/my-wp-includes/x"} {
 		if response := get(path, true); response.Code == http.StatusForbidden {
 			t.Errorf("%s should not be blocked", path)
 		}
@@ -215,8 +220,11 @@ func TestDenyRecordsBlockedPath(t *testing.T) {
 	snapshot := featureSnapshot(t, "deny: [\"*.php\"]\n")
 	request := httptest.NewRequest(http.MethodGet, "http://demo.test/deep/x.php?q=1", nil)
 	request.Host = "demo.test"
-	if response := serveFeature(t, handler, snapshot, request); response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d", response.Code)
+	response := httptest.NewRecorder()
+	wrapped := &responseRecorder{ResponseWriter: response, status: http.StatusOK}
+	handler.serve(wrapped, request, snapshot)
+	if response.Code != http.StatusForbidden || !wrapped.suppressed {
+		t.Fatalf("status = %d, kept out of the request log = %v", response.Code, wrapped.suppressed)
 	}
 	if len(recorder.blocked) != 1 || recorder.blocked[0] != "/deep/x.php" {
 		t.Fatalf("blocked = %v", recorder.blocked)

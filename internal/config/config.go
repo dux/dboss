@@ -72,8 +72,8 @@ func (t Tokens) WebhookToken() string {
 // Proxy has one listener per Listen address; every listener serves the same routing.
 type Proxy struct {
 	Listen List `yaml:"listen" json:"listen"`
-	// Cloudflare accepts connections from Cloudflare's published ranges (and loopback) only and
-	// reads the client address from CF-Connecting-IP.
+	// Cloudflare accepts connections from Cloudflare's published ranges (and loopback) only. The
+	// client address of such a connection is CF-Connecting-IP whether or not this is set.
 	Cloudflare bool     `yaml:"cloudflare" json:"cloudflare"`
 	TLS        ProxyTLS `yaml:"tls" json:"tls"`
 	Timeout    Duration `yaml:"timeout" json:"timeout"`

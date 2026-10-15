@@ -179,7 +179,7 @@ The startup banner names the address every app ended up on, so when the demo fal
 * http://button.lvh.me - Bun app with `autostart: button`; it serves a start button and only its POST brings it up, so a crawler or favicon request never starts it (stop it in the console to see the page again); behind `auth` with a pubsub chat at `/chat`
 * http://scratch.lvh.me - `deletable` throwaway app behind `basic_auth` (`demo` / `demo`) and `allow_ips`; destroy it to see the destroy step, `git checkout demo/apps/scratch` brings it back
 
-The demo host file blocks common scanner targets for every app (`defaults.deny`: `*.php`, `*.asp`, `*.aspx`, `*.jsp`, `*.cgi`, `/.git/*`, `/.env`, `/wp-admin/*`, `/wp-content/*`, `/cgi-bin/*`, `/phpmyadmin`), so `curl -i http://bun.lvh.me/wp-login.php` answers `403`.
+The demo host file blocks common scanner targets for every app (`defaults.deny`: `*.php`, `*.asp`, `*.aspx`, `*.jsp`, `*.cgi`, `.git`, `.env*`, `*//*`, `/wp-admin/*`, `/wp-content/*`, `*/wp-includes/*`, `/cgi-bin/*`, `/phpmyadmin`), so `curl -i http://bun.lvh.me/wp-login.php` answers `403`.
 
 `make demo-watch` rebuilds and restarts on source changes through `watchexec`.
 `make seed` recreates the demo's SQLite databases and event store from scratch with dummy data - a week of requests and a day of logs per app, Parquet analytics events behind the bun app's 4-step `onboarding` funnel (filter the Events tab by `plan:` or `page:` tags), plus exception groups with per-minute counts on the first app, and audit rows, deny counters and daemon log lines in the host database - so a fresh console's Overview, Traffic, Logs, Exceptions, Events and Audit views are populated. Stop the running demo first; it deletes the databases it seeds (`go run ./internal/demo/seed --dir ./demo/.dboss/log`).
@@ -976,10 +976,11 @@ The right password sets a signed, host-only cookie lasting `session_ttl`, changi
 Password checks from one client IP are spaced 3 seconds apart, across every app and kept in memory only; parallel guesses queue, and past 30 seconds of queue the check answers `429` at once.
 Both keys are app keys, and a web procfile entry may set its own `basic_auth` or `password` to replace the app's for that web process only; an empty value (`basic_auth: {}`, `password: ""`) turns the gate off there.
 `allow_ips` limits the app to a list of CIDRs (address ranges such as `10.0.0.0/8`), matched against the client address.
-`deny` refuses paths with `403` before the app is contacted: `*.php` matches any path ending in `.php`, `/admin/*` the path and everything under it, and a plain `/path` is exact, all case-insensitive.
-Each blocked path is counted once in the reserved host database (`log/_dboss/dboss.sqlite`, table `blocked`: `path`, `count`), aggregated across apps and over time.
+`deny` refuses paths with `403` before the app is contacted: `*.php` matches any path ending in `.php`, `*text*` any path containing `text` (`*//*` refuses every double slash, `*/wp-includes/*` that folder at any depth), `/admin/*` the path and everything under it, a plain `/path` is exact, and a bare path segment matches anywhere in the path (`.env*` as a prefix covers `/.env`, `/.env.local` and `/api/.env.prod`; `.git` is exact and covers `/.git/config` and `/repo/.git/HEAD`), all case-insensitive.
+Each blocked path is counted once in the reserved host database (`log/_dboss/dboss.sqlite`, table `blocked`: `path`, `count`), aggregated across apps and over time, and never written to the app's request log, so scanners stay out of Traffic and Logs.
 The Logs page has a **Blocked requests** button that opens the `#/blocked` page, listing those paths with their request count and share of the total (`GET /ui/log/blocked`).
-Behind Cloudflare set `proxy.cloudflare: true` in the host file: only Cloudflare's published ranges (built in) and the box itself may connect, and the client address comes from `CF-Connecting-IP`, which then cannot be spoofed.
+A connection from Cloudflare's published ranges (built in) or the box itself takes its client address from `CF-Connecting-IP`, which nobody else can set there; any other connection uses its own address, so a host with some DNS-only hostnames sees real visitors on both paths.
+When every hostname goes through Cloudflare, set `proxy.cloudflare: true` in the host file so only those ranges and the box itself may connect, and the origin cannot be reached around Cloudflare.
 
 ```yaml
 basic_auth:
@@ -991,6 +992,7 @@ deny:
   - "*.php"
   - /admin/*
   - /server-status
+  - .env*               # any path segment starting with .env
 ```
 
 ```yaml
@@ -1114,7 +1116,7 @@ Single-app mode cannot destroy itself, and retained logs, audit rows and config 
 
 On the way to an app the proxy adds `X-Forwarded-Proto` and `X-Forwarded-Host` when they are missing; whatever Cloudflare sent is left untouched.
 `X-Real-IP` is always set to the client address dboss resolved, replacing any the client sent.
-A `CF-Connecting-IP` is passed on only when the connection came from Cloudflare's ranges (or the box itself, e.g. `cloudflared`) or `proxy.cloudflare` is set; otherwise the client wrote it and it is dropped.
+A `CF-Connecting-IP` is passed on only when the connection came from Cloudflare's ranges (or the box itself, e.g. `cloudflared`); otherwise the client wrote it and it is dropped.
 `X-Forwarded-For` is appended by the reverse proxy.
 
 An app's processes start with the web processes (the ones with `host` or `subdomain`) first, then the rest in name order, so a web process that expects other services to be up still gets that.

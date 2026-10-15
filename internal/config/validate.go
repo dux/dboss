@@ -247,7 +247,7 @@ func validateWeb(w Web) error {
 	if _, err := parsePrefixes(w.AllowIPs); err != nil {
 		return err
 	}
-	if err := validateDeny(w.Deny); err != nil {
+	if err := validatePathPatterns("deny", w.Deny); err != nil {
 		return err
 	}
 	if err := validateRateLimit(w.RateLimit); err != nil {
@@ -283,28 +283,39 @@ func validateWeb(w Web) error {
 	return validateAuthCog(w)
 }
 
-// validateDeny checks the denylist patterns: *.ext for a suffix match, or a /path, where a trailing
-// /* also covers the subtree.
-func validateDeny(patterns []string) error {
+// validatePathPatterns checks deny-style path patterns: *.ext for a suffix, *text* for any path
+// containing text, /path for an exact path, /path/* for a path and everything under it, and a
+// bare segment (name, or name* for a prefix) matched against every segment of the path, so .env*
+// covers /api/.env.local.
+func validatePathPatterns(key string, patterns []string) error {
 	for _, pattern := range patterns {
 		if pattern == "" || strings.ContainsAny(pattern, " \t") {
-			return keyErr("deny", "invalid pattern %q", pattern)
+			return keyErr(key, "invalid pattern %q", pattern)
+		}
+		if len(pattern) > 2 && strings.HasPrefix(pattern, "*") && strings.HasSuffix(pattern, "*") {
+			if inner := pattern[1 : len(pattern)-1]; strings.Contains(inner, "*") || inner == "/" {
+				return keyErr(key, "%q must be *text* with no * or a lone / inside", pattern)
+			}
+			continue
 		}
 		if suffix, ok := strings.CutPrefix(pattern, "*."); ok {
 			if suffix == "" || strings.ContainsAny(suffix, "*/") {
-				return keyErr("deny", "%q must be a *.extension", pattern)
+				return keyErr(key, "%q must be a *.extension", pattern)
 			}
 			continue
 		}
 		if !strings.HasPrefix(pattern, "/") {
-			return keyErr("deny", "%q must start with / or *.", pattern)
+			if segment := strings.TrimSuffix(pattern, "*"); segment == "" || strings.ContainsAny(segment, "*/") {
+				return keyErr(key, "%q must be *.ext, *text*, /path, /path/* or a path segment like .env*", pattern)
+			}
+			continue
 		}
 		base := strings.TrimSuffix(pattern, "/*")
 		if strings.Contains(base, "*") {
-			return keyErr("deny", "%q may only use a trailing /* wildcard", pattern)
+			return keyErr(key, "%q may only use a trailing /* wildcard", pattern)
 		}
 		if base == "" || base == "/" {
-			return keyErr("deny", "%q is too broad, name a path", pattern)
+			return keyErr(key, "%q is too broad, name a path", pattern)
 		}
 	}
 	return nil
@@ -376,28 +387,7 @@ func validateRateLimit(r RateLimit) error {
 			return keyErr("rate_limit.methods", "invalid method %q", method)
 		}
 	}
-	for _, pattern := range r.Paths {
-		if pattern == "" || strings.ContainsAny(pattern, " \t") {
-			return keyErr("rate_limit.paths", "invalid pattern %q", pattern)
-		}
-		if suffix, ok := strings.CutPrefix(pattern, "*."); ok {
-			if suffix == "" || strings.ContainsAny(suffix, "*/") {
-				return keyErr("rate_limit.paths", "%q must be a *.extension", pattern)
-			}
-			continue
-		}
-		if !strings.HasPrefix(pattern, "/") {
-			return keyErr("rate_limit.paths", "%q must start with / or *.", pattern)
-		}
-		base := strings.TrimSuffix(pattern, "/*")
-		if strings.Contains(base, "*") {
-			return keyErr("rate_limit.paths", "%q may only use a trailing /* wildcard", pattern)
-		}
-		if base == "" || base == "/" {
-			return keyErr("rate_limit.paths", "%q is too broad, name a path", pattern)
-		}
-	}
-	return nil
+	return validatePathPatterns("rate_limit.paths", r.Paths)
 }
 
 func validateEvents(e Events) error {

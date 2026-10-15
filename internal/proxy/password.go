@@ -44,7 +44,7 @@ func (h *Handler) passwordGate(w http.ResponseWriter, r *http.Request, app super
 		r.Body = http.MaxBytesReader(w, r.Body, passwordMaxForm)
 		to := authcog.SafeRedirect(r.PostFormValue("to"), passwordPath)
 		// Every check books a slot, a passing one too: a visitor signs in once per session.
-		slot, ok := h.passwords.Reserve(httpx.ClientIP(r, h.cfg.Proxy.Cloudflare))
+		slot, ok := h.passwords.Reserve(httpx.ClientIP(r))
 		if !ok {
 			seconds := int(math.Ceil(slot.Wait.Seconds()))
 			w.Header().Set("Retry-After", strconv.Itoa(seconds))

@@ -145,6 +145,7 @@ func TestWakeProxyAndRequestLog(t *testing.T) {
 	}
 	forwarded := httptest.NewRequest(http.MethodGet, "http://demo.test/headers", nil)
 	forwarded.Host = "demo.test"
+	forwarded.RemoteAddr = "173.245.48.9:1234"
 	forwarded.Header.Set("CF-Connecting-IP", "203.0.113.9")
 	forwarded.Header.Set("CF-IPCountry", "not-a-country")
 	forwardedResponse := httptest.NewRecorder()

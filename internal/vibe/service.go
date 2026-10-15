@@ -34,7 +34,6 @@ type Service struct {
 	secrets    *secret.Store
 	stateDir   string
 	runtimeDir string
-	cloudflare bool
 	assets     fs.FS
 	console    fs.FS
 	// guesses throttles MCP token checks per client IP.
@@ -51,14 +50,14 @@ type Service struct {
 
 // New builds the service. console is the management console's static folder, whose fez runtime
 // and stylesheet the panel shares.
-func New(service Ops, stateDir, runtimeDir string, cloudflare bool, console fs.FS) (*Service, error) {
+func New(service Ops, stateDir, runtimeDir string, console fs.FS) (*Service, error) {
 	secrets, err := secret.Open(filepath.Join(stateDir, "vibe-secrets.json"))
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
-		ops: service, secrets: secrets, stateDir: stateDir, runtimeDir: runtimeDir, cloudflare: cloudflare,
+		ops: service, secrets: secrets, stateDir: stateDir, runtimeDir: runtimeDir,
 		assets: staticFS(), console: console, guesses: throttle.New(), client: &http.Client{},
 		ctx: ctx, cancel: cancel, harnesses: map[string]*harness{},
 	}, nil

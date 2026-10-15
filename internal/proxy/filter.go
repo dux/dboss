@@ -50,7 +50,7 @@ func (h *Handler) canonical(w http.ResponseWriter, r *http.Request, app supervis
 }
 
 func (h *Handler) allow(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
-	if !allowed(httpx.ClientIP(r, h.cfg.Proxy.Cloudflare), app.Web.AllowPrefixes()) {
+	if !allowed(httpx.ClientIP(r), app.Web.AllowPrefixes()) {
 		h.forbidden(w, r, app)
 		return
 	}
@@ -58,10 +58,14 @@ func (h *Handler) allow(w http.ResponseWriter, r *http.Request, app supervisor.S
 }
 
 // block answers 403 for a path the app's deny list covers, before auth or the app is contacted.
+// It is counted only in the blocked table, never as a request, so scanners stay out of traffic.
 func (h *Handler) block(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
 	if denied(r.URL.Path, app.Web.Deny) {
 		if h.recorder != nil {
 			_ = h.recorder.RecordBlocked(r.URL.Path)
+		}
+		if recorder, ok := w.(*responseRecorder); ok {
+			recorder.SuppressRecord()
 		}
 		h.blocked(w, r, app)
 		return

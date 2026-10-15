@@ -43,7 +43,7 @@ func (s *Service) serveMCP(w http.ResponseWriter, r *http.Request, app superviso
 		http.Error(w, "mcp token unavailable", http.StatusInternalServerError)
 		return
 	}
-	slot, ok := s.guesses.Reserve(httpx.ClientIP(r, s.cloudflare))
+	slot, ok := s.guesses.Reserve(httpx.ClientIP(r))
 	if !ok {
 		http.Error(w, "too many attempts", http.StatusTooManyRequests)
 		return

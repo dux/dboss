@@ -89,7 +89,7 @@ func newTestService(t *testing.T) (*Service, *fakeOps, string) {
 	t.Helper()
 	dir := t.TempDir()
 	fake := &fakeOps{snapshot: testSnapshot(dir)}
-	service, err := New(fake, t.TempDir(), filepath.Join(dir, ".dboss"), false, nil)
+	service, err := New(fake, t.TempDir(), filepath.Join(dir, ".dboss"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

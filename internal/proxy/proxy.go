@@ -133,7 +133,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if web, ok := snapshot.WebForHost(r.Host); ok {
 		process = web.Name
 	}
-	_ = h.recorder.Record(snapshot.Name, snapshot.LogRetention, logstore.RequestEntry{Time: started, Method: r.Method, Host: r.Host, Path: r.URL.RequestURI(), Status: recorder.status, DurationMS: time.Since(started).Milliseconds(), BytesOut: recorder.bytes, IP: httpx.ClientIP(r, h.cfg.Proxy.Cloudflare), UserAgent: r.UserAgent(), RequestID: requestID, Process: process, Country: country(r)})
+	_ = h.recorder.Record(snapshot.Name, snapshot.LogRetention, logstore.RequestEntry{Time: started, Method: r.Method, Host: r.Host, Path: r.URL.RequestURI(), Status: recorder.status, DurationMS: time.Since(started).Milliseconds(), BytesOut: recorder.bytes, IP: httpx.ClientIP(r), UserAgent: r.UserAgent(), RequestID: requestID, Process: process, Country: country(r)})
 }
 
 // redirectCanonical answers 301 to canonical_host for any other host the app owns, so www never
@@ -149,17 +149,30 @@ func redirectCanonical(w http.ResponseWriter, r *http.Request, canonical string)
 }
 
 func allowed(ip string, prefixes []netip.Prefix) bool {
-	return len(prefixes) == 0 || inPrefixes(ip, prefixes)
+	return len(prefixes) == 0 || httpx.InPrefixes(ip, prefixes)
 }
 
 // denied reports whether a request path matches any deny pattern, ignoring case. A *.ext pattern
-// matches a path suffix, /path/* the path and its whole subtree, and a plain /path is exact.
+// matches a path suffix, *text* any path containing text, /path/* the path and its whole subtree,
+// a plain /path is exact, and a bare name or name* matches any one segment of the path.
 func denied(requestPath string, patterns []string) bool {
 	path := strings.ToLower(requestPath)
 	for _, pattern := range patterns {
 		pattern = strings.ToLower(pattern)
+		if inner, ok := containsPattern(pattern); ok {
+			if strings.Contains(path, inner) {
+				return true
+			}
+			continue
+		}
 		if suffix, ok := strings.CutPrefix(pattern, "*"); ok {
 			if strings.HasSuffix(path, suffix) {
+				return true
+			}
+			continue
+		}
+		if !strings.HasPrefix(pattern, "/") {
+			if segmentDenied(path, pattern) {
 				return true
 			}
 			continue
@@ -171,6 +184,26 @@ func denied(requestPath string, patterns []string) bool {
 			continue
 		}
 		if path == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+// containsPattern returns the text of a *text* pattern, so *//* refuses any double slash.
+func containsPattern(pattern string) (string, bool) {
+	if len(pattern) < 3 || pattern[0] != '*' || pattern[len(pattern)-1] != '*' {
+		return "", false
+	}
+	return pattern[1 : len(pattern)-1], true
+}
+
+// segmentDenied matches a bare pattern against every segment of path: name exactly, or name* as
+// a prefix, so .env* covers /.env.local and /api/.env.
+func segmentDenied(path, pattern string) bool {
+	prefix, isPrefix := strings.CutSuffix(pattern, "*")
+	for _, segment := range strings.Split(path, "/") {
+		if segment == pattern || isPrefix && strings.HasPrefix(segment, prefix) {
 			return true
 		}
 	}
@@ -455,8 +488,7 @@ func replaceAppError(response *http.Response, r *http.Request, snapshot supervis
 // CF-Connecting-IP that did not come from Cloudflare (or the box) is the client's own word and
 // is dropped, and X-Real-IP is always the address dboss resolved, never one a client sent.
 func (h *Handler) applyForwardedHeaders(r *http.Request) {
-	cloudflare := h.cfg.Proxy.Cloudflare || inPrefixes(r.RemoteAddr, cloudflareRanges)
-	if !cloudflare {
+	if !httpx.FromCloudflare(r.RemoteAddr) {
 		r.Header.Del("CF-Connecting-IP")
 	}
 	if r.Header.Get("X-Forwarded-Proto") == "" {
@@ -465,7 +497,7 @@ func (h *Handler) applyForwardedHeaders(r *http.Request) {
 	if r.Header.Get("X-Forwarded-Host") == "" {
 		r.Header.Set("X-Forwarded-Host", r.Host)
 	}
-	if ip := httpx.ClientIP(r, cloudflare); ip != "" {
+	if ip := httpx.ClientIP(r); ip != "" {
 		r.Header.Set("X-Real-IP", ip)
 	} else {
 		r.Header.Del("X-Real-IP")

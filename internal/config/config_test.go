@@ -479,11 +479,17 @@ func TestAppRejectsInvalidWebKeys(t *testing.T) {
 		{"web key under process", "procfile:\n  web: ./server\nprocesses:\n  web:\n    static: ./public\n", "processes.web.static: unknown key"},
 		{"canonical host", "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n    canonical_host: www.demo.test\n", "not one of the hosts"},
 		{"allow ips", "procfile:\n  web: ./server\nallow_ips: [10.0.0.0]\n", "allow_ips"},
-		{"deny bare word", "procfile:\n  web: ./server\ndeny: [php]\n", "deny"},
+		{"deny segment with slash", "procfile:\n  web: ./server\ndeny: [a/b]\n", "deny"},
+		{"deny bare star", "procfile:\n  web: ./server\ndeny: [\"*\"]\n", "deny"},
+		{"deny segment mid star", "procfile:\n  web: ./server\ndeny: [\".e*nv\"]\n", "deny"},
+		{"rate limit segment", "procfile:\n  web: ./server\nrate_limit:\n  paths: [a/b]\n", "rate_limit.paths"},
 		{"deny mid wildcard", "procfile:\n  web: ./server\ndeny: [/a/*/b]\n", "deny"},
 		{"deny empty extension", "procfile:\n  web: ./server\ndeny: [\"*.\"]\n", "deny"},
 		{"deny root", "procfile:\n  web: ./server\ndeny: [/]\n", "deny"},
 		{"deny trailing star", "procfile:\n  web: ./server\ndeny: [/admin*]\n", "deny"},
+		{"deny contains star", "procfile:\n  web: ./server\ndeny: [\"*a*b*\"]\n", "deny"},
+		{"deny contains slash", "procfile:\n  web: ./server\ndeny: [\"*/*\"]\n", "deny"},
+		{"deny double star", "procfile:\n  web: ./server\ndeny: [\"**\"]\n", "deny"},
 		{"basic auth", "procfile:\n  web: ./server\nbasic_auth:\n  alice: \"\"\n", "password is empty"},
 		{"process basic auth", "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n    basic_auth:\n      alice: \"\"\n", "procfile.web.basic_auth.alice: password is empty"},
 		{"password on a worker", "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n  job:\n    command: ./job\n    password: x\n", "procfile.job.password: password is only valid on a web process"},
@@ -511,11 +517,11 @@ func TestAppRejectsInvalidWebKeys(t *testing.T) {
 }
 
 func TestDenyPatternsAreAccepted(t *testing.T) {
-	app, err := ParseApp([]byte("procfile:\n  web: ./server\ndeny: [\"*.php\", /admin/*, /server-status, /index.html]\n"), "dboss.yaml", Default().Defaults)
+	app, err := ParseApp([]byte("procfile:\n  web: ./server\ndeny: [\"*.php\", /admin/*, /server-status, /index.html, \".env*\", .git, \"*//*\", \"*/wp-includes/*\"]\n"), "dboss.yaml", Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(app.Deny) != 4 {
+	if len(app.Deny) != 8 {
 		t.Fatalf("deny = %v", app.Deny)
 	}
 }

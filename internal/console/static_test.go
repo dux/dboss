@@ -117,7 +117,7 @@ func TestFormatLibIsShared(t *testing.T) {
 	if err != nil {
 		t.Fatalf("format.js is not embedded: %v", err)
 	}
-	for _, name := range []string{"bytes", "number", "duration", "ago", "stamp", "time", "percent", "hasTime"} {
+	for _, name := range []string{"bytes", "number", "duration", "ago", "stamp", "time", "percent", "hasTime", "country"} {
 		if !strings.Contains(string(lib), name+"(") {
 			t.Errorf("format.js is missing Human.%s", name)
 		}

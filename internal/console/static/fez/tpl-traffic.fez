@@ -302,7 +302,7 @@
       <section class="card traffic-list traffic-counts">
         {#each state.traffic.countries as row}
           <div class="sys-row">
-            <span class="service-name">{row.key}</span>
+            <span class="service-name">{Human.country(row.key)}</span>
             <span class="num">{Human.number(row.count)}</span>
             <span class="meter"><span style={share(row.count)}></span></span>
           </div>

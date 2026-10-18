@@ -74,4 +74,16 @@ window.Human = {
   percent(value) {
     return `${Math.round(Number(value || 0) * 1000) / 10}%`
   },
+
+  // country renders a CF-IPCountry code as "<flag> Croatia (HR)". T1 is Cloudflare's Tor marker;
+  // XX and codes Intl cannot name stay bare.
+  country(code) {
+    const key = String(code || '').toUpperCase()
+    if (key === 'T1') return `Tor (${key})`
+    if (!/^[A-Z]{2}$/.test(key)) return key || '-'
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(key)
+    if (!name || name === key) return key
+    const flag = String.fromCodePoint(...[...key].map((c) => 0x1f1a5 + c.charCodeAt(0)))
+    return `${flag} ${name} (${key})`
+  },
 }

@@ -70,8 +70,29 @@
     async newChat() {
       try {
         await Vibe.api('new', {})
+        const context = await this.context()
+        if (context) {
+          const draft = this.state.input.value
+          this.state.input.value = context + (draft ? '\n\n' + draft : '')
+          const end = this.state.input.value.length
+          this.state.input.setSelectionRange(end, end)
+          this.state.input.focus()
+        }
       } catch (error) {
         Toast.show(error.message, true)
+      }
+    }
+
+    // A host page may expose window.getAiContext(); the panel is a same-origin frame, so it reads it
+    // on the app window.
+    async context() {
+      try {
+        const host = window.parent !== window ? window.parent : null
+        if (!host || typeof host.getAiContext !== 'function') return ''
+        const value = await host.getAiContext()
+        return typeof value === 'string' ? value : JSON.stringify(value)
+      } catch {
+        return ''
       }
     }
 
@@ -156,7 +177,7 @@
     <form class="vibe-composer" onsubmit="fez.send(event)">
       <textarea fez:this="input" fez:keep="input" rows="3" placeholder="Describe a change, e.g. make the header blue" aria-label="Message" onkeydown="fez.keydown(event)"></textarea>
       <div class="vibe-composer-actions">
-        <button class="btn btn-ghost btn-sm" type="button" onclick="fez.newChat()" disabled={Boolean(globalState.vibeChat.running || !globalState.vibeChat.entries.length)} title="Start a new chat">
+        <button class="btn btn-ghost btn-sm" type="button" onclick="fez.newChat()" disabled={Boolean(globalState.vibeChat.running)} title="Start a new chat">
           <svg class="icon"><use href="#i-plus"></use></svg>
           New chat
         </button>

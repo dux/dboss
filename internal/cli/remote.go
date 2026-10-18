@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"time"
 
 	"dboss/internal/ctl"
 	"dboss/internal/events"
@@ -17,6 +18,9 @@ import (
 	"dboss/internal/pubsub"
 	"dboss/internal/supervisor"
 )
+
+// lifecycleWait is how long the CLI waits on a start or restart over the socket.
+const lifecycleWait = time.Hour
 
 // results names the value each action answers with; an action missing here answers only ok.
 var results = map[string]func() any{
@@ -81,6 +85,11 @@ func (c CLI) remote(command string, args []string) error {
 	request, err := c.parseRemote(command, opts, here)
 	if err != nil || request.Method == "" {
 		return err
+	}
+	// A start or restart waits on lifecycle.start (a build, a migration), which the daemon bounds
+	// with the step's own timeout; the default socket deadline would cut it off first.
+	if request.Method == ops.ActionStart || request.Method == ops.ActionRestart {
+		client.Timeout = lifecycleWait
 	}
 	if request.Method == ops.ActionLogs && opts.follow {
 		return c.follow(client, request)

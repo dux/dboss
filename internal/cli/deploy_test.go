@@ -2,7 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"dboss/internal/ctl"
 )
 
 func writeFiles(t *testing.T, root string, files map[string]string) {
@@ -128,6 +132,46 @@ func TestDeployApplyRemovesOnlyWhatItShipped(t *testing.T) {
 	manifest, _ := os.ReadFile(filepath.Join(root, syncManifestName))
 	if string(manifest) != next {
 		t.Fatalf("manifest = %q", manifest)
+	}
+}
+
+func TestDeployApplyRescansBeforeRestart(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"dboss.yaml": "procfile:\n  web: ./server\n"})
+	// A short directory keeps the socket path under the macOS sun_path limit.
+	dir, err := os.MkdirTemp("", "dboss")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "d.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	methods := make(chan string, 4)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			var request ctl.Request
+			_ = json.NewDecoder(conn).Decode(&request)
+			methods <- request.Method
+			_, _ = conn.Write([]byte(`{"ok":true}` + "\n"))
+			conn.Close()
+		}
+	}()
+
+	var out bytes.Buffer
+	cli := CLI{In: strings.NewReader("dboss.yaml\n"), Out: &out, Err: &out}
+	if err := cli.deployApply([]string{root, "--app", "demo", "--socket", socket}); err != nil {
+		t.Fatal(err)
+	}
+	if first, second := <-methods, <-methods; first != "rescan" || second != "restart" {
+		t.Fatalf("calls = %s, %s; want rescan, restart", first, second)
 	}
 }
 

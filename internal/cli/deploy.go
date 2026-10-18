@@ -297,10 +297,15 @@ func (c CLI) deployApply(args []string) error {
 	if err := fsutil.WriteFile(filepath.Join(root, syncManifestName), []byte(strings.Join(next, "\n")+"\n"), 0o644); err != nil {
 		return err
 	}
-	restart := []string{*app}
+	// The synced dboss.yaml may differ from the spec the daemon holds; restart alone keeps the old one.
+	var scan []string
 	if *socket != "" {
-		restart = append(restart, "--socket", *socket)
+		scan = []string{"--socket", *socket}
 	}
+	if err := c.remote("rescan", scan); err != nil {
+		return fmt.Errorf("rescan: %w", err)
+	}
+	restart := append([]string{*app}, scan...)
 	if err := c.remote("restart", restart); err != nil {
 		return fmt.Errorf("restart %s: %w", *app, err)
 	}

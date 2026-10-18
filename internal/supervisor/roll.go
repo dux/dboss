@@ -13,8 +13,8 @@ import (
 
 // rollState is one rolling restart of a running app. Web instances are replaced one at a time: a
 // new copy starts in a free slot next to the old one, and only once it passes its readiness check
-// does the route move to it and the old copy drain and stop. Workers are stopped and started
-// again, never doubled. Everything runs on the app goroutine and waits on events, so snapshots
+// does the route move to it and the old copy drain and stop. Workers and roll: false web copies
+// are stopped and started again, never doubled. Everything runs on the app goroutine and waits on events, so snapshots
 // and the proxy keep answering while a copy boots or drains.
 type rollState struct {
 	// only limits the roll to one procfile process or one instance; "" rolls the whole app.
@@ -23,7 +23,7 @@ type rollState struct {
 	// current is the new copy waiting for its readiness check, failed why it was killed first.
 	current *process
 	failed  error
-	// waiting is the worker whose exit the next step waits for.
+	// waiting is the stopped copy whose exit the next step waits for.
 	waiting *process
 	// step is the lifecycle start step running ahead of the copies.
 	step *jobState
@@ -38,7 +38,8 @@ type rollStepKind int
 
 const (
 	stepReplace rollStepKind = iota
-	stepWorker
+	// stepStopStart stops the copy, then starts its successor in the freed slot.
+	stepStopStart
 	stepRetire
 )
 
@@ -122,10 +123,14 @@ func (a *appRuntime) planRoll() {
 	}
 	// A restart brings back what the operator stopped, as a start does.
 	for _, web := range a.spec.Config.WebProcesses {
+		kind := stepReplace
+		if !a.spec.Config.Procfile[web.Name].Rolls() {
+			kind = stepStopStart
+		}
 		for _, name := range a.instancesOf(web.Name) {
 			if match(name) {
 				delete(a.held, name)
-				r.steps = append(r.steps, rollStep{instance: name, kind: stepReplace})
+				r.steps = append(r.steps, rollStep{instance: name, kind: kind})
 			}
 		}
 	}
@@ -136,7 +141,7 @@ func (a *appRuntime) planRoll() {
 			}
 			for _, name := range a.instancesOf(proc) {
 				delete(a.held, name)
-				r.steps = append(r.steps, rollStep{instance: name, kind: stepWorker})
+				r.steps = append(r.steps, rollStep{instance: name, kind: stepStopStart})
 			}
 		}
 	}
@@ -160,7 +165,7 @@ func (a *appRuntime) advanceRoll() {
 			if old != nil {
 				a.retire(old)
 			}
-		case stepWorker:
+		case stepStopStart:
 			if old != nil {
 				a.retire(old)
 				r.waiting = old
@@ -170,6 +175,7 @@ func (a *appRuntime) advanceRoll() {
 				a.finishRoll(err)
 				return
 			}
+			a.watch(a.processes[step.instance])
 		case stepReplace:
 			var log *logWriter
 			if old != nil {
@@ -255,8 +261,8 @@ func (a *appRuntime) retire(p *process) {
 	}()
 }
 
-// retired releases a process retire stopped, and starts the successor of a worker the roll waited
-// on.
+// retired releases a process retire stopped, and starts the successor of a stopped copy the roll
+// waited on.
 func (a *appRuntime) retired(p *process) {
 	a.release(p)
 	r := a.roll
@@ -269,6 +275,7 @@ func (a *appRuntime) retired(p *process) {
 			a.finishRoll(err)
 			return
 		}
+		a.watch(a.processes[p.name])
 	}
 	a.advanceRoll()
 }

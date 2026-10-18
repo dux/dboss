@@ -128,6 +128,44 @@ func TestRollingRestartKeepsOldCopyWhenNewOneFails(t *testing.T) {
 	}
 }
 
+func TestRollFalseStopsBeforeStarting(t *testing.T) {
+	manager := rollConfig(t, [2]int{33760, 33780}, "    roll: false\n", "")
+	before, _ := manager.Snapshot("demo")
+
+	if err := manager.Restart("demo"); err != nil {
+		t.Fatal(err)
+	}
+	waitForSupervisorState(t, manager, Running)
+	after, _ := manager.Snapshot("demo")
+	if len(after.Processes) != 1 || after.Processes[0].PID == before.Processes[0].PID {
+		t.Fatalf("web was not replaced: before %+v, after %+v", before.Processes, after.Processes)
+	}
+	// A roll starts the new copy on the spare port; a plain restart frees the slot first.
+	if after.Processes[0].Port != before.Processes[0].Port {
+		t.Fatalf("port moved %d -> %d, the restart rolled", before.Processes[0].Port, after.Processes[0].Port)
+	}
+	if alive(before.Processes[0].PID) {
+		t.Fatal("old copy still running")
+	}
+}
+
+func TestRollFalseKeepsServingWhenStartStepFails(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "started")
+	start := fmt.Sprintf("lifecycle:\n  start: \"if [ -e %s ]; then exit 3; fi; touch %s\"\n", marker, marker)
+	manager := rollConfig(t, [2]int{33780, 33800}, "    roll: false\n", start)
+	before := livePIDs(t, manager)
+
+	if err := manager.Restart("demo"); err == nil || !strings.Contains(err.Error(), "lifecycle start") {
+		t.Fatalf("restart error = %v, want the start step's failure", err)
+	}
+	if after := livePIDs(t, manager); after["web"] != before["web"] || !alive(before["web"]) {
+		t.Fatalf("old copy was stopped: before %v, after %v", before, after)
+	}
+	if _, _, ok := manager.Pick("demo", "web"); !ok {
+		t.Fatal("route to the old copy was lost")
+	}
+}
+
 func TestCountRunsCopiesBehindOneRoute(t *testing.T) {
 	manager := rollConfig(t, [2]int{33740, 33760}, "    count: 3\n", "")
 	waitFor(t, func() bool {

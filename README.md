@@ -657,7 +657,7 @@ dboss deploy git https://dboss.example.com        # token from --token or $DBOSS
 `sync` ships exactly the files git tracks (`git ls-files`), with their working-tree content, uncommitted edits included.
 Untracked and ignored files never leave your machine: `.env`, `.env.local`, `dboss.local.yaml` and scratch files stay local, and a file the box needs is placed there on purpose.
 Untracked files that are not ignored are counted in one `skipped N untracked files` line, so a missing `git add` is visible.
-rsync (`--files-from`) copies the changed files, then `dboss deploy apply` runs on the box over ssh: it removes the files an earlier sync shipped and this one no longer does, records the list in `.dboss-sync` in the app folder, and restarts the app.
+rsync (`--files-from`) copies the changed files, then `dboss deploy apply` runs on the box over ssh: it removes the files an earlier sync shipped and this one no longer does, records the list in `.dboss-sync` in the app folder, rescans so a changed `dboss.yaml` applies, and restarts the app.
 Files that only exist on the box (logs, uploads, `.env.local`, `dboss.local.yaml`) are never touched, and the first sync removes nothing.
 rsync's own `--delete` is not used on purpose: openrsync, the macOS default, removes gitignored files on the receiver with it.
 `-n` shows what would be copied and removed without restarting; the app name is the remote folder name unless `--app` says otherwise.

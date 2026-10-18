@@ -52,6 +52,21 @@ func TestCanonicalHostAcceptsAShorthandPattern(t *testing.T) {
 	}
 }
 
+func TestRollIsAWebProcessKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	defaults := Default().Defaults
+	app, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n    roll: false\n  admin:\n    command: ./admin\n    host: [admin.test]\n"), path, defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.Procfile["web"].Rolls() || !app.Procfile["admin"].Rolls() {
+		t.Fatalf("rolls: web %v admin %v", app.Procfile["web"].Rolls(), app.Procfile["admin"].Rolls())
+	}
+	if _, err := ParseApp([]byte("procfile:\n  web:\n    command: ./server\n    host: [demo.test]\n  worker:\n    command: ./worker\n    roll: false\n"), path, defaults); err == nil || !strings.Contains(err.Error(), "only valid on a web process") {
+		t.Fatalf("roll on a worker: %v", err)
+	}
+}
+
 func TestLoadHostMergesDefaultsAndRejectsUnknownKeys(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ServerFileName)

@@ -46,6 +46,10 @@ type ProcessSpec struct {
 	// Count is how many copies of the process run; 0 means one. Copies of a web process share
 	// its hosts and the proxy balances between them.
 	Count int `yaml:"count,omitempty" json:"count,omitempty"`
+	// Roll false stops each copy of this web process before its replacement starts, instead of
+	// starting the new copy beside the old one, for a process that must never run twice. The
+	// lifecycle start step still runs first, while the old copy serves. nil means true.
+	Roll *bool `yaml:"roll,omitempty" json:"roll,omitempty"`
 	// BasicAuth and Password replace the app-level values for this web process only; nil
 	// inherits, an empty value turns the gate off here.
 	BasicAuth map[string]string `yaml:"basic_auth,omitempty" json:"-"`
@@ -60,9 +64,12 @@ const MaxCount = 64
 // Instances is how many copies of the process run.
 func (p ProcessSpec) Instances() int { return max(p.Count, 1) }
 
+// Rolls reports whether a restart may start the new copy before the old one stops.
+func (p ProcessSpec) Rolls() bool { return p.Roll == nil || *p.Roll }
+
 // processSpecKeys are the keys of the mapping form, in the order the hints name them. They are
 // checked here because a custom decoder is a leaf as far as the schema walk is concerned.
-var processSpecKeys = []string{"command", "host", "subdomain", "pubsub", "health", "canonical_host", "count", "basic_auth", "password", "vibe"}
+var processSpecKeys = []string{"command", "host", "subdomain", "pubsub", "health", "canonical_host", "count", "roll", "basic_auth", "password", "vibe"}
 
 // processSpecFields is ProcessSpec without its methods, so the mapping form decodes and encodes
 // through the struct tags instead of recursing into the custom marshalers.
@@ -90,7 +97,7 @@ func (p *ProcessSpec) UnmarshalYAML(node *yaml.Node) error {
 
 // commandOnly reports whether the process only runs a command, which marshals as a scalar.
 func (p ProcessSpec) commandOnly() bool {
-	return len(p.Host) == 0 && len(p.Subdomain) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.BasicAuth == nil && p.Password == nil && !p.Vibe
+	return len(p.Host) == 0 && len(p.Subdomain) == 0 && p.Pubsub == nil && p.Health == "" && p.CanonicalHost == "" && p.Count <= 1 && p.Roll == nil && p.BasicAuth == nil && p.Password == nil && !p.Vibe
 }
 
 // MarshalYAML writes a scalar command when the process only runs a command, else the full mapping,
@@ -334,6 +341,9 @@ func (a *App) deriveWeb() error {
 			return &Error{Key: "procfile." + name, Message: "host and subdomain cannot both be set", Hint: "host is the full hostname; subdomain is prepended to the app's domain"}
 		}
 		if len(spec.Host) == 0 && len(spec.Subdomain) == 0 {
+			if spec.Roll != nil {
+				return &Error{Key: "procfile." + name + ".roll", Message: "roll is only valid on a web process", Hint: "background processes are always stopped before they start again"}
+			}
 			continue
 		}
 		a.WebProcesses = append(a.WebProcesses, WebProcess{Name: name, Hosts: spec.Host, Subdomain: len(spec.Subdomain) > 0, CanonicalHost: spec.CanonicalHost})

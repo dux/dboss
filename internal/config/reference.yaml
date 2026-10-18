@@ -510,6 +510,11 @@ branch: main
 # drains the old one, one copy at a time, so a running app is never down during a restart. A new
 # copy that never gets healthy is killed and the old one keeps serving. Background processes are
 # stopped and started again, never doubled. A changed count applies on the next restart.
+#
+# `roll: false` on a web process is for one that must never run twice, such as a process holding
+# an exclusive lock on its data. A restart still runs lifecycle.start first while the old copy
+# serves, and a failed step leaves it serving; then each copy drains, stops and starts again on
+# its own port, so the process is down only while the new copy boots.
 procfile:
   web:
     command: bundle exec puma -C config/puma.rb

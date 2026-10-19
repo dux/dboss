@@ -68,7 +68,7 @@ func addRuntime(t *testing.T, existing ...supervisor.Snapshot) *fakeRuntime {
 	}}
 }
 
-const subdomainApp = "domain: example.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n"
+const subdomainApp = "domain: example.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"@\"\n"
 
 // webSnapshot is a running app with one web process serving hosts.
 func webSnapshot(name string, subdomain bool, hosts ...string) supervisor.Snapshot {

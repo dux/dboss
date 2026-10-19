@@ -294,13 +294,6 @@ defaults:
   # the match ignores case. Anything else under the directory (an .html page, a dotfile, a file
   # with no extension) is the app's to answer, even when the file exists. [] serves any regular file.
   static_extensions: [css, js, mjs, map, json, txt, xml, ico, png, jpg, jpeg, gif, svg, webp, avif, woff, woff2, ttf, otf, eot, mp4, webm, mp3, pdf, wasm, webmanifest]
-  # Public status path on the app's own hosts, so a Cloudflare health check or uptime monitor
-  # can probe the app domain. GET/HEAD answer 200 {"app","state"} while a visitor would be served:
-  # the app runs, or it is stopped (idle_stop, dboss stop) and the next request wakes it. Draining,
-  # maintenance, starting, crashed and a stopped `autostart: button` app answer 503.
-  # It runs before basic auth and never wakes the app. Empty disables it. It lives under
-  # /.well-known/ so it never shadows an app's own /up or /health route.
-  health_endpoint: /.well-known/dboss/health
   # Path prefixes under the static directory that get "public, max-age=31536000, immutable".
   # Everything else under it gets "public, max-age=3600".
   static_immutable: [/assets/]
@@ -425,7 +418,7 @@ postgres:
 # in a host matches subdomains only; a leading "." matches the bare domain and every subdomain,
 # so ".myapp.com" means "myapp.com" and "*.myapp.com". Longest match wins.
 # A host beats a hostname derived from subdomain, in this app or another one: a landing app with
-# host: myapp.com takes the bare domain from a tenant app with subdomain "*", which keeps
+# host: myapp.com takes the bare domain from a tenant app with subdomain ["@", "*"], which keeps
 # *.myapp.com. Two host claims, or two subdomain claims, of one hostname are an error (between
 # apps the first in name order wins), and so is a subdomain process left with no hostname or
 # without its canonical_host.
@@ -433,9 +426,9 @@ postgres:
 # local dev.
 #
 # The app's own domain, the base every web process's subdomain is prepended to: domain foo.bar
-# with subdomain [www, api] serves www.foo.bar, foo.bar and api.foo.bar. A process with a host
-# ignores it, and a domain no subdomain uses is an error. A dev session with no domain uses
-# lvh.me.
+# with subdomain ["@", api] serves foo.bar and api.foo.bar, and redirects www.foo.bar to foo.bar.
+# A process with a host ignores it, and a domain no subdomain uses is an error. A dev session
+# with no domain uses lvh.me.
 domain: myapp.com
 #
 # The git branch the app's checkout must run. Applies only when the app folder holds its own
@@ -450,14 +443,27 @@ domain: myapp.com
 branch: main
 #
 # A web process may set `subdomain`, one label or wildcard pattern or a list, prepended to the
-# domain. "www" and "*" also answer the bare domain: "*" is the apex plus every subdomain, and
-# "www" is www plus the apex, both served with no redirect (add canonical_host for one).
+# domain; "@" is the domain itself (quote it, like "*"). "*" is every subdomain at any depth and
+# never the apex, so ["@", "*"] is the apex plus every subdomain. With "@" and no "www", dboss
+# answers www with a 301 to the apex; with "www" and no "@", it answers the apex with a 301 to
+# www. That target leads the process's hosts, so the health probe and links use it. The redirect
+# hostname is the weakest claim: another process or app that serves or covers it (host or
+# subdomain, exact or wildcard, "*" included) takes it, and it goes when its target is taken. A
+# canonical_host on the process still redirects every other host, the redirect hostname
+# included. ["@", "www"] serves both with no redirect.
 #
 # The static directory is an app key (see the Web keys above); every web process serves it.
 #
 # A web process may set `health`, the readiness path dboss polls until the start flips to
 # running, e.g. /up (GET http://127.0.0.1:PORT/up must answer 2xx). Omitted means a plain TCP
 # connect. The same check keeps the process alive after readiness; see unhealthy_threshold.
+#
+# Every app host also answers /.well-known/dboss/health itself, so a Cloudflare health check or
+# uptime monitor can probe the app domain. GET/HEAD answer 200 {"app","state"} while a visitor
+# would be served: the app runs, or it is stopped (idle_stop, dboss stop) and the next request
+# wakes it. Draining, maintenance, starting, crashed and a stopped `autostart: button` app answer
+# 503. It runs before basic auth, never wakes the app, and is built in: it lives under
+# /.well-known/ so it never shadows the app's own health route.
 #
 # A web process may set `canonical_host`, one of its hosts. Requests for any other of its
 # hosts answer 301 to <scheme>://<canonical_host><path?query>; the scheme follows
@@ -521,7 +527,6 @@ procfile:
     subdomain: [www, api]
     pubsub: true
     health: /up
-    canonical_host: www.myapp.com
     count: 2
   admin:
     command: bundle exec puma -C config/admin.rb

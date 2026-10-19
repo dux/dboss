@@ -35,11 +35,15 @@ type Process struct {
 	CPUMax             int               `yaml:"cpu_max" json:"cpu_max"`
 }
 
+// PublicHealthPath is the status path the proxy answers itself on every app host, before any
+// gate: 200 while a visitor would be served, 503 otherwise. The app's own readiness path is the
+// web process's health.
+const PublicHealthPath = "/.well-known/dboss/health"
+
 // Web drives the proxy in front of the app. BasicAuth and Password (the one shared password
 // asked on a dboss page) never leave the process as JSON so the hashes stay out of the console
 // and `dboss status --json`.
 type Web struct {
-	HealthEndpoint   string            `yaml:"health_endpoint" json:"health_endpoint"`
 	Static           StaticPath        `yaml:"static" json:"static"`
 	StaticImmutable  List              `yaml:"static_immutable" json:"static_immutable"`
 	StaticExtensions List              `yaml:"static_extensions" json:"static_extensions"`

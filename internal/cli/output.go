@@ -82,7 +82,7 @@ func blockNote(scope config.Scope) string {
 }
 
 // printHosts lists one row per web process with every hostname it answers, the canonical one
-// first. Workers have no hosts and are not listed.
+// first and the www/apex redirect last as "from -> to". Workers have no hosts and are not listed.
 func (c CLI) printHosts(snapshots []supervisor.Snapshot, app string) error {
 	type row struct{ app, process, hosts string }
 	var rows []row
@@ -91,10 +91,13 @@ func (c CLI) printHosts(snapshots []supervisor.Snapshot, app string) error {
 			continue
 		}
 		for _, web := range snapshot.WebProcesses {
-			hosts := slices.Clone(web.Hosts)
+			hosts := slices.Clone(web.Claims())
 			if web.CanonicalHost != "" {
 				hosts = slices.DeleteFunc(hosts, func(host string) bool { return host == web.CanonicalHost })
 				hosts = append([]string{web.CanonicalHost}, hosts...)
+			}
+			if web.Redirect != nil && web.Redirect.From != web.CanonicalHost {
+				hosts = append(hosts, web.Redirect.From+" -> "+web.Redirect.To)
 			}
 			rows = append(rows, row{snapshot.Name, web.Name, strings.Join(hosts, ", ")})
 		}

@@ -17,19 +17,62 @@ func hostsOf(app App, name string) []string {
 }
 
 func TestSubdomainHosts(t *testing.T) {
+	toApex := &HostRedirect{From: "www.foo.bar", To: "foo.bar"}
+	toWWW := &HostRedirect{From: "foo.bar", To: "www.foo.bar"}
 	for _, test := range []struct {
 		name       string
 		subdomains []string
 		want       []string
+		redirect   *HostRedirect
 	}{
-		{"www also answers the apex", []string{"www"}, []string{"www.foo.bar", "foo.bar"}},
-		{"wildcard also answers the apex", []string{"*"}, []string{"*.foo.bar", "foo.bar"}},
-		{"several subdomains", []string{"www", "api"}, []string{"www.foo.bar", "foo.bar", "api.foo.bar"}},
-		{"wildcard subdomain", []string{"*.staging"}, []string{"*.staging.foo.bar"}},
+		{"apex redirects www to itself", []string{"@"}, []string{"foo.bar"}, toApex},
+		{"www redirects the apex to itself", []string{"www"}, []string{"www.foo.bar"}, toWWW},
+		{"apex and www need no redirect", []string{"@", "www"}, []string{"foo.bar", "www.foo.bar"}, nil},
+		{"wildcard leaves out the apex", []string{"*"}, []string{"*.foo.bar"}, nil},
+		{"apex and wildcard", []string{"@", "*"}, []string{"foo.bar", "*.foo.bar"}, toApex},
+		{"the redirect target leads", []string{"api", "www"}, []string{"www.foo.bar", "api.foo.bar"}, toWWW},
+		{"wildcard subdomain", []string{"*.staging"}, []string{"*.staging.foo.bar"}, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := subdomainHosts("foo.bar", test.subdomains); !slices.Equal(got, test.want) {
+			got, redirect := subdomainHosts("foo.bar", test.subdomains)
+			if !slices.Equal(got, test.want) {
 				t.Fatalf("subdomainHosts(foo.bar, %v) = %v, want %v", test.subdomains, got, test.want)
+			}
+			if (redirect == nil) != (test.redirect == nil) || redirect != nil && *redirect != *test.redirect {
+				t.Fatalf("redirect = %v, want %v", redirect, test.redirect)
+			}
+		})
+	}
+}
+
+// The www/apex redirect host goes last, after the served hosts, and never contends with another
+// process: one that covers it takes it.
+func TestParseAppRedirectHost(t *testing.T) {
+	for _, test := range []struct {
+		name, document string
+		web            []string
+		redirect       *HostRedirect
+	}{
+		{"apex", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"@\"\n", []string{"foo.bar", "www.foo.bar"}, &HostRedirect{From: "www.foo.bar", To: "foo.bar"}},
+		{"www", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: [api, www]\n", []string{"www.foo.bar", "api.foo.bar", "foo.bar"}, &HostRedirect{From: "foo.bar", To: "www.foo.bar"}},
+		{"another process serves www", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"@\"\n  blog:\n    command: ./blog\n    subdomain: www\n", []string{"foo.bar"}, nil},
+		{"another process covers www", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"@\"\n  tenants:\n    command: ./tenants\n    subdomain: \"*\"\n", []string{"foo.bar"}, nil},
+		{"a host process takes the target", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: [\"@\", api]\n  landing:\n    command: ./landing\n    host: foo.bar\n", []string{"api.foo.bar"}, nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app, err := ParseApp([]byte(test.document), "/srv/apps/demo/"+FileName, Default().Defaults)
+			if err != nil {
+				t.Fatal(err)
+			}
+			web := app.WebProcesses[slices.IndexFunc(app.WebProcesses, func(web WebProcess) bool { return web.Name == "web" })]
+			if !slices.Equal(web.Hosts, test.web) {
+				t.Fatalf("web hosts = %v, want %v", web.Hosts, test.web)
+			}
+			if (web.Redirect == nil) != (test.redirect == nil) || web.Redirect != nil && *web.Redirect != *test.redirect {
+				t.Fatalf("redirect = %v, want %v", web.Redirect, test.redirect)
+			}
+			if got := PrimaryHost(web.CanonicalHost, web.Hosts); test.redirect != nil && got != test.redirect.To {
+				t.Fatalf("primary host = %q, want the redirect target %q", got, test.redirect.To)
 			}
 		})
 	}
@@ -40,7 +83,7 @@ func TestParseAppDomainAndSubdomain(t *testing.T) {
 procfile:
   web:
     command: ./web
-    subdomain: [www, api]
+    subdomain: ["@", www, api]
   admin:
     command: ./admin
     subdomain: "*.staging"
@@ -57,7 +100,7 @@ procfile:
 		t.Fatalf("domain = %q", app.Domain)
 	}
 	want := map[string][]string{
-		"web":    {"www.foo.bar", "foo.bar", "api.foo.bar"},
+		"web":    {"foo.bar", "www.foo.bar", "api.foo.bar"},
 		"admin":  {"*.staging.foo.bar"},
 		"other":  {"example.com"},
 		"worker": nil,
@@ -74,7 +117,7 @@ procfile:
 
 // A host process takes its patterns from a subdomain process of the same app.
 func TestParseAppHostBeatsSubdomain(t *testing.T) {
-	document := "domain: myapp.com\nprocfile:\n  app:\n    command: ./app\n    subdomain: \"*\"\n  landing:\n    command: ./landing\n    host: myapp.com\n"
+	document := "domain: myapp.com\nprocfile:\n  app:\n    command: ./app\n    subdomain: [\"@\", \"*\"]\n  landing:\n    command: ./landing\n    host: myapp.com\n"
 	app, err := ParseApp([]byte(document), "/srv/apps/demo/"+FileName, Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
@@ -88,26 +131,33 @@ func TestParseAppHostBeatsSubdomain(t *testing.T) {
 }
 
 func TestAppYield(t *testing.T) {
-	document := "domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"*\"\n    canonical_host: myapp.com\n  admin:\n    command: ./admin\n    host: admin.other.com\n"
+	document := "domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: [\"@\", \"*\"]\n    canonical_host: myapp.com\n  admin:\n    command: ./admin\n    host: admin.other.com\n"
 	app, err := ParseApp([]byte(document), "/srv/apps/demo/"+FileName, Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Yield("admin.other.com", "x"); err != nil || len(app.Hosts) != 3 {
+	if err := app.Yield("admin.other.com", "x"); err != nil || len(app.Hosts) != 4 {
 		t.Fatalf("a host pattern never yields: %v %v", err, app.Hosts)
 	}
 	if err := app.Yield("MyApp.com", "landing"); err == nil || !strings.Contains(err.Error(), "canonical_host: myapp.com is served by app landing") {
 		t.Fatalf("losing the canonical host: %v", err)
 	}
-	if got := hostsOf(app, "web"); len(got) != 2 {
+	if got := hostsOf(app, "web"); len(got) != 3 {
 		t.Fatalf("a refused yield must leave the app as it was: %v", got)
 	}
-	plain, err := ParseApp([]byte("domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"*\"\n"), "/srv/apps/demo/"+FileName, Default().Defaults)
+	plain, err := ParseApp([]byte("domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: [\"@\", \"*\"]\n"), "/srv/apps/demo/"+FileName, Default().Defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := plain.Yield("myapp.com", "landing"); err != nil || !slices.Equal(plain.Hosts, []string{"*.myapp.com"}) {
-		t.Fatalf("yield: %v %v", err, plain.Hosts)
+	if err := plain.Yield("*.myapp.com", "tenants"); err != nil || !slices.Equal(plain.Hosts, []string{"myapp.com", "www.myapp.com"}) {
+		t.Fatalf("yielding a host keeps the redirect to the apex: %v %v", err, plain.Hosts)
+	}
+	plain, err = ParseApp([]byte("domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: [\"@\", \"*\"]\n"), "/srv/apps/demo/"+FileName, Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := plain.Yield("myapp.com", "landing"); err != nil || !slices.Equal(plain.Hosts, []string{"*.myapp.com"}) || plain.WebProcesses[0].Redirect != nil {
+		t.Fatalf("yielding the apex drops the redirect to it: %v %v", err, plain.Hosts)
 	}
 	if err := plain.Yield("*.myapp.com", "landing"); err == nil || !strings.Contains(err.Error(), "every host") {
 		t.Fatalf("yielding the last host: %v", err)
@@ -121,8 +171,9 @@ func TestParseAppHostRules(t *testing.T) {
 		{"domain without a subdomain", "domain: foo.bar\nprocfile:\n  web: ./web\n", "no procfile entry has a subdomain"},
 		{"subdomain left empty", "domain: myapp.com\nprocfile:\n  web:\n    command: ./web\n    subdomain: www\n  landing:\n    command: ./landing\n    host: [www.myapp.com, myapp.com]\n", "served by process \"landing\" through host"},
 		{"two hosts", "procfile:\n  a:\n    command: ./a\n    host: myapp.com\n  b:\n    command: ./b\n    host: myapp.com\n", "already used by process"},
-		{"two subdomains", "domain: myapp.com\nprocfile:\n  a:\n    command: ./a\n    subdomain: \"*\"\n  b:\n    command: ./b\n    subdomain: www\n", "already used by process"},
+		{"two subdomains", "domain: myapp.com\nprocfile:\n  a:\n    command: ./a\n    subdomain: \"@\"\n  b:\n    command: ./b\n    subdomain: [\"@\", api]\n", "already used by process"},
 		{"invalid subdomain", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"a b\"\n", "invalid subdomain"},
+		{"empty subdomain", "domain: foo.bar\nprocfile:\n  web:\n    command: ./web\n    subdomain: \"\"\n", `use "@" for the bare domain`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := ParseApp([]byte(test.document), "/srv/apps/demo/"+FileName, Default().Defaults)
@@ -140,7 +191,7 @@ func TestParseAppDevDomainDefaultsToLvhMe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hostsOf(*cfg.App, "web"); !slices.Equal(got, []string{"www.lvh.me", "lvh.me"}) {
+	if got := hostsOf(*cfg.App, "web"); !slices.Equal(got, []string{"www.lvh.me", "lvh.me"}) || cfg.App.WebProcesses[0].Redirect.To != "www.lvh.me" {
 		t.Fatalf("web hosts = %v", got)
 	}
 }

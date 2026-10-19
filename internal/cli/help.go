@@ -57,7 +57,7 @@ var commands = []command{
 			"UPTIME and MEM (APPROX) are per service, and PID is its process id while running (`-` when stopped). LAST ACTIVITY is the app's time since its last request, a relative age like `3min ago`, shown on the app's first row."},
 		options: []option{socketOption, configOption, jsonOption}},
 	{name: "hosts", args: "[app]", group: "Apps", summary: "list the hostnames every app web process answers",
-		details: []string{"One row per web process: the app, the process and the hostnames it answers, as resolved from host, or subdomain and domain (canonical first). Workers have none and are not listed.",
+		details: []string{"One row per web process: the app, the process and the hostnames it answers, as resolved from host, or subdomain and domain (canonical first, the www/apex redirect last as from -> to). Workers have none and are not listed.",
 			"Give an app name to show only that app.", "The hosts come from the running host's live snapshots; a wildcard like `*.foo.com` and a concrete `baz.foo.com` are both listed, and requests for baz.foo.com go to the concrete one."},
 		options: []option{socketOption, configOption, jsonOption}},
 	{name: "run", args: "[app]", group: "Apps", summary: "start an app; rescans first when it is not known yet",

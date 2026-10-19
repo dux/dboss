@@ -38,7 +38,7 @@ func discoverApps(t *testing.T, files map[string]string) (map[string]*App, map[s
 	return apps, refused
 }
 
-const tenantApp = "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"*\"\n"
+const tenantApp = "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: [\"@\", \"*\"]\n"
 
 // A host beats a subdomain-derived pattern of another app, whichever sorts first.
 func TestDiscoverHostBeatsAnotherAppsSubdomain(t *testing.T) {
@@ -59,6 +59,32 @@ func TestDiscoverHostBeatsAnotherAppsSubdomain(t *testing.T) {
 	}
 }
 
+// A www/apex redirect gives its hostname to any other app that covers it, and never clashes.
+func TestDiscoverRedirectYieldsToOtherApps(t *testing.T) {
+	for name, test := range map[string]struct {
+		other string
+		want  []string
+	}{
+		"subdomain www":    {"domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n", []string{"myapp.com"}},
+		"wildcard":         {"domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"*\"\n", []string{"myapp.com"}},
+		"host":             {"procfile:\n  web:\n    command: ./server\n    host: www.myapp.com\n", []string{"myapp.com"}},
+		"unrelated domain": {"domain: other.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"*\"\n", []string{"myapp.com", "www.myapp.com"}},
+	} {
+		for _, names := range [][2]string{{"a-apex", "b-other"}, {"b-apex", "a-other"}} {
+			apps, refused := discoverApps(t, map[string]string{
+				names[0]: "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"@\"\n",
+				names[1]: test.other,
+			})
+			if len(refused) != 0 {
+				t.Fatalf("%s %v: refused %v", name, names, refused)
+			}
+			if got := apps[names[0]].Config.Hosts; !slices.Equal(got, test.want) {
+				t.Fatalf("%s %v: apex hosts = %v, want %v", name, names, got, test.want)
+			}
+		}
+	}
+}
+
 func TestDiscoverHostClaimsStillClash(t *testing.T) {
 	for name, files := range map[string]map[string]string{
 		"host and host": {
@@ -67,7 +93,7 @@ func TestDiscoverHostClaimsStillClash(t *testing.T) {
 		},
 		"subdomain and subdomain": {
 			"a": tenantApp,
-			"b": "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n",
+			"b": "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"@\"\n",
 		},
 	} {
 		apps, refused := discoverApps(t, files)
@@ -81,7 +107,7 @@ func TestDiscoverRefusesAnAppLeftWithoutItsHosts(t *testing.T) {
 	_, refused := discoverApps(t, map[string]string{
 		"a": "procfile:\n  web:\n    command: ./server\n    host: [www.myapp.com, myapp.com]\n",
 		"b": "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n",
-		"d": "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: \"*\"\n    canonical_host: myapp.com\n",
+		"d": "domain: myapp.com\nprocfile:\n  web:\n    command: ./server\n    subdomain: [\"@\", \"*\"]\n    canonical_host: myapp.com\n",
 	})
 	if !strings.Contains(refused["b"], "every host of its subdomain is served by app a") {
 		t.Fatalf("b: %q", refused["b"])

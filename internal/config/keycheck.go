@@ -81,6 +81,7 @@ var movedKeys = map[string]string{
 	"postgres.backup":                        "write postgres.backups: {database: week}",
 	"github_token":                           "moved to tokens.github in dboss-server.yaml",
 	"health_interval":                        "built in",
+	"health_endpoint":                        "built in at " + PublicHealthPath + "; the app's readiness path is health on its web process",
 	"restart_reset":                          "built in",
 	"restart_backoff":                        "built in",
 	"log_max_size":                           "built in",

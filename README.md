@@ -227,7 +227,7 @@ A dev session (`dboss start` in an app folder) never takes `:80` unless asked: i
 A procfile entry gets web traffic from `host` or `subdomain`, checked in that order:
 
 * `host` - the full hostname, or a list, served as written.
-* `subdomain` - else each label (or wildcard pattern) is prepended to the app's `domain`; `www` and `*` also answer the bare domain, with no redirect.
+* `subdomain` - else each label (or wildcard pattern) is prepended to the app's `domain`; `"@"` is the domain itself and `"*"` every subdomain, never the apex.
 * neither - no web traffic, a background process.
 
 ```yaml
@@ -235,7 +235,7 @@ domain: myapp.com
 procfile:
   web:
     command: bundle exec puma
-    subdomain: www          # www.myapp.com and myapp.com
+    subdomain: "@"          # myapp.com; www.myapp.com redirects to it
   api:
     command: bin/api
     subdomain: api          # api.myapp.com
@@ -247,7 +247,13 @@ procfile:
 
 An app may have several web processes, each serving its own hostnames. `host` and `subdomain` on one entry is an error, and so is a `domain` no subdomain uses. In a dev session `domain` defaults to `lvh.me`, and an app that declares neither key binds its first process to `<app>.lvh.me`.
 
-A `host` beats a hostname derived from `subdomain`, in the same app or in another one: a landing app with `host: myapp.com` takes the bare domain from a tenant app with `subdomain: "*"`, which keeps `*.myapp.com`.
+dboss pairs the apex with `www` itself.
+With `"@"` and no `www` in a process's `subdomain`, `www` answers 301 to the apex; with `www` and no `"@"`, the apex answers 301 to `www`.
+That target leads the process's hosts, so the health probe, the banner and links use it.
+The redirect hostname is the weakest claim: another process or app that serves or covers it, through `host` or `subdomain` and `"*"` included, takes it, and it goes when its target is taken.
+`["@", www]` serves both with no redirect, and `["@", "*"]` is the apex plus every subdomain, with `www` redirected to the apex.
+
+A `host` beats a hostname derived from `subdomain`, in the same app or in another one: a landing app with `host: myapp.com` takes the bare domain from a tenant app with `subdomain: ["@", "*"]`, which keeps `*.myapp.com`.
 Two `host` claims, or two `subdomain` claims, of one hostname are still an error (between apps, the one that sorts first wins and the other is refused), and so is a subdomain process left with no hostname or without its `canonical_host`.
 A request goes to the most specific match, so `host: api.myapp.com` also beats `*.myapp.com`.
 Every key that takes a list also accepts a single value, so `allow_ips: 10.0.0.0/8` equals `allow_ips: [10.0.0.0/8]`.
@@ -866,7 +872,7 @@ The management host also serves three endpoints:
 
 `healthz` and `readyz` are open so an uptime checker or load balancer can reach them. `metrics` requires the webhook token (`dboss token`, or `tokens.dboss`) as `Authorization: Bearer <token>`, so a scrape config never holds the admin token, and answers `404` when no token is set. All three answer on the management host only.
 
-Each app also answers on its own hosts at `health_endpoint` (default `/.well-known/dboss/health`): `200 {"app","state"}` while a visitor would be served, `503` otherwise. An app stopped by `idle_stop` (or `dboss stop`) still answers `200` with `"state":"stopped"`, because the next request wakes it, so a Cloudflare Health Check or Load Balancer never flags a sleeping app. Draining, maintenance, starting, crashed and a stopped `autostart: button` app answer `503`. It runs before basic auth and never wakes a stopped app, so a Cloudflare health check or uptime monitor can probe the app domain directly. Set `health_endpoint: ""` to disable it.
+Each app also answers on its own hosts at the built-in `/.well-known/dboss/health`: `200 {"app","state"}` while a visitor would be served, `503` otherwise. An app stopped by `idle_stop` (or `dboss stop`) still answers `200` with `"state":"stopped"`, because the next request wakes it, so a Cloudflare Health Check or Load Balancer never flags a sleeping app. Draining, maintenance, starting, crashed and a stopped `autostart: button` app answer `503`. It runs before basic auth and never wakes a stopped app, so a Cloudflare health check or uptime monitor can probe the app domain directly. The path is fixed; the readiness path dboss probes on the app is the web process's `health`.
 
 The supervisor also watches each web process for its whole lifetime: the `health` path declared on the web procfile entry (e.g. `/up`, or omitted for a TCP connect) gates startup readiness within `health_timeout`, polled every 500ms, because that decides how long a visitor who woke the app waits on the starting page. Once the process answers, the same check keeps running at the slower `liveness_interval` (default `10s`, and `5m` in a hand-run session, where a developer watching one app does not need it polled every ten seconds and every poll lands in their own request log), so a healthy app is not asked twice a second for its whole life; after `unhealthy_threshold` consecutive failures (default `3`) the process is killed and the normal restart policy, backoff (1s doubling up to 60s) and `max_restarts` apply. Set `unhealthy_threshold: 0` for startup-only readiness. Background workers are not polled.
 

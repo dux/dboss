@@ -157,6 +157,37 @@ func TestCanonicalHostPerWebProcess(t *testing.T) {
 	}
 }
 
+// A subdomain process with only one of "@" and www answers the other with a 301 to it, and only
+// that hostname: its other hosts are served.
+func TestSubdomainRedirectsItsSibling(t *testing.T) {
+	for _, test := range []struct {
+		subdomain, from, want string
+		served                []string
+	}{
+		{`["@", api]`, "www.demo.test", "http://demo.test/path?x=1", []string{"demo.test", "api.demo.test"}},
+		{`[www, api]`, "demo.test", "http://www.demo.test/path?x=1", []string{"www.demo.test", "api.demo.test"}},
+	} {
+		dir := t.TempDir()
+		app, err := config.ParseApp([]byte("domain: demo.test\nprocfile:\n  web:\n    command: ./web\n    subdomain: "+test.subdomain+"\n"), filepath.Join(dir, config.FileName), config.Default().Defaults)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot := supervisor.Snapshot{Name: "demo", State: supervisor.Running, Dir: dir, Hosts: app.Hosts, WebProcesses: supervisor.WebProcessSnapshots(app.WebProcesses), Web: app.Web}
+		request := httptest.NewRequest(http.MethodGet, "http://"+test.from+"/path?x=1", nil)
+		request.Host = strings.ToUpper(test.from) + ":8080"
+		if response := serveFeature(t, featureHandler(), snapshot, request); response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != test.want {
+			t.Fatalf("%s: got %d %s, want %s", test.subdomain, response.Code, response.Header().Get("Location"), test.want)
+		}
+		for _, host := range test.served {
+			request := httptest.NewRequest(http.MethodGet, "http://"+host+"/", nil)
+			request.Host = host
+			if response := serveFeature(t, featureHandler(), snapshot, request); response.Code == http.StatusMovedPermanently {
+				t.Fatalf("%s: %s must be served, got a redirect to %s", test.subdomain, host, response.Header().Get("Location"))
+			}
+		}
+	}
+}
+
 func TestAllowIPsUsesClientIPHeader(t *testing.T) {
 	handler := featureHandler()
 	snapshot := featureSnapshot(t, "allow_ips: [10.0.0.0/8]\n")

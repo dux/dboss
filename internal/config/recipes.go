@@ -110,7 +110,6 @@ var recipeSpecs = []recipeSpec{
 		fields: []recipeField{
 			{path: "autostart"},
 			{path: "deletable"},
-			{path: "health_endpoint"},
 			{path: "max_body"},
 			{path: "allow_ips"},
 			{path: "deny"},

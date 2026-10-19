@@ -368,14 +368,15 @@ func TestPrintHumanHooksNamesTheMissingToken(t *testing.T) {
 	}
 }
 
-// hosts lists every host of each web process, canonical first, and skips workers.
+// hosts lists every host of each web process, canonical first and the www/apex redirect last,
+// and skips workers.
 func TestPrintHostsListsResolvedHosts(t *testing.T) {
 	var out bytes.Buffer
 	c := CLI{Out: &out, Err: &out}
 	apps := []supervisor.Snapshot{{
 		Name: "sohotasks",
 		WebProcesses: []supervisor.WebProcessSnapshot{
-			{Name: "web", Hosts: []string{"*.sohotasks.com", "sohotasks.com"}},
+			{Name: "web", Hosts: []string{"sohotasks.com", "*.sohotasks.com", "www.sohotasks.com"}, Redirect: &config.HostRedirect{From: "www.sohotasks.com", To: "sohotasks.com"}},
 			{Name: "job", Hosts: []string{"job.sohotasks.com"}, CanonicalHost: "job.sohotasks.com"},
 		},
 	}}
@@ -383,7 +384,7 @@ func TestPrintHostsListsResolvedHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"APP", "PROCESS", "HOSTS", "sohotasks", "web", "*.sohotasks.com, sohotasks.com", "job.sohotasks.com"} {
+	for _, want := range []string{"APP", "PROCESS", "HOSTS", "sohotasks", "web", "sohotasks.com, *.sohotasks.com, www.sohotasks.com -> sohotasks.com", "job.sohotasks.com"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("hosts output missing %q:\n%s", want, text)
 		}

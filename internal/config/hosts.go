@@ -2,6 +2,7 @@ package config
 
 import (
 	"net"
+	"slices"
 	"strings"
 )
 
@@ -85,17 +86,47 @@ func WebURL(scheme, port, canonical string, hosts []string) string {
 	return scheme + "://" + host
 }
 
+// ApexSubdomain is the subdomain that names the bare domain itself.
+const ApexSubdomain = "@"
+
+// HostRedirect is the www or apex hostname a subdomain process answers with a 301 to its sibling.
+type HostRedirect struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 // subdomainHosts returns the host patterns a web process serves: each subdomain prepended to the
-// domain. A "www" or "*" subdomain also serves the bare domain, so the apex answers too.
-func subdomainHosts(domain string, subdomains []string) []string {
-	out := make([]string, 0, len(subdomains)+1)
+// domain, "@" for the domain itself. With "@" and no "www", www redirects to the apex; with "www"
+// and no "@", the apex redirects to www. The redirect target leads the list, so the probe and
+// links use it, and the redirect host is left to the caller, which adds it only while unclaimed.
+func subdomainHosts(domain string, subdomains []string) ([]string, *HostRedirect) {
+	out := make([]string, 0, len(subdomains))
+	apex, www := false, false
 	for _, subdomain := range subdomains {
-		out = append(out, subdomain+"."+domain)
-		if subdomain == "www" || subdomain == "*" {
+		switch NormalizePattern(subdomain) {
+		case ApexSubdomain:
+			apex = true
 			out = append(out, domain)
+			continue
+		case "www":
+			www = true
 		}
+		out = append(out, subdomain+"."+domain)
 	}
-	return out
+	var redirect *HostRedirect
+	switch {
+	case apex && !www:
+		redirect = &HostRedirect{From: "www." + domain, To: domain}
+	case www && !apex:
+		redirect = &HostRedirect{From: domain, To: "www." + domain}
+	default:
+		return out, nil
+	}
+	redirect.From, redirect.To = NormalizePattern(redirect.From), NormalizePattern(redirect.To)
+	at := slices.IndexFunc(out, func(host string) bool { return NormalizePattern(host) == redirect.To })
+	target := out[at]
+	out = append([]string{target}, slices.Delete(out, at, at+1)...)
+	return out, redirect
 }
 
 func hostAllowed(host string, patterns []string) bool {

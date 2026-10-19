@@ -99,8 +99,8 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 				if owned.Subdomain != web.Subdomain {
 					continue
 				}
-				for _, host := range owned.Hosts {
-					for _, wanted := range web.Hosts {
+				for _, host := range owned.Claims() {
+					for _, wanted := range web.Claims() {
 						if config.NormalizePattern(host) == config.NormalizePattern(wanted) {
 							return supervisor.Snapshot{}, false, fault.Invalidf("host %s is already served by app %s", wanted, snapshot.Name)
 						}

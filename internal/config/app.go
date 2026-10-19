@@ -33,9 +33,9 @@ type ProcessSpec struct {
 	// Host is the full host pattern, or a list of them, the process serves as written.
 	Host List `yaml:"host,omitempty" json:"host,omitempty"`
 	// Subdomain is one label or wildcard pattern, or a list of them, prepended to the app's
-	// domain when the process sets no host. So an app on foo.bar whose web process sets
-	// subdomain: [www, api] serves www.foo.bar, foo.bar and api.foo.bar (www and * also answer
-	// the bare domain).
+	// domain when the process sets no host; "@" is the domain itself. So an app on foo.bar whose
+	// web process sets subdomain: ["@", api] serves foo.bar and api.foo.bar, and www.foo.bar
+	// redirects to foo.bar.
 	Subdomain List        `yaml:"subdomain,omitempty" json:"subdomain,omitempty"`
 	Pubsub    *PubsubSpec `yaml:"pubsub,omitempty" json:"pubsub,omitempty"`
 	// Health is the web process's readiness path, e.g. /up; empty means a TCP connect.
@@ -259,7 +259,10 @@ type WebProcess struct {
 	// `host`, in this app or another one.
 	Subdomain     bool
 	CanonicalHost string
-	Pubsub        Pubsub
+	// Redirect is the www or apex sibling a subdomain process answers with a 301; its From is
+	// the last of Hosts. It yields to every other claim on that hostname.
+	Redirect *HostRedirect
+	Pubsub   Pubsub
 	// Static is the directory served straight from disk; empty disables it.
 	Static string
 	// BasicAuth and Password are the app-level gates with the process's own values applied.
@@ -333,6 +336,9 @@ func (a *App) deriveWeb() error {
 			}
 		}
 		for _, subdomain := range spec.Subdomain {
+			if strings.TrimSpace(subdomain) == "" {
+				return &Error{Key: "procfile." + name + ".subdomain", Message: "subdomain is empty", Hint: `use "@" for the bare domain`}
+			}
 			if !validSubdomain(subdomain) {
 				return keyErr("procfile."+name+".subdomain", "invalid subdomain %q", subdomain)
 			}
@@ -349,15 +355,16 @@ func (a *App) deriveWeb() error {
 		a.WebProcesses = append(a.WebProcesses, WebProcess{Name: name, Hosts: spec.Host, Subdomain: len(spec.Subdomain) > 0, CanonicalHost: spec.CanonicalHost})
 	}
 	if a.Domain != "" && !slices.ContainsFunc(a.WebProcesses, func(web WebProcess) bool { return web.Subdomain }) {
-		return &Error{Key: "domain", Message: "is set but no procfile entry has a subdomain", Hint: "add subdomain: www to the web process (www also serves the bare domain)"}
+		return &Error{Key: "domain", Message: "is set but no procfile entry has a subdomain", Hint: `add subdomain: "@" to the web process (the bare domain; www redirects to it)`}
 	}
 	return nil
 }
 
 // resolveHosts builds each web process's final host list: its host as written, or each subdomain
-// prepended to the app's domain (lvh.me in a dev session with no domain). A "www" or "*"
-// subdomain also serves the bare domain. A pattern a host process claims is dropped from the
-// subdomain processes; two host processes, or two subdomain processes, sharing one is an error.
+// prepended to the app's domain (lvh.me in a dev session with no domain). A pattern a host
+// process claims is dropped from the subdomain processes; two host processes, or two subdomain
+// processes, sharing one is an error. The www/apex redirect is added last, only while no other
+// process covers its hostname.
 func (a *App) resolveHosts(dev bool) error {
 	for index := range a.WebProcesses {
 		web := &a.WebProcesses[index]
@@ -369,7 +376,7 @@ func (a *App) resolveHosts(dev bool) error {
 			if domain == "" {
 				return &Error{Key: "procfile." + web.Name + ".subdomain", Message: "needs a domain on the app", Hint: "set domain at the top level of the app file, or use host for a full hostname"}
 			}
-			web.Hosts = subdomainHosts(domain, a.Procfile[web.Name].Subdomain)
+			web.Hosts, web.Redirect = subdomainHosts(domain, a.Procfile[web.Name].Subdomain)
 		}
 		web.Hosts = uniquePatterns(web.Hosts)
 		for _, host := range web.Hosts {
@@ -416,13 +423,54 @@ func (a *App) resolveHosts(dev bool) error {
 		}
 		web.Hosts = kept
 	}
+	for index := range a.WebProcesses {
+		web := &a.WebProcesses[index]
+		if web.Redirect == nil {
+			continue
+		}
+		var others []string
+		for _, other := range a.WebProcesses {
+			if other.Name != web.Name {
+				others = append(others, other.Hosts...)
+			}
+		}
+		if !slices.ContainsFunc(web.Hosts, func(host string) bool { return NormalizePattern(host) == web.Redirect.To }) || hostAllowed(web.Redirect.From, others) {
+			web.Redirect = nil
+			continue
+		}
+		web.Hosts = append(web.Hosts, web.Redirect.From)
+	}
 	a.collectHosts()
 	return nil
 }
 
-// Yield drops a subdomain-derived host pattern that another app claims with host. It fails when a
-// process would be left with no host or lose its canonical_host, so the app is refused instead of
-// quietly serving less than its file says.
+// Claims lists the host patterns a web process claims: its hosts without the redirect hostname,
+// which never contends with another claim.
+func (w WebProcess) Claims() []string {
+	if w.Redirect == nil {
+		return w.Hosts
+	}
+	return slices.DeleteFunc(slices.Clone(w.Hosts), func(host string) bool { return NormalizePattern(host) == w.Redirect.From })
+}
+
+// DropRedirects removes every www/apex redirect whose hostname covered reports as claimed
+// elsewhere. It works on a copy of the web processes, like Yield.
+func (a *App) DropRedirects(covered func(host string) bool) {
+	webs := slices.Clone(a.WebProcesses)
+	for index := range webs {
+		web := &webs[index]
+		if web.Redirect != nil && covered(web.Redirect.From) {
+			web.Hosts = web.Claims()
+			web.Redirect = nil
+		}
+	}
+	a.WebProcesses = webs
+	a.collectHosts()
+}
+
+// Yield drops a subdomain-derived host pattern that another app claims with host, and the
+// www/apex redirect to it. It fails when a process would be left with no host or lose its
+// canonical_host, so the app is refused instead of quietly serving less than its file says.
 func (a *App) Yield(pattern, owner string) error {
 	pattern = NormalizePattern(pattern)
 	webs := slices.Clone(a.WebProcesses)
@@ -432,16 +480,22 @@ func (a *App) Yield(pattern, owner string) error {
 			continue
 		}
 		kept := List{}
-		for _, host := range web.Hosts {
+		for _, host := range web.Claims() {
 			if NormalizePattern(host) != pattern {
 				kept = append(kept, host)
 			}
 		}
-		if len(kept) == len(web.Hosts) {
+		if len(kept) == len(web.Claims()) {
 			continue
 		}
 		if len(kept) == 0 {
 			return fmt.Errorf("procfile.%s: every host of its subdomain is served by app %s through host", web.Name, owner)
+		}
+		if web.Redirect != nil && web.Redirect.To == pattern {
+			web.Redirect = nil
+		}
+		if web.Redirect != nil {
+			kept = append(kept, web.Redirect.From)
 		}
 		if web.CanonicalHost != "" && !hostAllowed(web.CanonicalHost, kept) {
 			return fmt.Errorf("procfile.%s.canonical_host: %s is served by app %s through host", web.Name, web.CanonicalHost, owner)

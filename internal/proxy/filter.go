@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"dboss/internal/config"
 	"dboss/internal/httpx"
 	"dboss/internal/pages"
 	"dboss/internal/supervisor"
@@ -43,8 +44,13 @@ func (h *Handler) initFilters() {
 // The built-in stages, in request order.
 
 func (h *Handler) canonical(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
-	if web, ok := app.WebForHost(r.Host); ok && redirectCanonical(w, r, web.CanonicalHost) {
-		return
+	if web, ok := app.WebForHost(r.Host); ok {
+		if redirectCanonical(w, r, web.CanonicalHost) {
+			return
+		}
+		if target, ok := web.RedirectTarget(r.Host); ok && redirectCanonical(w, r, target) {
+			return
+		}
 	}
 	next()
 }
@@ -101,8 +107,7 @@ func (h *Handler) exempt(r *http.Request, app supervisor.Snapshot) bool {
 // uptime monitor can probe the app domain. It reports whether a visitor would be served: 200 while
 // the app runs or sleeps until the next request, 503 otherwise, and it never wakes a stopped app.
 func (h *Handler) publicHealth(w http.ResponseWriter, r *http.Request, app supervisor.Snapshot, next func()) {
-	path := app.Web.HealthEndpoint
-	if path == "" || r.URL.Path != path || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+	if r.URL.Path != config.PublicHealthPath || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
 		next()
 		return
 	}

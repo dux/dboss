@@ -1146,6 +1146,7 @@ func TestRemovedKeysNameTheirReplacement(t *testing.T) {
 		{"base host", "base_host: foo.bar\nprocfile:\n  web:\n    command: ./server\n    subdomain: www\n", "renamed to domain"},
 		{"procfile hosts", "procfile:\n  web:\n    command: ./server\n    hosts: [a.test]\n", "renamed to host"},
 		{"host prefix", "domain: foo.bar\nprocfile:\n  web:\n    command: ./server\n    host_prefix: www\n", "renamed to subdomain"},
+		{"health endpoint", "procfile:\n  web: ./server\nhealth_endpoint: /healthcheck\n", "built in at /.well-known/dboss/health"},
 	} {
 		_, err := ParseApp([]byte(test.data), "/srv/apps/demo/dboss.yaml", Default().Defaults)
 		if err == nil || !strings.Contains(err.Error(), test.want) {

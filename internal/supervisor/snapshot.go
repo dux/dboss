@@ -50,11 +50,13 @@ type DiskUsage struct {
 // WebProcessSnapshot is one web process of an app: the hosts it answers and the canonical host
 // its other hosts redirect to, plus its realtime hub.
 type WebProcessSnapshot struct {
-	Name          string        `json:"name"`
-	Hosts         []string      `json:"hosts"`
-	CanonicalHost string        `json:"canonical_host,omitempty"`
-	Static        string        `json:"static"`
-	Pubsub        config.Pubsub `json:"pubsub"`
+	Name          string   `json:"name"`
+	Hosts         []string `json:"hosts"`
+	CanonicalHost string   `json:"canonical_host,omitempty"`
+	// Redirect is the www/apex hostname answered with a 301 to its sibling; From is in Hosts.
+	Redirect *config.HostRedirect `json:"redirect,omitempty"`
+	Static   string               `json:"static"`
+	Pubsub   config.Pubsub        `json:"pubsub"`
 	// Subdomain marks hosts derived from subdomain + domain, which yield to another app's host.
 	Subdomain bool `json:"subdomain,omitempty"`
 	// BasicAuth and Password are the proxy's gates for this web process; never sent as JSON.
@@ -142,11 +144,24 @@ func (s Snapshot) WebForHost(host string) (WebProcessSnapshot, bool) {
 	return best, bestScore >= 0
 }
 
+// Claims lists the hosts the process claims, without its www/apex redirect hostname.
+func (w WebProcessSnapshot) Claims() []string {
+	return config.WebProcess{Hosts: w.Hosts, Redirect: w.Redirect}.Claims()
+}
+
+// RedirectTarget is the sibling a request for the www/apex redirect hostname is sent to.
+func (w WebProcessSnapshot) RedirectTarget(host string) (string, bool) {
+	if w.Redirect == nil || config.NormalizeHost(host) != w.Redirect.From {
+		return "", false
+	}
+	return w.Redirect.To, true
+}
+
 // WebProcessSnapshots converts the derived config web processes into the snapshot shape.
 func WebProcessSnapshots(webs []config.WebProcess) []WebProcessSnapshot {
 	result := make([]WebProcessSnapshot, 0, len(webs))
 	for _, web := range webs {
-		result = append(result, WebProcessSnapshot{Name: web.Name, Hosts: web.Hosts, Subdomain: web.Subdomain, CanonicalHost: web.CanonicalHost, Static: web.Static, Pubsub: web.Pubsub, BasicAuth: web.BasicAuth, Password: web.Password, Vibe: web.Vibe})
+		result = append(result, WebProcessSnapshot{Name: web.Name, Hosts: web.Hosts, Subdomain: web.Subdomain, CanonicalHost: web.CanonicalHost, Redirect: web.Redirect, Static: web.Static, Pubsub: web.Pubsub, BasicAuth: web.BasicAuth, Password: web.Password, Vibe: web.Vibe})
 	}
 	return result
 }

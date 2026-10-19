@@ -219,15 +219,38 @@ func claimHosts(found []*App) (valid []*App, configs map[*App]config.App, clashe
 		configs[app] = cfg
 		valid = append(valid, app)
 	}
+	// A www/apex redirect is the weakest claim: any pattern of another app covering its hostname
+	// takes it. Two apps cannot share one, since its sibling would clash first.
+	for _, app := range valid {
+		cfg := configs[app]
+		cfg.DropRedirects(func(host string) bool {
+			return coveredByOther(host, app.Name, explicit) || coveredByOther(host, app.Name, derived)
+		})
+		configs[app] = cfg
+	}
 	return valid, configs, clashes, late
 }
 
+// coveredByOther reports whether a pattern another app owns matches host.
+func coveredByOther(host, app string, owners map[string]string) bool {
+	for pattern, owner := range owners {
+		if owner == app {
+			continue
+		}
+		if _, ok := config.MatchHost(host, pattern); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // hostsOf lists an app's host patterns of one kind: derived from a subdomain, or claimed with host.
+// A www/apex redirect hostname is no claim and is settled after both.
 func hostsOf(cfg config.App, subdomain bool) []string {
 	var hosts []string
 	for _, web := range cfg.WebProcesses {
 		if web.Subdomain == subdomain {
-			hosts = append(hosts, web.Hosts...)
+			hosts = append(hosts, web.Claims()...)
 		}
 	}
 	return hosts

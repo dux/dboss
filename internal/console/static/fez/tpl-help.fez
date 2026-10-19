@@ -114,8 +114,7 @@
     procfile:
       web:
         command: ./start.sh
-        subdomain: www      # www.shop.example.com and shop.example.com
-        canonical_host: shop.example.com
+        subdomain: "@"      # shop.example.com; www.shop.example.com redirects to it
       admin:
         command: ./admin.sh
         host: admin.example.net
@@ -317,8 +316,12 @@
     tokens:
       dboss: $DBOSS_TOKEN
 
-    # app file
-    health_endpoint: /healthz
+    # app file: the readiness path dboss probes on the web process
+    procfile:
+      web:
+        command: ./start.sh
+        subdomain: "@"
+        health: /up
     `,
     alerts: `
     # host file: every app, 5% errors or a 2s p95
@@ -571,8 +574,8 @@
         <db-preview-yaml :text="state.examples.routing" />
         <h3>Details</h3>
         <p>A leading <code>*.</code> matches subdomains only; a leading <code>.</code> matches the bare domain and every subdomain, so <code>host: .example.com</code> is <code>example.com</code> plus <code>*.example.com</code>. A single value is accepted like a list, and in single-app dev mode an app with no host or subdomain anywhere binds its first process to <code>&#60;app&#62;.lvh.me</code>.</p>
-        <p>A <code>subdomain</code> is a label or wildcard pattern, or a list, prepended to <code>domain</code>. <code>www</code> and <code>*</code> also answer the bare domain with no redirect, so <code>domain: foo.bar</code> with <code>subdomain: [www, api]</code> serves <code>www.foo.bar</code>, <code>foo.bar</code> and <code>api.foo.bar</code>, and <code>subdomain: "*"</code> serves the apex plus every subdomain. <code>host</code> and <code>subdomain</code> on one entry is an error, and so is a <code>domain</code> no subdomain uses; a dev session with no <code>domain</code> uses <code>lvh.me</code>.</p>
-        <p>A <code>host</code> beats a hostname derived from <code>subdomain</code>, in the same app or another one: a landing app with <code>host: myapp.com</code> takes the bare domain from a tenant app with <code>subdomain: "*"</code>, which keeps <code>*.myapp.com</code>. Two <code>host</code> claims, or two <code>subdomain</code> claims, of one hostname are still an error (between apps the first in name order wins), and so is a subdomain process left with no hostname or without its <code>canonical_host</code>.</p>
+        <p>A <code>subdomain</code> is a label or wildcard pattern, or a list, prepended to <code>domain</code>; <code>"@"</code> is the domain itself and <code>"*"</code> every subdomain, never the apex, so <code>subdomain: ["@", "*"]</code> serves the apex plus every subdomain. dboss pairs the apex with <code>www</code>: with <code>"@"</code> and no <code>www</code>, <code>www</code> answers 301 to the apex, and with <code>www</code> and no <code>"@"</code>, the apex answers 301 to <code>www</code>. That target leads the process's hosts, so the health probe and links use it, and any other process or app that serves or covers the redirect hostname takes it. So <code>domain: foo.bar</code> with <code>subdomain: ["@", api]</code> serves <code>foo.bar</code> and <code>api.foo.bar</code> and redirects <code>www.foo.bar</code> to <code>foo.bar</code>. <code>host</code> and <code>subdomain</code> on one entry is an error, and so is a <code>domain</code> no subdomain uses; a dev session with no <code>domain</code> uses <code>lvh.me</code>.</p>
+        <p>A <code>host</code> beats a hostname derived from <code>subdomain</code>, in the same app or another one: a landing app with <code>host: myapp.com</code> takes the bare domain from a tenant app with <code>subdomain: ["@", "*"]</code>, which keeps <code>*.myapp.com</code>. Two <code>host</code> claims, or two <code>subdomain</code> claims, of one hostname are still an error (between apps the first in name order wins), and so is a subdomain process left with no hostname or without its <code>canonical_host</code>.</p>
         <p><code>maintenance on</code> answers every request with the maintenance page while the app keeps running. A stopped app gets the starting page, then the real response once it is healthy. A host no app matches gets the host's <code>404</code> page.</p>
         <p>Each request walks the stages in this order: canonical redirect, <code>allow_ips</code>, <code>deny</code>, health endpoint, <code>rate_limit</code>, <code>authcog</code> login, <code>auth</code> sign-in, <code>basic_auth</code>, <code>password</code>, maintenance, static files, body buffer, then wake or forward. Forwarded headers (<code>X-Forwarded-Proto</code>, <code>X-Forwarded-Host</code>, <code>X-Real-IP</code>) are added only when missing, so Cloudflare's values win.</p>
       </section>
@@ -1070,7 +1073,7 @@
           <li>Checking a new box before the first start with <code>dboss doctor</code>.</li>
         </ul>
         <h3>Config keys</h3>
-        <div fez:keep="keys-health"><db-config-keys paths="health_endpoint,tokens.webhook" /></div>
+        <div fez:keep="keys-health"><db-config-keys paths="health_timeout,liveness_interval,tokens.webhook" /></div>
         <h3>Example</h3>
         <db-preview-yaml :text="state.examples.health" />
         <h3>Details</h3>
@@ -1080,7 +1083,7 @@
           <li><code>GET /readyz</code> - <code>200</code> only while every <code>autostart</code> app is running, else <code>503</code>.</li>
           <li><code>GET /metrics</code> - Prometheus text: per-app state, memory, CPU, restart and request rates, latency quantiles and the last cron and hook runs. It needs the webhook token (<code>dboss token</code>) or <code>tokens.dboss</code> as a bearer token and does not exist without one.</li>
         </ul>
-        <p>Each app also answers on its own hosts at <code>health_endpoint</code> (default <code>/.well-known/dboss/health</code>): <code>200</code> while running and not draining, <code>503</code> otherwise. It runs before auth and never wakes a stopped app. <code>dboss doctor</code> preflights a box: tools, writable directories, a valid config and a clear port range.</p>
+        <p>Each app also answers on its own hosts at the built-in <code>/.well-known/dboss/health</code>: <code>200</code> while running and not draining, <code>503</code> otherwise. It runs before auth and never wakes a stopped app. <code>dboss doctor</code> preflights a box: tools, writable directories, a valid config and a clear port range.</p>
         <p>A web process's <code>health</code> path that gates readiness and restarts is under Supervision.</p>
       </section>
     {/if}

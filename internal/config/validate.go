@@ -152,14 +152,14 @@ func validHostPattern(pattern string) bool {
 	return validHostname(pattern)
 }
 
-// validSubdomain accepts "*" (any subdomain), a label or dotted labels, or a "*."-led pattern,
-// that is prepended to the app's domain. Examples: www, api, staging, *.staging.
+// validSubdomain accepts "@" (the bare domain), "*" (any subdomain), a label or dotted labels, or
+// a "*."-led pattern, that is prepended to the app's domain. Examples: @, www, api, *.staging.
 func validSubdomain(subdomain string) bool {
 	subdomain = NormalizePattern(subdomain)
 	if subdomain == "" {
 		return false
 	}
-	if subdomain == "*" {
+	if subdomain == "*" || subdomain == ApexSubdomain {
 		return true
 	}
 	if rest, ok := strings.CutPrefix(subdomain, "*."); ok {
@@ -241,9 +241,6 @@ func validateBasicAuth(users map[string]string, key string) error {
 }
 
 func validateWeb(w Web) error {
-	if w.HealthEndpoint != "" && !strings.HasPrefix(w.HealthEndpoint, "/") {
-		return keyErr("health_endpoint", "must start with /")
-	}
 	if _, err := parsePrefixes(w.AllowIPs); err != nil {
 		return err
 	}
@@ -439,8 +436,8 @@ func validateAuthCog(w Web) error {
 	if err := validateURLPath("authcog", string(w.AuthCog)); err != nil {
 		return err
 	}
-	if w.HealthEndpoint != "" && w.HealthEndpoint == string(w.AuthCog) {
-		return keyErr("authcog", "must differ from health_endpoint %q", w.HealthEndpoint)
+	if string(w.AuthCog) == PublicHealthPath {
+		return keyErr("authcog", "must differ from the health path %q", PublicHealthPath)
 	}
 	return nil
 }

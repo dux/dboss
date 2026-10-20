@@ -385,7 +385,7 @@ func edgeHandler(cfg config.Config, flow *authcog.Flow, manager *supervisor.Mana
 	if management != nil && cfg.Management.Enabled() {
 		handler = proxy.HostSwitch(cfg.Management.Host, management, appProxy)
 	}
-	return appProxy, proxy.CloudflareOnly(cfg.Proxy.Cloudflare, handler), nil
+	return appProxy, proxy.CloudflareOnly(cfg.Proxy.Cloudflare, proxy.Compress(handler)), nil
 }
 
 func startHTTPServer(name string, listener net.Listener, handler http.Handler) *http.Server {

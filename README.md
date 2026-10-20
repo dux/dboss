@@ -1126,6 +1126,11 @@ On the way to an app the proxy adds `X-Forwarded-Proto` and `X-Forwarded-Host` w
 A `CF-Connecting-IP` is passed on only when the connection came from Cloudflare's ranges (or the box itself, e.g. `cloudflared`); otherwise the client wrote it and it is dropped.
 `X-Forwarded-For` is appended by the reverse proxy.
 
+Every answer on the edge (apps, static files, dboss pages and the console) is compressed with brotli or gzip, whichever the client's `Accept-Encoding` prefers.
+Only text, JSON, XML, JS, SVG, wasm and font types of at least 1 KiB (or of unknown length) are encoded; `text/event-stream`, `206`, `304` and HEAD answers pass through, and an encoded answer gets `Vary: Accept-Encoding` and a weak `ETag`.
+An app opts out by compressing its own answers or sending `Cache-Control: no-transform`.
+A request Cloudflare forwarded (a `CF-Ray` header on a connection from its ranges or the box itself) is answered plain, since Cloudflare compresses for the visitor; DNS-only hostnames, `proxy.tls` hosts and dev sessions are compressed by dboss.
+
 An app's processes start with the web processes (the ones with `host` or `subdomain`) first, then the rest in name order, so a web process that expects other services to be up still gets that.
 
 ## Audit log

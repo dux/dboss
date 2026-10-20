@@ -280,6 +280,8 @@ defaults:
   # per-process web keys (host, subdomain, pubsub, health, canonical_host) live on the procfile
   # entry, and a web procfile entry may set its own basic_auth and password to replace the app's.
   # Cloudflare owns TLS, compression, caching, WAF and rate limiting, so those are not here.
+  # Without Cloudflare in front dboss compresses (brotli or gzip) itself; an app opts out with
+  # Cache-Control: no-transform.
   # Order per request: canonical redirect -> allow_ips -> deny -> health endpoint -> rate_limit
   # -> authcog login -> auth -> basic_auth -> password -> maintenance -> static
   # -> max_body/body buffer -> wake or forward -> headers.

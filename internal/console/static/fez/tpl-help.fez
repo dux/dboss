@@ -452,7 +452,7 @@
           <li>An idle app stops after <code>idle_stop</code> and wakes the same way.</li>
           <li>Stop and restart drain first: new requests get <code>503</code> while those in flight finish, bounded by <code>stop_timeout</code>.</li>
           <li>Every mutating action is written to the audit log, and crash and failure events can post to one operator webhook.</li>
-          <li>Cloudflare is the edge: TLS, caching, compression and WAF live there. dboss is the origin and trusts only Cloudflare's ranges.</li>
+          <li>Cloudflare is the edge: TLS, caching and WAF live there. dboss is the origin, trusts only Cloudflare's ranges and compresses with brotli or gzip only what reaches it around Cloudflare.</li>
         </ul>
         <db-preview-yaml :text="state.examples.how" lang="text" />
       </section>

@@ -3,7 +3,9 @@
 package e2e
 
 import (
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,10 +23,20 @@ func TestVibeHarness(t *testing.T) {
 
 	navigate := map[string]string{"Cookie": signed["Cookie"], "Sec-Fetch-Dest": "document", "Accept-Encoding": "gzip"}
 	page := servingCall(t, call{host: "vibe.lvh.me", path: "/", header: navigate})
-	expectBody(t, page, "Corner Bakery", `<script src="/_dboss_/vibe/assets/shell.js" defer></script></head>`)
-	if page.Header.Get("Cache-Control") != "no-store" || page.Header.Get("Content-Encoding") != "" {
+	if page.Header.Get("Cache-Control") != "no-store" || page.Header.Get("Content-Encoding") != "gzip" {
 		t.Fatalf("page headers = %v", page.Header)
 	}
+	// The app answers the shell page plain so the tag can go in; the edge encodes it on the way out.
+	unzipped, err := gzip.NewReader(strings.NewReader(page.Body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := io.ReadAll(unzipped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.Body = string(plain)
+	expectBody(t, page, "Corner Bakery", `<script src="/_dboss_/vibe/assets/shell.js" defer></script></head>`)
 	if fetched := (call{host: "vibe.lvh.me", path: "/", header: signed}).do(t); strings.Contains(fetched.Body, "shell.js") {
 		t.Fatal("a fetch got the shell")
 	}

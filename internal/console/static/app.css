@@ -305,6 +305,30 @@ body:has(.held-bar) .help-nav {
   color: var(--text);
 }
 
+/* App page: the card, then the tab strip and the active tab's body. */
+.app-page-back {
+  margin-bottom: 14px;
+}
+
+.fez-tpl-app .ui-tabs {
+  margin: 24px 0 20px;
+}
+
+/* A tab's own title row with its filters, in place of a page header. */
+.tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.tab-head h2 {
+  margin: 0;
+  font-size: var(--text-size-big);
+  font-weight: 600;
+}
+
 /* --- Page ------------------------------------------------------------------ */
 
 .page-body {
@@ -563,16 +587,6 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-
-.stat-link {
-  color: inherit;
-  text-decoration: none;
-}
-
-.stat-link:hover {
-  border-color: var(--primary);
-  text-decoration: none;
 }
 
 .stat-head {
@@ -3304,7 +3318,8 @@ select.log-control { max-width: 220px; }
   .container { padding-inline: 16px; }
   .config-form { grid-template-columns: 1fr; }
   .config-recipes { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); }
-  .page-header { align-items: flex-start; flex-direction: column; }
+  .page-header,
+  .tab-head { align-items: flex-start; flex-direction: column; }
   .page-actions { justify-content: flex-start; }
   .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .datagrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }

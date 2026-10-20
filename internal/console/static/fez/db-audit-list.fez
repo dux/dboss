@@ -1,0 +1,141 @@
+<script>
+  class {
+    // app locks the list to one app (the app page's Audit tab) and hides the app filter; back is
+    // where an opened row returns to.
+    PROPS = {
+      app: { type: String, default: '' },
+      back: { type: String, default: '#/audit' },
+    }
+
+    init(props) {
+      this.state.rows = []
+      this.state.app = props.app || Fez.hqs('app') || ''
+      this.state.actor = Fez.hqs('actor') || ''
+      this.state.action = Fez.hqs('action') || ''
+      this.state.row = Number(Fez.hqs('row') || 0)
+      this.state.open = {}
+      this.state.loading = false
+      this.state.error = ''
+      this.state.filterTimer = 0
+    }
+
+    onMount() {
+      if (!this.state.row) this.load()
+    }
+
+    onDestroy() {
+      clearTimeout(this.state.filterTimer)
+    }
+
+    beforeRender() {
+      this.state.apps = this.globalState.apps || []
+    }
+
+    // The app select is a fez:this ref: a rendered selected attribute does not move the live
+    // selection, which left the filter showing the last app while no filter was set.
+    afterRender() {
+      const node = this.state.appNode
+      if (!node || node === document.activeElement) return
+      if (node.value !== this.state.app) node.value = this.state.app
+    }
+
+    async load() {
+      this.state.loading = true
+      try {
+        const params = new URLSearchParams()
+        if (this.state.app) params.set('app', this.state.app)
+        if (this.state.actor) params.set('actor', this.state.actor)
+        if (this.state.action) params.set('action', this.state.action)
+        const data = await Dboss.api(`/ui/audit?${params.toString()}`)
+        this.state.rows = data.rows || []
+        this.state.error = ''
+      } catch (error) {
+        this.state.error = error.message
+      } finally {
+        this.state.loading = false
+      }
+    }
+
+    // A text filter waits for a pause in typing; the app select applies at once.
+    setFilter(key, value, wait = 0) {
+      this.state[key] = value
+      Dboss.setQs(key, value)
+      clearTimeout(this.state.filterTimer)
+      this.state.filterTimer = setTimeout(() => this.load(), wait)
+    }
+
+    // A hash write is history only, so the row has to move the state itself. The back link is a
+    // plain anchor, which fires hashchange and remounts the page on the list again.
+    open(id) {
+      if (!id) return
+      this.state.row = id
+      Dboss.setQs('row', String(id))
+    }
+
+    // A fresh object per toggle: a write into the existing one would not repaint the list.
+    toggle(id) {
+      this.state.open = { ...this.state.open, [id]: !this.state.open[id] }
+    }
+
+  }
+</script>
+
+{#if state.row}
+  <db-audit-view :id="state.row" back={props.back} />
+{:else}
+<section class="card">
+  <div class="card-header">
+    <h3 class="section-title">Operator audit</h3>
+    <div class="card-actions audit-filters">
+      {#unless props.app}
+        <select fez:this="appNode" onchange="fez.setFilter('app', this.value)">
+          <option value="">All apps</option>
+          {#each state.apps as app}
+            <option value={app.name}>{app.name}</option>
+          {/each}
+        </select>
+      {/unless}
+      <input type="text" placeholder="Actor" value={state.actor} oninput="fez.setFilter('actor', this.value, 250)" />
+      <input type="text" placeholder="Action" value={state.action} oninput="fez.setFilter('action', this.value, 250)" />
+      <button class="btn btn-sm" type="button" onclick="fez.load()" disabled={state.loading}>
+        <svg class="icon"><use href="#i-refresh"></use></svg>
+        {state.loading ? 'Loading' : 'Refresh'}
+      </button>
+    </div>
+  </div>
+
+  {#if state.error}
+    <div class="alert alert-danger">{state.error}</div>
+  {/if}
+
+  <div class="audit-list">
+    <div class="audit-row audit-head">
+      <span class="subheader">Time</span>
+      <span class="subheader">Actor</span>
+      <span class="subheader">Action</span>
+      <span class="subheader">App</span>
+      <span class="subheader">Result</span>
+    </div>
+    {#each state.rows as row}
+      <div class="audit-entry" class:audit-entry-open={state.open[row.id]}>
+        <div class="audit-row audit-row-click" data-result={row.result} onclick="fez.open({row.id})">
+          <span class="service-value">{Human.stamp(row.time)}</span>
+          <span class="service-name">{row.actor}</span>
+          <span>{row.action}</span>
+          <span class="service-value">{row.app || '-'}</span>
+          <span class="badge" class:badge-danger={row.result !== 'ok'}><span>{row.result}</span></span>
+        </div>
+        <div class="audit-sub" onclick="fez.toggle({row.id})">
+          <button class="audit-caret" type="button" aria-expanded={state.open[row.id] ? 'true' : 'false'}>&#9656;</button>
+          <span class="audit-detail">{row.detail || '-'}</span>
+          {#if row.error}
+            <span class="audit-sub-error">{row.error}</span>
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <div class="audit-row audit-empty text-muted">No audit rows match.</div>
+    {/each}
+  </div>
+</section>
+{/if}

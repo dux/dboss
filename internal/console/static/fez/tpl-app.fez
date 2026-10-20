@@ -1,0 +1,56 @@
+<script>
+  const TABS = ['logs', 'traffic', 'exceptions', 'events', 'audit']
+
+  class {
+    init() {
+      this.state.name = Dboss.readQs('app')
+      const tab = Dboss.readQs('tab')
+      this.state.tab = TABS.includes(tab) ? tab : 'logs'
+      this.state.selectTab = (id) => this.setTab(id)
+    }
+
+    beforeRender() {
+      this.state.app = (this.globalState.apps || []).find((app) => app.name === this.state.name) || null
+      const exceptions = this.state.app?.exceptions
+      this.state.tabs = `logs:Logs,traffic:Traffic,exceptions:${exceptions ? `Exceptions (${exceptions})` : 'Exceptions'},events:Events,audit:Audit`
+    }
+
+    // A tab owns its own query keys (range means different things on Logs and Traffic), so a
+    // switch starts the new tab from a clean query and leaves one history entry behind.
+    setTab(id) {
+      if (!TABS.includes(id) || id === this.state.tab) return
+      Fez.hpath('app', { qs: { app: this.state.name, tab: id } })
+      this.state.tab = id
+    }
+  }
+</script>
+
+<p class="page-pretitle app-page-back"><a href="#/overview">&larr; Services</a></p>
+
+{#if state.app}
+  <db-app-card :app="state.app" detail />
+
+  <ui-tabs tabs={state.tabs} active={state.tab} :onselect="state.selectTab" />
+
+  {#if state.tab === 'logs'}
+    <db-log-view app={state.name} page lock />
+  {:else if state.tab === 'traffic'}
+    <db-app-traffic app={state.name} />
+  {:else if state.tab === 'exceptions'}
+    <db-app-exceptions app={state.name} />
+  {:else if state.tab === 'events'}
+    <db-app-events app={state.name} />
+  {:else}
+    <db-audit-list app={state.name} back={'#/app?app=' + encodeURIComponent(state.name) + '&tab=audit'} />
+  {/if}
+{:else if !globalState.loaded}
+  <div class="card empty-state">
+    <span class="spinner" aria-hidden="true"></span>
+    <strong>Loading {state.name}</strong>
+  </div>
+{:else}
+  <div class="card empty-state">
+    <strong>No app named {state.name || '(none)'}</strong>
+    <span>It may have been removed or renamed. Go back to the services list to pick another one.</span>
+  </div>
+{/if}

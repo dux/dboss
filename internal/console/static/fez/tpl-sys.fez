@@ -111,6 +111,10 @@
     {#if state.snapshot}
       <span class="refresh-status">Collected {Human.stamp(state.snapshot.collected_at)}</span>
     {/if}
+    <a class="btn" href="#/blocked" title="Denied paths across every app">
+      <svg class="icon"><use href="#i-alert"></use></svg>
+      Blocked requests
+    </a>
     <button class="btn" type="button" onclick="fez.load(true)" disabled={state.loading}>
       <svg class="icon"><use href="#i-refresh"></use></svg>
       {state.loading ? 'Inspecting' : 'Re-inspect'}
@@ -264,3 +268,9 @@
     </div>
   </section>
 {/if}
+
+<div class="section-head">
+  <h2>Daemon log</h2>
+  <span class="text-muted">dboss's own log, kept for stdout_retention</span>
+</div>
+<db-log-view app="_dboss" lock />

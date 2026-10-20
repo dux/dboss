@@ -36,7 +36,7 @@
 
 <div class="page-header">
   <div>
-    <p class="page-pretitle"><a href="#/logs">&larr; Logs</a></p>
+    <p class="page-pretitle"><a href="#/sys">&larr; Sys</a></p>
     <h1 class="page-title">Blocked requests</h1>
   </div>
   <div class="page-actions">

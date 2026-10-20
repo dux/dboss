@@ -2,6 +2,8 @@
   class {
     PROPS = {
       app: { type: Object, required: true },
+      // detail is the app page, where the tabs below the card replace the shortcut buttons.
+      detail: Boolean,
     }
 
     init() {
@@ -76,6 +78,7 @@
       this.state.deployBusy = this.state.deployWatching || Boolean(this.state.deploy?.running || this.state.deploy?.restarting)
       this.state.redeployDisabled = Boolean(this.state.pending || this.state.changing || app.rolling || this.state.deployBusy || !this.state.deploy || this.state.deploy.disabled)
       this.state.errorLog = (app.error_log || []).join('\n')
+      this.state.page = `#/app?app=${encodeURIComponent(app.name)}`
     }
 
     // A stop drains first, so the daemon can take seconds to answer: the row reads as pending
@@ -206,7 +209,7 @@
   <div class="card-header">
     <span class="app-icon" aria-hidden="true"><svg class="icon"><use href="#i-server"></use></svg></span>
     <div class="app-identity">
-      <h3 class="app-name"><a href="#/logs?app={props.app.name}" title="Open the logs of {props.app.name}">{props.app.name}</a>{#if props.app.branch_url} <a class="app-branch" href={props.app.branch_url} target="_blank" rel="noreferrer" title="Open {props.app.branch} on the git host">git:{props.app.branch}</a>{:else if props.app.branch} <span class="app-branch">git:{props.app.branch}</span>{/if}</h3>
+      <h3 class="app-name">{#if props.detail}{props.app.name}{:else}<a href={state.page} title="Open {props.app.name}">{props.app.name}</a>{/if}{#if props.app.branch_url} <a class="app-branch" href={props.app.branch_url} target="_blank" rel="noreferrer" title="Open {props.app.branch} on the git host">git:{props.app.branch}</a>{:else if props.app.branch} <span class="app-branch">git:{props.app.branch}</span>{/if}</h3>
       {#if state.serviceUrl}
         <a class="service-link" href={state.serviceUrl} target="_blank" rel="noreferrer"><span class="service-url">{state.serviceUrl}</span><svg class="icon"><use href="#i-external"></use></svg></a>
       {:else}
@@ -237,10 +240,12 @@
       {/if}
     </div>
     <div class="btn-list app-actions">
-      <ui-btn class="btn-sm" icon="i-file-text" label="Logs" href="#/logs?app={props.app.name}" />
-      <ui-btn class="btn-sm" icon="i-activity" label="Traffic" href="#/traffic?app={props.app.name}" title="Request traffic for this app" />
-      <ui-btn class="btn-sm {props.app.exceptions ? 'btn-danger' : ''}" icon="i-alert" label={props.app.exceptions ? 'Exceptions (' + props.app.exceptions + ')' : 'Exceptions'} href="#/exceptions?app={props.app.name}" title={props.app.exceptions ? props.app.exceptions + ' open exception group(s) in the last 24h' : 'Error groups from the app exceptions log'} />
-      <span class="app-actions-sep" aria-hidden="true">&sdot;</span>
+      {#unless props.detail}
+        <ui-btn class="btn-sm" icon="i-file-text" label="Logs" href={state.page + '&tab=logs'} />
+        <ui-btn class="btn-sm" icon="i-activity" label="Traffic" href={state.page + '&tab=traffic'} title="Request traffic for this app" />
+        <ui-btn class="btn-sm {props.app.exceptions ? 'btn-danger' : ''}" icon="i-alert" label={props.app.exceptions ? 'Exceptions (' + props.app.exceptions + ')' : 'Exceptions'} href={state.page + '&tab=exceptions'} title={props.app.exceptions ? props.app.exceptions + ' open exception group(s) in the last 24h' : 'Error groups from the app exceptions log'} />
+        <span class="app-actions-sep" aria-hidden="true">&sdot;</span>
+      {/unless}
       <ui-btn class="btn-sm" icon="i-settings" label="Config" href="#/config?id=app:{props.app.name}" title="Edit this app's dboss.yaml" />
       <ui-btn class="btn-sm {props.app.maintenance ? 'btn-warning' : ''}" icon="i-tool" label={props.app.maintenance ? 'End maintenance' : 'Maintenance'} onclick="fez.act('{props.app.maintenance ? 'maintenance-off' : 'maintenance-on'}')" disabled={state.pending} title={props.app.maintenance ? 'Serve the app again' : 'Answer every request with the maintenance page'} />
       <span class="app-actions-sep" aria-hidden="true">&sdot;</span>
@@ -306,7 +311,7 @@
     </div>
     {#each state.processes as process}
       <div class="service-row" data-state={process.state}>
-        <a class="service-name service-log-link" href="#/logs?app={props.app.name}&channel=stdout:{process.name}" title="Open {process.name} logs">{process.name}</a>
+        <a class="service-name service-log-link" href={state.page + '&tab=logs&channel=stdout:' + encodeURIComponent(process.name)} title="Open {process.name} logs">{process.name}</a>
         <span class="badge">{process.state}</span>
         <span class="service-value">{process.port || '-'}</span>
         <span class="service-value">{process.pid || '-'}</span>

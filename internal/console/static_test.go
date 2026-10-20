@@ -29,33 +29,55 @@ func TestEveryConsoleRouteHasTemplate(t *testing.T) {
 	}
 }
 
-// The Logs page links to the global blocked-requests page (#/blocked), which db-shell fetches as
+// The Sys page links to the global blocked-requests page (#/blocked), which db-shell fetches as
 // tpl-blocked.fez on demand. A rename on either side would break the link silently.
 func TestBlockedPageIsLinked(t *testing.T) {
-	logs, err := assets.ReadFile("static/fez/tpl-logs.fez")
+	sys, err := assets.ReadFile("static/fez/tpl-sys.fez")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(logs), `href="#/blocked"`) {
-		t.Error("tpl-logs.fez must link to #/blocked")
+	if !strings.Contains(string(sys), `href="#/blocked"`) {
+		t.Error("tpl-sys.fez must link to #/blocked")
 	}
 	if _, err := assets.ReadFile("static/fez/tpl-blocked.fez"); err != nil {
 		t.Fatalf("tpl-blocked.fez is not embedded: %v", err)
 	}
 }
 
-// The Exceptions list opens a fingerprint on its own page (#/exception). db-shell fetches
+// The Exceptions tab opens a fingerprint on its own page (#/exception). db-shell fetches
 // tpl-exception.fez on demand, so a rename on either side would break the link silently.
 func TestExceptionPageIsLinked(t *testing.T) {
-	list, err := assets.ReadFile("static/fez/tpl-exceptions.fez")
+	list, err := assets.ReadFile("static/fez/db-app-exceptions.fez")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(list), "#/exception?") {
-		t.Error("tpl-exceptions.fez must link to #/exception")
+		t.Error("db-app-exceptions.fez must link to #/exception")
 	}
 	if _, err := assets.ReadFile("static/fez/tpl-exception.fez"); err != nil {
 		t.Fatalf("tpl-exception.fez is not embedded: %v", err)
+	}
+}
+
+// The app page (#/app, reached from the app cards, not the nav) renders one shared component per
+// tab. They are preloaded from index.html, so a tab whose component is not loaded there renders
+// as an unknown tag.
+func TestAppPageTabsAreLoaded(t *testing.T) {
+	page, err := assets.ReadFile("static/fez/tpl-app.fez")
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"db-app-card", "ui-tabs", "db-log-view", "db-app-traffic", "db-app-exceptions", "db-app-events", "db-audit-list"} {
+		if !strings.Contains(string(page), "<"+name+" ") {
+			t.Errorf("tpl-app.fez does not render %s", name)
+		}
+		if !strings.Contains(string(index), `fez="/assets/fez/`+name+`.fez"`) {
+			t.Errorf("index.html does not load %s.fez", name)
+		}
 	}
 }
 

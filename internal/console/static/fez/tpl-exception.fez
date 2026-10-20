@@ -124,7 +124,7 @@
           body: JSON.stringify({ app: this.state.app, exp_uid: this.state.row.exp_uid }),
         })
         Toast.show('Exception deleted')
-        location.hash = '#/exceptions?app=' + encodeURIComponent(this.state.app)
+        location.hash = '#/app?app=' + encodeURIComponent(this.state.app) + '&tab=exceptions'
       } catch (error) {
         this.state.error = error.message
         this.state.busy = false
@@ -174,7 +174,7 @@
 
 <div class="page-header">
   <div>
-    <p class="page-pretitle"><a href={'#/exceptions?app=' + state.app}>&larr; Exceptions</a></p>
+    <p class="page-pretitle"><a href={'#/app?app=' + encodeURIComponent(state.app) + '&tab=exceptions'}>&larr; {state.app} exceptions</a></p>
     <h1 class="page-title">
       Exception {state.row ? state.row.short : ''}
       {#if state.row}

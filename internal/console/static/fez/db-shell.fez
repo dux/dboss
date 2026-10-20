@@ -4,10 +4,6 @@
 
     ROUTES = [
       { name: 'overview', label: 'Overview', icon: 'i-home' },
-      { name: 'logs', label: 'Logs', icon: 'i-list' },
-      { name: 'exceptions', label: 'Exceptions', icon: 'i-alert' },
-      { name: 'traffic', label: 'Traffic', icon: 'i-activity' },
-      { name: 'events', label: 'Events', icon: 'i-search' },
       { name: 'audit', label: 'Audit', icon: 'i-file-text' },
       { name: 'sys', label: 'Sys', icon: 'i-server' },
       { name: 'pg', label: 'PG SQL', icon: 'i-database', capability: 'pgAvailable' },
@@ -15,6 +11,9 @@
       { name: 'config', label: 'Config', icon: 'i-settings' },
       { name: 'help', label: 'Help', icon: 'i-help' },
     ]
+
+    // Pages reached from another page keep that page's tab lit.
+    NAV_PARENT = { app: 'overview', exception: 'overview', blocked: 'sys' }
 
     init() {
       this.state.route = Fez.hpath() || 'overview'
@@ -48,6 +47,7 @@
       this.state.visibleRoutes = this.ROUTES.filter(
         (route) => !route.capability || this.globalState[route.capability],
       )
+      this.state.navRoute = this.NAV_PARENT[this.state.route] || this.state.route
     }
 
     // syncRoute maps the fragment onto a tpl-<name> component. A missing route (e.g. the bare
@@ -258,7 +258,7 @@
     <ul class="nav-tabs">
       {#each state.visibleRoutes as item}
         <li>
-          <a class="nav-link" class:active={item.name === state.route} href={'#/' + item.name}>
+          <a class="nav-link" class:active={item.name === state.navRoute} href={'#/' + item.name}>
             <svg class="icon"><use href={'#' + item.icon}></use></svg>{item.label}
           </a>
         </li>

@@ -463,10 +463,11 @@ One row is one record, not one physical line:
 A record that is still being written is not cut: while a log was written to in the last 2 seconds its last open row waits for the next pass.
 `dboss logs` prints each process's newest stdout rows from the store followed by the lines not ingested yet, `dboss logs -f` tails the live file, and `dboss logs --search q [--level l] [--channel c] [-n rows]` queries the same store the viewer uses and prints matching rows.
 
-The **Logs** route (the **Logs** button on an app card opens `#/logs?app=<name>` in a new tab)
-filters by channel, time range, level or HTTP method/status and free text, highlights matches,
-expands a row to its raw fields and exports the current query as text.
-The current filters live in the hash query, so a view can be bookmarked, shared or reached with Back.
+Each app has its own page, `#/app?app=<name>&tab=<tab>`, opened from the app name or the **Logs**, **Traffic** and **Exceptions** buttons on its card on the Overview.
+It shows the same card, then the **Logs**, **Traffic**, **Exceptions**, **Events** and **Audit** tabs.
+The **Logs** tab filters the app's channels by time range, level or HTTP method/status and free text, highlights matches, expands a row to its raw fields and exports the current query as text.
+The tab and its filters live in the hash query, so a view can be bookmarked, shared or reached with Back; switching tabs starts the new tab from a clean query.
+dboss's own daemon log is at the bottom of the **Sys** page.
 
 ## Exceptions
 
@@ -491,14 +492,14 @@ Timestamps are UTC Unix milliseconds. `log_retention` prunes old `exception_logs
 `log_retention: 0` stops ingesting the stream. `dboss check` is not affected; the tables are
 created on first write.
 
-The console's **Exceptions** tab (`#/exceptions?app=<name>&range=`) lists one app's groups for
+The app page's **Exceptions** tab (`#/app?app=<name>&tab=exceptions&range=`) lists the app's groups for
 the last hour, 24 hours, 7 days or 30 days, newest first. Clicking a group shows its full dump
 the most recent request with its headers, and the last 50 minute rows (counts, request, users, IPs). **Resolve** sets `is_resolved` (audited); the next
 occurrence clears it. **Ignore** sets `is_resolved` and `is_ignored`, and a later occurrence leaves
 both set. **Reopen** clears both, and **Unignore** clears only `is_ignored`. Listing is read-only
 and writes no audit row.
-The app card shows an **Exceptions** button next to **Logs** and **Traffic**; it turns red
-with the count of unresolved groups while any remain.
+The app card's **Exceptions** button, and the tab on the app page, turn red with the count of
+unresolved groups while any remain.
 
 ## Events
 
@@ -984,7 +985,7 @@ Both keys are app keys, and a web procfile entry may set its own `basic_auth` or
 `allow_ips` limits the app to a list of CIDRs (address ranges such as `10.0.0.0/8`), matched against the client address.
 `deny` refuses paths with `403` before the app is contacted: `*.php` matches any path ending in `.php`, `*text*` any path containing `text` (`*//*` refuses every double slash, `*/wp-includes/*` that folder at any depth), `/admin/*` the path and everything under it, a plain `/path` is exact, and a bare path segment matches anywhere in the path (`.env*` as a prefix covers `/.env`, `/.env.local` and `/api/.env.prod`; `.git` is exact and covers `/.git/config` and `/repo/.git/HEAD`), all case-insensitive.
 Each blocked path is counted once in the reserved host database (`log/_dboss/dboss.sqlite`, table `blocked`: `path`, `count`), aggregated across apps and over time, and never written to the app's request log, so scanners stay out of Traffic and Logs.
-The Logs page has a **Blocked requests** button that opens the `#/blocked` page, listing those paths with their request count and share of the total (`GET /ui/log/blocked`).
+The Sys page has a **Blocked requests** button that opens the `#/blocked` page, listing those paths with their request count and share of the total (`GET /ui/log/blocked`).
 A connection from Cloudflare's published ranges (built in) or the box itself takes its client address from `CF-Connecting-IP`, which nobody else can set there; any other connection uses its own address, so a host with some DNS-only hostnames sees real visitors on both paths.
 When every hostname goes through Cloudflare, set `proxy.cloudflare: true` in the host file so only those ranges and the box itself may connect, and the origin cannot be reached around Cloudflare.
 
@@ -1168,7 +1169,7 @@ It links to the process logs and edits `dboss-server.yaml` and the app `dboss.ya
 The **Config** view has two modes: **YAML** edits the raw file, and **Form** offers a visual editor built from recipes (PubSub channels, Web, Health and runtime for an app; Notifications and the PostgreSQL connection for the host).
 Each field shows a friendly label, its key, the description from the key reference and the default as a placeholder; a blank field means "use the default", so the key is removed from the file.
 A form save is written to the server-only local override next to the file (`dboss-server.local.yaml` or `dboss.local.yaml`, created from the base when missing), so a deploy never overwrites a value entered here.
-The **Events** tab reads an app's events: a filter bar with the filter language and autocomplete for tag values, labels and data keys, counts per day and event, the newest events with their tags and data, saved views and funnels (the `dboss.yaml` ones read-only, console ones saved, deleted or copied as YAML), a funnel builder and a DuckDB SQL box. SQL and saving or deleting a view are audited.
+The **Events** tab of an app page reads the app's events: a filter bar with the filter language and autocomplete for tag values, labels and data keys, counts per day and event, the newest events with their tags and data, saved views and funnels (the `dboss.yaml` ones read-only, console ones saved, deleted or copied as YAML), a funnel builder and a DuckDB SQL box. SQL and saving or deleting a view are audited.
 The **Sys** tab is a read-only inspection of the box: hostname, OS and kernel, public IP, uptime, load, memory and disk use, the dboss runtime, chosen environment variables, and the installed toolchains (Go, Node, npm, Bun, Deno, Yarn, pnpm, Ruby, gem, Bundler, Python, pip, uv, PHP, Composer, Java, SQLite, lsof, rsync, curl, Docker, podman and more) with their paths and versions, each name linked to its project page.
 It never starts, stops or changes anything; the `sysinfo` module keeps the snapshot warm and **Re-inspect** re-probes on demand.
 The **dboss** field names the running build and **Latest release** the newest tag published on GitHub, linked to its release page and badged `up to date` or `update available`, so a box that needs `sudo dboss update` says so.
@@ -1216,10 +1217,9 @@ Every page is a hash route on `/`, so reload, Back/Forward and a pasted link all
 
 * `fez/db-shell.fez` - navbar, the `ROUTES` list that drives it, the route outlet, API calls and the 5 second poll; exposed as `Dboss`.
 * `fez/tpl-overview.fez` - `#/overview`: memory and disk (`/ui/sys`), a 24h fleet traffic chart (`/ui/traffic/fleet`), the last audit rows and the service list.
-* `fez/tpl-logs.fez` - `#/logs`: the log viewer page, a thin wrapper around `db-log-view`.
-* `fez/tpl-traffic.fez` - `#/traffic`: per-app requests over time, error rate, latency quantiles and the top paths, status codes, countries, client IPs and methods from the request log.
-* `fez/tpl-audit.fez` - `#/audit`: operator actions with app, actor and action filters.
-* `fez/tpl-sys.fez` - `#/sys`: read-only host facts, resource use and installed toolchains with versions.
+* `fez/tpl-app.fez` - `#/app?app=<name>&tab=logs|traffic|exceptions|events|audit`: one app's card and its tabs; not in the nav, opened from the app cards.
+* `fez/tpl-audit.fez` - `#/audit`: operator actions with app, actor and action filters, a thin wrapper around `db-audit-list`.
+* `fez/tpl-sys.fez` - `#/sys`: read-only host facts, resource use, installed toolchains with versions and the dboss daemon log.
 * `fez/tpl-pg.fez` - `#/pg`: the PostgreSQL databases and their backups; `#/pg?db=<name>` is one database, with a Backup and a SQL tab (`&tab=sql`).
 * `fez/tpl-pubsub.fez` - `#/pubsub`: one entry per hub, with its secret and a publish form.
 * `fez/tpl-config.fez` - `#/config`: config file list, the YAML/Form mode toggle, the editor and revision history.
@@ -1227,8 +1227,12 @@ Every page is a hash route on `/`, so reload, Back/Forward and a pasted link all
 
 The shared widgets are loaded once from `index.html` and used by several pages:
 
-* `fez/db-log-view.fez` - the log viewer itself: left nav of apps with sqlite size and fold-out channels, time range, filters, search, row detail and export.
-* `fez/db-app-card.fez` - one service: status badge, stats datagrid, actions.
+* `fez/db-log-view.fez` - the log viewer itself: left nav of channels (one app with `lock`), time range, filters, search, row detail and export.
+* `fez/db-app-traffic.fez` - the app page's Traffic tab: requests over time, error rate, latency quantiles and the top paths, status codes, countries, client IPs and methods from the request log.
+* `fez/db-app-exceptions.fez` - the app page's Exceptions tab: one row per fingerprint, opening `#/exception`.
+* `fez/db-app-events.fez` - the app page's Events tab; its own Overview/Latest/Views and funnels/SQL strip keeps its choice in `&section=`.
+* `fez/db-audit-list.fez` - the audit list behind `#/audit` and the app page's Audit tab (`app` locks it to one app).
+* `fez/db-app-card.fez` - one service: status badge, stats datagrid, actions; `detail` drops the tab shortcuts on the app page.
 * `fez/db-config-form.fez` - the visual config editor: one form per recipe, driven by `config.Recipes()`.
 * `fez/db-config-keys.fez` - searchable key reference, rendered live from the key registry.
 * `fez/db-preview-yaml.fez` - highlighted YAML for the examples in the Help pages.

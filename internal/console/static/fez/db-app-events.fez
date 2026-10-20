@@ -9,12 +9,15 @@
   ]
 
   class {
+    // The app page owns `tab`, so the section strip here keeps its choice in `section`.
+    PROPS = {
+      app: { type: String, default: '', state: true },
+    }
+
     init() {
-      this.state.apps = []
-      this.state.app = Fez.hqs('app') || ''
       this.state.filter = Fez.hqs('f') || ''
       this.state.range = RANGES.includes(Fez.hqs('range')) ? Fez.hqs('range') : '30d'
-      this.state.tab = ['latest', 'views', 'sql'].includes(Dboss.readQs('tab')) ? Dboss.readQs('tab') : 'overview'
+      this.state.tab = ['latest', 'views', 'sql'].includes(Dboss.readQs('section')) ? Dboss.readQs('section') : 'overview'
       this.state.selectTab = (tab) => this.setTab(tab)
       this.state.summary = null
       this.state.columns = []
@@ -50,12 +53,11 @@
       this.load()
     }
 
-    // The app and range selects and the filter input are fez:this refs, written after the render
-    // that needs it, so typing or picking never fights a re-render.
+    // The range select and the filter input are fez:this refs, written after the render that
+    // needs it, so typing or picking never fights a re-render.
     afterRender() {
       if (this.state.needsSelectSync) {
         this.state.needsSelectSync = false
-        if (this.state.appSelect) this.state.appSelect.value = this.state.app
         if (this.state.rangeSelect) this.state.rangeSelect.value = this.state.range
         if (this.state.filterNode && this.state.filterNode !== document.activeElement) this.state.filterNode.value = this.state.filter
       }
@@ -67,17 +69,12 @@
     }
 
     async load() {
+      if (!this.state.app) return
       this.state.loading = true
+      this.state.needsSelectSync = true
       try {
-        const fleet = await Dboss.api('/ui/apps')
-        this.state.apps = (fleet.apps || []).map((app) => app.name).sort()
-        if (!this.state.apps.includes(this.state.app)) this.state.app = this.state.apps[0] || ''
-        Dboss.setQs('app', this.state.app)
-        this.state.needsSelectSync = true
-        if (this.state.app) {
-          await this.loadViews()
-          await this.loadTab()
-        }
+        await this.loadViews()
+        await this.loadTab()
         this.state.error = ''
       } catch (error) {
         this.state.error = error.message
@@ -124,16 +121,6 @@
       return { views: views.views || [], funnels: views.funnels || [], shadowed: views.shadowed || [], status: views.status || {} }
     }
 
-    pickApp(name) {
-      this.state.app = name
-      Dboss.setQs('app', name)
-      this.state.summary = null
-      this.state.latest = null
-      this.state.result = null
-      this.state.funnelResult = null
-      this.load()
-    }
-
     pickRange(value) {
       this.state.range = value
       Dboss.setQs('range', value === '30d' ? '' : value)
@@ -142,7 +129,7 @@
 
     setTab(tab) {
       this.state.tab = tab
-      Dboss.setQs('tab', tab === 'overview' ? '' : tab)
+      Dboss.setQs('section', tab === 'overview' ? '' : tab)
       this.closeSuggest()
       this.loadTab()
     }
@@ -380,7 +367,7 @@
     }
 
     requestLink(id) {
-      return `/#/logs?${new URLSearchParams({ app: this.state.app, channel: 'request', range: 'all', q: id })}`
+      return `/#/app?${new URLSearchParams({ app: this.state.app, tab: 'logs', channel: 'request', range: 'all', q: id })}`
     }
 
     // --- views and funnels ---
@@ -662,17 +649,9 @@
   }
 </script>
 
-<div class="page-header">
-  <div>
-    <p class="page-pretitle">Events</p>
-    <h1 class="page-title">Analytics events</h1>
-  </div>
+<div class="tab-head">
+  <h2>Analytics events</h2>
   <div class="page-actions traffic-filters">
-    <select fez:this="appSelect" aria-label="App" onchange="fez.pickApp(this.value)">
-      {#each state.apps as name}
-        <option value={name}>{name}</option>
-      {/each}
-    </select>
     <select fez:this="rangeSelect" aria-label="Range" onchange="fez.pickRange(this.value)">
       <option value="24h">Last 24 hours</option>
       <option value="7d">Last 7 days</option>
@@ -717,378 +696,366 @@
   <div class="alert">Events are off for this app (<code>events.retention: 0</code>): nothing new is ingested; what is stored can still be read.</div>
 {/if}
 
-{#if !state.app}
-  <div class="card empty-state">
-    {#if state.loading}
+<ui-tabs tabs="overview:Overview,latest:Latest,views:Views and funnels,sql:SQL" active={state.tab} :onselect="state.selectTab" />
+
+{#if state.tab === 'overview'}
+  {#if !state.summary}
+    <div class="card empty-state">
       <span class="spinner" aria-hidden="true"></span>
-      <strong>Loading apps</strong>
-    {:else}
-      <strong>No app to show</strong>
-      <span>Events appear once an app writes to log/&#60;ns&#62;.json.log.</span>
-    {/if}
-  </div>
-{:else}
-  <ui-tabs tabs="overview:Overview,latest:Latest,views:Views and funnels,sql:SQL" active={state.tab} :onselect="state.selectTab" />
+      <strong>Counting events</strong>
+    </div>
+  {:else}
+    <section class="stat-row" aria-label="Events summary">
+      <article class="card stat-card">
+        <span class="subheader">Events</span>
+        <strong class="stat-value">{Human.number(state.summary.count)}</strong>
+        <span class="text-muted">{state.summary.from} – {state.summary.to}</span>
+      </article>
+      <article class="card stat-card">
+        <span class="subheader">{state.summary.scanned ? 'Users' : 'Users (busiest day)'}</span>
+        <strong class="stat-value">{Human.number(state.summary.users)}</strong>
+        <span class="text-muted">{Human.number(state.summary.anons)} anonymous</span>
+      </article>
+      <article class="card stat-card">
+        <span class="subheader">Value</span>
+        <strong class="stat-value">{amount(state.summary.value_sum)}</strong>
+        <span class="text-muted">sum of value</span>
+      </article>
+      <article class="card stat-card">
+        <span class="subheader">On disk</span>
+        <strong class="stat-value">{Human.bytes(state.summary.bytes)}</strong>
+        <span class="text-muted">{rawNote()}</span>
+      </article>
+    </section>
 
-  {#if state.tab === 'overview'}
-    {#if !state.summary}
-      <div class="card empty-state">
-        <span class="spinner" aria-hidden="true"></span>
-        <strong>Counting events</strong>
+    <div class="section-head">
+      <h2>Events per day</h2>
+      <div class="traffic-legend">
+        {#each state.legend as item}
+          <span class="ev-legend" data-series={item.series}>{item.name}</span>
+        {/each}
       </div>
-    {:else}
-      <section class="stat-row" aria-label="Events summary">
-        <article class="card stat-card">
-          <span class="subheader">Events</span>
-          <strong class="stat-value">{Human.number(state.summary.count)}</strong>
-          <span class="text-muted">{state.summary.from} – {state.summary.to}</span>
-        </article>
-        <article class="card stat-card">
-          <span class="subheader">{state.summary.scanned ? 'Users' : 'Users (busiest day)'}</span>
-          <strong class="stat-value">{Human.number(state.summary.users)}</strong>
-          <span class="text-muted">{Human.number(state.summary.anons)} anonymous</span>
-        </article>
-        <article class="card stat-card">
-          <span class="subheader">Value</span>
-          <strong class="stat-value">{amount(state.summary.value_sum)}</strong>
-          <span class="text-muted">sum of value</span>
-        </article>
-        <article class="card stat-card">
-          <span class="subheader">On disk</span>
-          <strong class="stat-value">{Human.bytes(state.summary.bytes)}</strong>
-          <span class="text-muted">{rawNote()}</span>
-        </article>
-      </section>
-
-      <div class="section-head">
-        <h2>Events per day</h2>
-        <div class="traffic-legend">
-          {#each state.legend as item}
-            <span class="ev-legend" data-series={item.series}>{item.name}</span>
+    </div>
+    <section class="card traffic-chart-card">
+      {#if state.peak}
+        <div class="traffic-chart" role="img" aria-label="Events per day, stacked by event">
+          {#each state.columns as column}
+            <div class="traffic-slot" title={column.title}>
+              <div class="traffic-col" style={column.style}>
+                {#each column.parts as part}
+                  <span class="ev-part" data-series={part.series} style={part.style}></span>
+                {/each}
+              </div>
+            </div>
           {/each}
         </div>
-      </div>
-      <section class="card traffic-chart-card">
-        {#if state.peak}
-          <div class="traffic-chart" role="img" aria-label="Events per day, stacked by event">
-            {#each state.columns as column}
-              <div class="traffic-slot" title={column.title}>
-                <div class="traffic-col" style={column.style}>
-                  {#each column.parts as part}
-                    <span class="ev-part" data-series={part.series} style={part.style}></span>
-                  {/each}
-                </div>
-              </div>
-            {/each}
-          </div>
-          <div class="traffic-axis">
-            <span>{edgeLabel(false)}</span>
-            <span>{edgeLabel(true)}</span>
-          </div>
-        {:else}
-          <div class="traffic-none">No events in this range.</div>
-        {/if}
-      </section>
-
-      <div class="section-head">
-        <h2>By event</h2>
-        <span class="text-muted">{state.summary.scanned ? 'Counted from the raw events' : 'Counted from the daily indexes'}</span>
-      </div>
-      <section class="card traffic-list ev-events">
-        <div class="sys-row sys-head">
-          <span class="subheader">Namespace</span>
-          <span class="subheader">Event</span>
-          <span class="subheader num">Count</span>
-          <span class="subheader num">Value</span>
-          <span class="subheader">Share</span>
+        <div class="traffic-axis">
+          <span>{edgeLabel(false)}</span>
+          <span>{edgeLabel(true)}</span>
         </div>
-        {#each state.eventRows as row}
-          <div class="sys-row ev-click" onclick="fez.useEvent({i})" title="Filter by this event">
-            <span class="text-muted">{row.ns}</span>
-            <span class="service-name">{row.event}</span>
-            <span class="num">{Human.number(row.count)}</span>
-            <span class="num">{amount(row.value)}</span>
-            <span class="meter"><span style={share(row.count)}></span></span>
-          </div>
-        {:else}
-          <div class="sys-row sys-empty text-muted">No events match. Apps write them to log/&#60;ns&#62;.json.log, one JSON object per line.</div>
-        {/each}
-      </section>
-    {/if}
-  {/if}
+      {:else}
+        <div class="traffic-none">No events in this range.</div>
+      {/if}
+    </section>
 
-  {#if state.tab === 'latest'}
     <div class="section-head">
-      <h2>Latest events</h2>
-      <span class="text-muted">The newest 100 matching events, newest first</span>
+      <h2>By event</h2>
+      <span class="text-muted">{state.summary.scanned ? 'Counted from the raw events' : 'Counted from the daily indexes'}</span>
     </div>
-    <section class="card traffic-list ev-latest">
+    <section class="card traffic-list ev-events">
       <div class="sys-row sys-head">
-        <span class="subheader">Time</span>
         <span class="subheader">Namespace</span>
         <span class="subheader">Event</span>
-        <span class="subheader">Who</span>
-        <span class="subheader">Tags</span>
-        <span class="subheader">Message</span>
+        <span class="subheader num">Count</span>
+        <span class="subheader num">Value</span>
+        <span class="subheader">Share</span>
       </div>
-      {#if !state.latest}
-        <div class="sys-row sys-empty text-muted">Reading events…</div>
+      {#each state.eventRows as row}
+        <div class="sys-row ev-click" onclick="fez.useEvent({i})" title="Filter by this event">
+          <span class="text-muted">{row.ns}</span>
+          <span class="service-name">{row.event}</span>
+          <span class="num">{Human.number(row.count)}</span>
+          <span class="num">{amount(row.value)}</span>
+          <span class="meter"><span style={share(row.count)}></span></span>
+        </div>
       {:else}
-        {#each state.latest as row, r}
-          <div class="sys-row ev-click" class:active={state.openRow === r} onclick="fez.toggleRow({r})">
-            <span class="text-muted ev-time">{Human.time(row.ts)}</span>
-            <span class="text-muted">{row.ns}</span>
-            <span class="service-name">{row.event}</span>
-            <span class="ev-who">{who(row)}</span>
-            <span class="ev-chips">
-              {#each row.tags as tag, t}
-                <button class="ev-chip" type="button" onclick="event.stopPropagation(); fez.addTag({r}, {t})" title="Add to the filter">{tag}</button>
-              {/each}
-            </span>
-            <span class="ev-msg">{row.msg || ''}</span>
-          </div>
-          {#if state.openRow === r}
-            <div class="ev-detail">
-              <div class="datagrid">
-                <div class="datagrid-item"><span class="subheader">Value</span><span class="datagrid-content">{row.value === undefined ? '-' : row.value}</span></div>
-                <div class="datagrid-item"><span class="subheader">Country</span><span class="datagrid-content">{row.country || '-'}</span></div>
-                <div class="datagrid-item"><span class="subheader">User / anon</span><span class="datagrid-content">{row.user_id || '-'} / {row.anon_id || '-'}</span></div>
-                <div class="datagrid-item">
-                  <span class="subheader">Request</span>
-                  <span class="datagrid-content">
-                    {#if row.request_id}
-                      <a href={requestLink(row.request_id)} target="_blank" rel="noreferrer">{row.request_id}</a>
-                    {:else}
-                      -
-                    {/if}
-                  </span>
-                </div>
-              </div>
-              {#if row.data}
-                <pre class="ev-json">{pretty(row.data)}</pre>
-              {/if}
-            </div>
-          {/if}
-        {:else}
-          <div class="sys-row sys-empty text-muted">No events match in this range.</div>
-        {/each}
-      {/if}
+        <div class="sys-row sys-empty text-muted">No events match. Apps write them to log/&#60;ns&#62;.json.log, one JSON object per line.</div>
+      {/each}
     </section>
   {/if}
+{/if}
 
-  {#if state.tab === 'views' && state.catalog}
+{#if state.tab === 'latest'}
+  <div class="section-head">
+    <h2>Latest events</h2>
+    <span class="text-muted">The newest 100 matching events, newest first</span>
+  </div>
+  <section class="card traffic-list ev-latest">
+    <div class="sys-row sys-head">
+      <span class="subheader">Time</span>
+      <span class="subheader">Namespace</span>
+      <span class="subheader">Event</span>
+      <span class="subheader">Who</span>
+      <span class="subheader">Tags</span>
+      <span class="subheader">Message</span>
+    </div>
+    {#if !state.latest}
+      <div class="sys-row sys-empty text-muted">Reading events…</div>
+    {:else}
+      {#each state.latest as row, r}
+        <div class="sys-row ev-click" class:active={state.openRow === r} onclick="fez.toggleRow({r})">
+          <span class="text-muted ev-time">{Human.time(row.ts)}</span>
+          <span class="text-muted">{row.ns}</span>
+          <span class="service-name">{row.event}</span>
+          <span class="ev-who">{who(row)}</span>
+          <span class="ev-chips">
+            {#each row.tags as tag, t}
+              <button class="ev-chip" type="button" onclick="event.stopPropagation(); fez.addTag({r}, {t})" title="Add to the filter">{tag}</button>
+            {/each}
+          </span>
+          <span class="ev-msg">{row.msg || ''}</span>
+        </div>
+        {#if state.openRow === r}
+          <div class="ev-detail">
+            <div class="datagrid">
+              <div class="datagrid-item"><span class="subheader">Value</span><span class="datagrid-content">{row.value === undefined ? '-' : row.value}</span></div>
+              <div class="datagrid-item"><span class="subheader">Country</span><span class="datagrid-content">{row.country || '-'}</span></div>
+              <div class="datagrid-item"><span class="subheader">User / anon</span><span class="datagrid-content">{row.user_id || '-'} / {row.anon_id || '-'}</span></div>
+              <div class="datagrid-item">
+                <span class="subheader">Request</span>
+                <span class="datagrid-content">
+                  {#if row.request_id}
+                    <a href={requestLink(row.request_id)} target="_blank" rel="noreferrer">{row.request_id}</a>
+                  {:else}
+                    -
+                  {/if}
+                </span>
+              </div>
+            </div>
+            {#if row.data}
+              <pre class="ev-json">{pretty(row.data)}</pre>
+            {/if}
+          </div>
+        {/if}
+      {:else}
+        <div class="sys-row sys-empty text-muted">No events match in this range.</div>
+      {/each}
+    {/if}
+  </section>
+{/if}
+
+{#if state.tab === 'views' && state.catalog}
+  <div class="section-head">
+    <h2>Files</h2>
+  </div>
+  <section class="card">
+    <div class="datagrid ev-status">
+      <div class="datagrid-item"><span class="subheader">Events directory</span><code class="datagrid-content">{state.catalog.status.dir}</code></div>
+      <div class="datagrid-item"><span class="subheader">views.sql</span><code class="datagrid-content">{state.catalog.status.views_sql}</code></div>
+      <div class="datagrid-item"><span class="subheader">DuckDB</span><span class="datagrid-content">{state.catalog.status.duckdb || 'not found'}</span></div>
+      <div class="datagrid-item"><span class="subheader">From a shell</span><code class="datagrid-content">duckdb -cmd ".read {state.catalog.status.views_sql}"</code></div>
+    </div>
+    {#if !duckdb()}
+      <p class="text-muted sql-note">{missing()}</p>
+    {/if}
+  </section>
+
+  <div class="section-head">
+    <h2>Saved views</h2>
+    <div class="card-actions">
+      {#if state.saving}
+        <input fez:this="viewNameNode" type="text" placeholder="pro_checkouts" aria-label="View name" onkeydown="if (event.key === 'Enter') fez.saveView()" />
+        <button class="btn btn-primary btn-sm" type="button" onclick="fez.saveView()">Save</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="fez.cancelSave()">Cancel</button>
+      {:else}
+        <button class="btn btn-sm" type="button" onclick="fez.startSave()" title="Save the filter above as a view">
+          <svg class="icon"><use href="#i-save"></use></svg>
+          Save current filter
+        </button>
+      {/if}
+    </div>
+  </div>
+  <section class="card traffic-list ev-saved">
+    {#each state.catalog.views as view}
+      <div class="sys-row">
+        <a class="service-name traffic-key" href="#" onclick="event.preventDefault(); fez.loadView({i})" title="Show this view">{view.name}</a>
+        <code class="ev-def">{view.filter}</code>
+        <span class="badge" class:badge-success={view.source === 'yaml'}>{view.source}</span>
+        <span class="ev-row-actions">
+          {#if view.source === 'console'}
+            <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.copyYaml('view', {i})" title="Copy as dboss.yaml"><svg class="icon"><use href="#i-copy"></use></svg></button>
+            {#if deleting('view', view.name)}
+              <button class="btn btn-sm btn-outline-danger" type="button" onclick="fez.confirmDelete('view', {i})">Delete</button>
+              <button class="btn btn-sm btn-ghost" type="button" onclick="fez.cancelDelete()">Keep</button>
+            {:else}
+              <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.askDelete('view', {i})" title="Delete"><svg class="icon"><use href="#i-trash"></use></svg></button>
+            {/if}
+          {/if}
+        </span>
+      </div>
+    {:else}
+      <div class="sys-row sys-empty text-muted">No saved views. Save the current filter, or declare events.views in the app's dboss.yaml.</div>
+    {/each}
+  </section>
+
+  <div class="section-head">
+    <h2>Funnels</h2>
+  </div>
+  <section class="card traffic-list ev-saved">
+    {#each state.catalog.funnels as funnel}
+      <div class="sys-row">
+        <span class="service-name">{funnel.name}</span>
+        <span class="ev-def">{funnelLine(funnel)}</span>
+        <span class="badge" class:badge-success={funnel.source === 'yaml'}>{funnel.source}</span>
+        <span class="ev-row-actions">
+          <button class="btn btn-sm" type="button" onclick="fez.runFunnel({i})" disabled={!duckdb() || state.funnelRunning} title={duckdb() ? 'Run over the selected range' : missing()}><svg class="icon"><use href="#i-play"></use></svg>Run</button>
+          <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.editFunnel({i})" title="Load into the builder"><svg class="icon"><use href="#i-settings"></use></svg></button>
+          {#if funnel.source === 'console'}
+            <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.copyYaml('funnel', {i})" title="Copy as dboss.yaml"><svg class="icon"><use href="#i-copy"></use></svg></button>
+            {#if deleting('funnel', funnel.name)}
+              <button class="btn btn-sm btn-outline-danger" type="button" onclick="fez.confirmDelete('funnel', {i})">Delete</button>
+              <button class="btn btn-sm btn-ghost" type="button" onclick="fez.cancelDelete()">Keep</button>
+            {:else}
+              <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.askDelete('funnel', {i})" title="Delete"><svg class="icon"><use href="#i-trash"></use></svg></button>
+            {/if}
+          {/if}
+        </span>
+      </div>
+    {:else}
+      <div class="sys-row sys-empty text-muted">No funnels yet. Build one below or declare events.funnels in the app's dboss.yaml.</div>
+    {/each}
+  </section>
+  {#if state.catalog.shadowed.length}
+    <p class="text-muted ev-note">Saved in the console but hidden by a dboss.yaml entry of the same name: {state.catalog.shadowed.join(', ')}</p>
+  {/if}
+
+  <div class="section-head">
+    <h2>Funnel builder</h2>
+    <span class="text-muted">Each step is a filter; an actor counts once they reach it after the step before, within the window of their first step</span>
+  </div>
+  <section class="card ev-builder">
+    <div class="ev-builder-meta" fez:keep="ev-funnel-meta">
+      <label>Name <input fez:this="fnName" type="text" placeholder="checkout" /></label>
+      <label>By
+        <select fez:this="fnBy">
+          <option value="user">user</option>
+          <option value="anon">anon</option>
+          <option value="tenant">tenant</option>
+        </select>
+      </label>
+      <label>Window <input fez:this="fnWindow" type="text" placeholder="7d" /></label>
+      <label>Breakdown <input fez:this="fnBreakdown" type="text" placeholder="plan, country or data.source" /></label>
+    </div>
+    {#each state.steps as step, s}
+      <div class="ev-step" key={step.id}>
+        <span class="ev-step-no">{s + 1}</span>
+        <span class="ev-step-fields" fez:keep="ev-step-{step.id}">
+          <input data-step-name={step.id} type="text" placeholder="Step name" aria-label="Step name" />
+          <input data-step-filter={step.id} type="text" spellcheck="false" placeholder="page_view page:pricing" aria-label="Step filter" />
+        </span>
+        <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.removeStep({s})" disabled={state.steps.length <= 2} title="Remove step"><svg class="icon"><use href="#i-x"></use></svg></button>
+      </div>
+    {/each}
+    <div class="sql-actions">
+      <button class="btn btn-sm" type="button" onclick="fez.addStep()" disabled={state.steps.length >= 10}><svg class="icon"><use href="#i-plus"></use></svg>Add step</button>
+      <button class="btn btn-primary btn-sm" type="button" onclick="fez.runFunnel()" disabled={!duckdb() || state.funnelRunning}><svg class="icon"><use href="#i-play"></use></svg>{state.funnelRunning ? 'Running' : 'Run'}</button>
+      <button class="btn btn-sm" type="button" onclick="fez.saveFunnel()"><svg class="icon"><use href="#i-save"></use></svg>Save funnel</button>
+      <span class="text-muted">{duckdb() ? 'Runs over the selected range.' : missing()}</span>
+    </div>
+  </section>
+
+  {#if state.funnelError}
+    <div class="alert alert-danger sql-error">{state.funnelError}</div>
+  {/if}
+  {#if state.funnelResult}
     <div class="section-head">
-      <h2>Files</h2>
+      <h2>{state.funnelTitle}</h2>
+      <span class="text-muted">{Human.number(state.funnelResult.duration_ms)} ms</span>
+    </div>
+    {#each state.funnelGroups as group}
+      <section class="card ev-funnel">
+        {#if state.funnelGroups.length > 1}
+          <h3 class="ev-funnel-group">{group.label}</h3>
+        {/if}
+        {#each group.steps as step}
+          <div class="ev-funnel-step">
+            <span class="service-name">{step.name}</span>
+            <span class="ev-funnel-bar"><span style={step.bar}></span></span>
+            <span class="num">{step.actors}</span>
+            <span class="num">{step.pct}</span>
+            <span class="text-muted">{step.previous} {step.median}</span>
+          </div>
+        {/each}
+      </section>
+    {:else}
+      <div class="card empty-state"><span>No actor reached the first step in this range.</span></div>
+    {/each}
+  {/if}
+{/if}
+
+{#if state.tab === 'sql'}
+  {#if state.catalog && !duckdb()}
+    <div class="alert">{missing()}</div>
+  {/if}
+  <div class="section-head">
+    <h2>SQL</h2>
+    <span class="text-muted">DuckDB, read only to this app's events</span>
+  </div>
+  <section class="card sql-runner">
+    <div fez:keep="events-sql-editor">
+      <textarea class="sql-editor" spellcheck="false" placeholder="select event, count(*) from events group by all" fez:this="sqlNode" onkeydown="fez.sqlKeydown(event)"></textarea>
+    </div>
+    <div class="sql-actions">
+      <button class="btn btn-primary" type="button" onclick="fez.runSQL()" disabled={state.running || !duckdb()}>
+        <svg class="icon"><use href="#i-play"></use></svg>
+        {state.running ? 'Running' : 'Run'}
+      </button>
+      <span class="text-muted">Cmd/Ctrl+Enter runs. Every run is audited.</span>
+    </div>
+    <p class="text-muted ev-hint">Views: <code>events</code>, <code>events_daily</code>, <code>facets</code>, <code>data_keys</code>{savedHint()}. Try:
+      {#each examples() as example}
+        <a href="#" onclick="event.preventDefault(); fez.loadExample({i})">example {i + 1}</a>
+      {/each}
+    </p>
+  </section>
+
+  {#if state.sqlError}
+    <div class="alert alert-danger sql-error">{state.sqlError}</div>
+  {/if}
+
+  {#if state.result}
+    <div class="section-head">
+      <h2>Result</h2>
+      <span class="text-muted">{Human.number(state.result.rows ? state.result.rows.length : 0)} rows · {Human.number(state.result.duration_ms)} ms</span>
     </div>
     <section class="card">
-      <div class="datagrid ev-status">
-        <div class="datagrid-item"><span class="subheader">Events directory</span><code class="datagrid-content">{state.catalog.status.dir}</code></div>
-        <div class="datagrid-item"><span class="subheader">views.sql</span><code class="datagrid-content">{state.catalog.status.views_sql}</code></div>
-        <div class="datagrid-item"><span class="subheader">DuckDB</span><span class="datagrid-content">{state.catalog.status.duckdb || 'not found'}</span></div>
-        <div class="datagrid-item"><span class="subheader">From a shell</span><code class="datagrid-content">duckdb -cmd ".read {state.catalog.status.views_sql}"</code></div>
-      </div>
-      {#if !duckdb()}
-        <p class="text-muted sql-note">{missing()}</p>
-      {/if}
-    </section>
-
-    <div class="section-head">
-      <h2>Saved views</h2>
-      <div class="card-actions">
-        {#if state.saving}
-          <input fez:this="viewNameNode" type="text" placeholder="pro_checkouts" aria-label="View name" onkeydown="if (event.key === 'Enter') fez.saveView()" />
-          <button class="btn btn-primary btn-sm" type="button" onclick="fez.saveView()">Save</button>
-          <button class="btn btn-ghost btn-sm" type="button" onclick="fez.cancelSave()">Cancel</button>
-        {:else}
-          <button class="btn btn-sm" type="button" onclick="fez.startSave()" title="Save the filter above as a view">
-            <svg class="icon"><use href="#i-save"></use></svg>
-            Save current filter
-          </button>
-        {/if}
-      </div>
-    </div>
-    <section class="card traffic-list ev-saved">
-      {#each state.catalog.views as view}
-        <div class="sys-row">
-          <a class="service-name traffic-key" href="#" onclick="event.preventDefault(); fez.loadView({i})" title="Show this view">{view.name}</a>
-          <code class="ev-def">{view.filter}</code>
-          <span class="badge" class:badge-success={view.source === 'yaml'}>{view.source}</span>
-          <span class="ev-row-actions">
-            {#if view.source === 'console'}
-              <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.copyYaml('view', {i})" title="Copy as dboss.yaml"><svg class="icon"><use href="#i-copy"></use></svg></button>
-              {#if deleting('view', view.name)}
-                <button class="btn btn-sm btn-outline-danger" type="button" onclick="fez.confirmDelete('view', {i})">Delete</button>
-                <button class="btn btn-sm btn-ghost" type="button" onclick="fez.cancelDelete()">Keep</button>
-              {:else}
-                <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.askDelete('view', {i})" title="Delete"><svg class="icon"><use href="#i-trash"></use></svg></button>
-              {/if}
-            {/if}
-          </span>
-        </div>
-      {:else}
-        <div class="sys-row sys-empty text-muted">No saved views. Save the current filter, or declare events.views in the app's dboss.yaml.</div>
-      {/each}
-    </section>
-
-    <div class="section-head">
-      <h2>Funnels</h2>
-    </div>
-    <section class="card traffic-list ev-saved">
-      {#each state.catalog.funnels as funnel}
-        <div class="sys-row">
-          <span class="service-name">{funnel.name}</span>
-          <span class="ev-def">{funnelLine(funnel)}</span>
-          <span class="badge" class:badge-success={funnel.source === 'yaml'}>{funnel.source}</span>
-          <span class="ev-row-actions">
-            <button class="btn btn-sm" type="button" onclick="fez.runFunnel({i})" disabled={!duckdb() || state.funnelRunning} title={duckdb() ? 'Run over the selected range' : missing()}><svg class="icon"><use href="#i-play"></use></svg>Run</button>
-            <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.editFunnel({i})" title="Load into the builder"><svg class="icon"><use href="#i-settings"></use></svg></button>
-            {#if funnel.source === 'console'}
-              <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.copyYaml('funnel', {i})" title="Copy as dboss.yaml"><svg class="icon"><use href="#i-copy"></use></svg></button>
-              {#if deleting('funnel', funnel.name)}
-                <button class="btn btn-sm btn-outline-danger" type="button" onclick="fez.confirmDelete('funnel', {i})">Delete</button>
-                <button class="btn btn-sm btn-ghost" type="button" onclick="fez.cancelDelete()">Keep</button>
-              {:else}
-                <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.askDelete('funnel', {i})" title="Delete"><svg class="icon"><use href="#i-trash"></use></svg></button>
-              {/if}
-            {/if}
-          </span>
-        </div>
-      {:else}
-        <div class="sys-row sys-empty text-muted">No funnels yet. Build one below or declare events.funnels in the app's dboss.yaml.</div>
-      {/each}
-    </section>
-    {#if state.catalog.shadowed.length}
-      <p class="text-muted ev-note">Saved in the console but hidden by a dboss.yaml entry of the same name: {state.catalog.shadowed.join(', ')}</p>
-    {/if}
-
-    <div class="section-head">
-      <h2>Funnel builder</h2>
-      <span class="text-muted">Each step is a filter; an actor counts once they reach it after the step before, within the window of their first step</span>
-    </div>
-    <section class="card ev-builder">
-      <div class="ev-builder-meta" fez:keep="ev-funnel-meta">
-        <label>Name <input fez:this="fnName" type="text" placeholder="checkout" /></label>
-        <label>By
-          <select fez:this="fnBy">
-            <option value="user">user</option>
-            <option value="anon">anon</option>
-            <option value="tenant">tenant</option>
-          </select>
-        </label>
-        <label>Window <input fez:this="fnWindow" type="text" placeholder="7d" /></label>
-        <label>Breakdown <input fez:this="fnBreakdown" type="text" placeholder="plan, country or data.source" /></label>
-      </div>
-      {#each state.steps as step, s}
-        <div class="ev-step" key={step.id}>
-          <span class="ev-step-no">{s + 1}</span>
-          <span class="ev-step-fields" fez:keep="ev-step-{step.id}">
-            <input data-step-name={step.id} type="text" placeholder="Step name" aria-label="Step name" />
-            <input data-step-filter={step.id} type="text" spellcheck="false" placeholder="page_view page:pricing" aria-label="Step filter" />
-          </span>
-          <button class="btn btn-sm btn-ghost btn-icon" type="button" onclick="fez.removeStep({s})" disabled={state.steps.length <= 2} title="Remove step"><svg class="icon"><use href="#i-x"></use></svg></button>
-        </div>
-      {/each}
-      <div class="sql-actions">
-        <button class="btn btn-sm" type="button" onclick="fez.addStep()" disabled={state.steps.length >= 10}><svg class="icon"><use href="#i-plus"></use></svg>Add step</button>
-        <button class="btn btn-primary btn-sm" type="button" onclick="fez.runFunnel()" disabled={!duckdb() || state.funnelRunning}><svg class="icon"><use href="#i-play"></use></svg>{state.funnelRunning ? 'Running' : 'Run'}</button>
-        <button class="btn btn-sm" type="button" onclick="fez.saveFunnel()"><svg class="icon"><use href="#i-save"></use></svg>Save funnel</button>
-        <span class="text-muted">{duckdb() ? 'Runs over the selected range.' : missing()}</span>
-      </div>
-    </section>
-
-    {#if state.funnelError}
-      <div class="alert alert-danger sql-error">{state.funnelError}</div>
-    {/if}
-    {#if state.funnelResult}
-      <div class="section-head">
-        <h2>{state.funnelTitle}</h2>
-        <span class="text-muted">{Human.number(state.funnelResult.duration_ms)} ms</span>
-      </div>
-      {#each state.funnelGroups as group}
-        <section class="card ev-funnel">
-          {#if state.funnelGroups.length > 1}
-            <h3 class="ev-funnel-group">{group.label}</h3>
-          {/if}
-          {#each group.steps as step}
-            <div class="ev-funnel-step">
-              <span class="service-name">{step.name}</span>
-              <span class="ev-funnel-bar"><span style={step.bar}></span></span>
-              <span class="num">{step.actors}</span>
-              <span class="num">{step.pct}</span>
-              <span class="text-muted">{step.previous} {step.median}</span>
-            </div>
-          {/each}
-        </section>
-      {:else}
-        <div class="card empty-state"><span>No actor reached the first step in this range.</span></div>
-      {/each}
-    {/if}
-  {/if}
-
-  {#if state.tab === 'sql'}
-    {#if state.catalog && !duckdb()}
-      <div class="alert">{missing()}</div>
-    {/if}
-    <div class="section-head">
-      <h2>SQL</h2>
-      <span class="text-muted">DuckDB, read only to this app's events</span>
-    </div>
-    <section class="card sql-runner">
-      <div fez:keep="events-sql-editor">
-        <textarea class="sql-editor" spellcheck="false" placeholder="select event, count(*) from events group by all" fez:this="sqlNode" onkeydown="fez.sqlKeydown(event)"></textarea>
-      </div>
-      <div class="sql-actions">
-        <button class="btn btn-primary" type="button" onclick="fez.runSQL()" disabled={state.running || !duckdb()}>
-          <svg class="icon"><use href="#i-play"></use></svg>
-          {state.running ? 'Running' : 'Run'}
-        </button>
-        <span class="text-muted">Cmd/Ctrl+Enter runs. Every run is audited.</span>
-      </div>
-      <p class="text-muted ev-hint">Views: <code>events</code>, <code>events_daily</code>, <code>facets</code>, <code>data_keys</code>{savedHint()}. Try:
-        {#each examples() as example}
-          <a href="#" onclick="event.preventDefault(); fez.loadExample({i})">example {i + 1}</a>
-        {/each}
-      </p>
-    </section>
-
-    {#if state.sqlError}
-      <div class="alert alert-danger sql-error">{state.sqlError}</div>
-    {/if}
-
-    {#if state.result}
-      <div class="section-head">
-        <h2>Result</h2>
-        <span class="text-muted">{Human.number(state.result.rows ? state.result.rows.length : 0)} rows · {Human.number(state.result.duration_ms)} ms</span>
-      </div>
-      <section class="card">
-        {#if state.result.columns}
-          <div class="sql-result">
-            <table class="sql-table">
-              <thead>
+      {#if state.result.columns}
+        <div class="sql-result">
+          <table class="sql-table">
+            <thead>
+              <tr>
+                {#each state.result.columns as column}
+                  <th>{column}</th>
+                {/each}
+              </tr>
+            </thead>
+            <tbody>
+              {#each state.result.rows as row}
                 <tr>
-                  {#each state.result.columns as column}
-                    <th>{column}</th>
+                  {#each row as value}
+                    <td class:sql-null={value === null}>{cell(value)}</td>
                   {/each}
                 </tr>
-              </thead>
-              <tbody>
-                {#each state.result.rows as row}
-                  <tr>
-                    {#each row as value}
-                      <td class:sql-null={value === null}>{cell(value)}</td>
-                    {/each}
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-          {#if state.result.truncated}
-            <p class="text-muted sql-note">Showing the first {Human.number(state.result.rows.length)} rows. Add a LIMIT or aggregate to see the rest.</p>
-          {/if}
-        {:else}
-          <p class="text-muted sql-note">The statement returned no rows.</p>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        {#if state.result.truncated}
+          <p class="text-muted sql-note">Showing the first {Human.number(state.result.rows.length)} rows. Add a LIMIT or aggregate to see the rest.</p>
         {/if}
-      </section>
-    {/if}
+      {:else}
+        <p class="text-muted sql-note">The statement returned no rows.</p>
+      {/if}
+    </section>
   {/if}
 {/if}

@@ -4,6 +4,7 @@
       app: { type: String, default: '' },
       channel: { type: String, default: '' },
       page: Boolean,
+      lock: Boolean,
     }
 
     init(props) {
@@ -16,6 +17,7 @@
       this.state.status = ''
       this.state.query = ''
       this.state.tree = []
+      this.state.treeLoaded = false
       this.state.rows = []
       this.state.kind = 'log'
       this.state.loaded = false
@@ -26,7 +28,7 @@
       this.state.queryNode = null
       this.state.queryTimer = 0
       if (this.state.page) {
-        this.state.app = Fez.hqs('app') || this.state.app
+        if (!props.lock) this.state.app = Fez.hqs('app') || this.state.app
         this.state.channel = Fez.hqs('channel') || this.state.channel
         this.state.range = Fez.hqs('range') || this.state.range
         this.state.level = Fez.hqs('level') || ''
@@ -70,15 +72,19 @@
     async loadTree() {
       try {
         const data = await Dboss.api('/ui/log/tree')
-        this.state.tree = data.apps || []
+        const tree = data.apps || []
+        // A locked view lists only its own app's channels and never switches app.
+        this.state.tree = this.props.lock ? tree.filter((group) => group.name === this.state.app) : tree
         const names = this.state.tree.map((group) => group.name)
-        if (!names.includes(this.state.app)) this.state.app = names[0] || ''
+        if (!this.props.lock && !names.includes(this.state.app)) this.state.app = names[0] || ''
         const group = this.state.tree.find((entry) => entry.name === this.state.app)
         const ids = (group?.channels || []).map((channel) => channel.id)
         if (!ids.includes(this.state.channel)) this.state.channel = ids[0] || ''
         this.state.error = ''
       } catch (error) {
         this.state.error = error.message
+      } finally {
+        this.state.treeLoaded = true
       }
     }
 
@@ -133,7 +139,10 @@
     }
 
     async load({ append = false } = {}) {
-      if (!this.state.app) return
+      if (!this.state.app || !this.state.channel) {
+        this.state.loaded = this.state.treeLoaded
+        return
+      }
       this.state.busy = true
       try {
         const params = new URLSearchParams({ app: this.state.app, channel: this.state.channel, limit: '300' })
@@ -158,7 +167,7 @@
         this.state.error = error.message
       } finally {
         this.state.busy = false
-        if (this.state.page) this.syncUrl()
+        if (this.state.page && this.isConnected) this.syncUrl()
       }
     }
 
@@ -303,10 +312,12 @@
   <nav class="log-nav" aria-label="Apps">
     {#each state.tree as group, appIndex}
       <div class="log-nav-group">
-        <div class="log-nav-app" class:current={group.name === state.app}>
-          <span class="log-nav-name">{appLabel(group.name)}</span>
-          <span class="log-nav-size">{Human.bytes(group.bytes)}</span>
-        </div>
+        {#unless props.lock}
+          <div class="log-nav-app" class:current={group.name === state.app}>
+            <span class="log-nav-name">{appLabel(group.name)}</span>
+            <span class="log-nav-size">{Human.bytes(group.bytes)}</span>
+          </div>
+        {/unless}
         <div class="log-nav-logs">
           {#each group.channels as channel, channelIndex}
             <button class="log-nav-log" class:active={group.name === state.app && channel.id === state.channel} type="button" onclick="fez.pickService({appIndex},{channelIndex})">
@@ -318,7 +329,7 @@
         </div>
       </div>
     {:else}
-      <p class="log-nav-empty text-muted">Loading...</p>
+      <p class="log-nav-empty text-muted">{state.treeLoaded ? 'No logs yet' : 'Loading...'}</p>
     {/each}
   </nav>
   <div class="log-main">

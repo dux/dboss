@@ -139,7 +139,7 @@
       <span class="text-muted">{state.sys === null ? 'loading' : 'not reported'}</span>
     {/if}
   </article>
-  <a class="card stat-card stat-link" href="#/traffic">
+  <article class="card stat-card">
     <span class="stat-head">
       <span class="subheader">Traffic</span>
       <span class="text-muted">last 24h</span>
@@ -162,7 +162,7 @@
     {:else}
       <span class="spark spark-empty text-muted">{state.chart === null ? 'Loading' : 'No requests in the last 24h'}</span>
     {/if}
-  </a>
+  </article>
   <article class="card stat-card">
     <span class="stat-head">
       <span class="subheader">Recent activity</span>

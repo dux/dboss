@@ -1,56 +1,42 @@
 <script>
   class {
+    PROPS = {
+      app: { type: String, default: '' },
+    }
+
     init() {
-      this.state.apps = []
-      this.state.app = Fez.hqs('app') || ''
       this.state.range = Fez.hqs('range') || '24h'
       this.state.traffic = null
       this.state.totals = {}
       this.state.columns = []
       this.state.peak = 0
-      this.state.loading = false
+      this.state.loading = true
       this.state.error = ''
-      this.state.needsSelectSync = false
     }
 
-    onMount() {
-      this.load()
+    onRefresh(props, changed) {
+      if ('app' in changed) this.load()
     }
 
-    // The selects are fez:this refs: their live value is set after the options render, never on
-    // every pass, so picking an app or a range never fights a re-render.
+    // The range select is a fez:this ref, so a re-render never moves the live selection.
     afterRender() {
-      if (!this.state.needsSelectSync) return
-      this.state.needsSelectSync = false
-      if (this.state.appSelect) this.state.appSelect.value = this.state.app
-      if (this.state.rangeSelect) this.state.rangeSelect.value = this.state.range
+      const node = this.state.rangeSelect
+      if (node && node !== document.activeElement && node.value !== this.state.range) node.value = this.state.range
     }
 
     async load() {
+      if (!this.props.app) return
       this.state.loading = true
       try {
-        const fleet = await Dboss.api('/ui/apps')
-        this.state.apps = (fleet.apps || []).map((app) => app.name).sort()
-        if (!this.state.apps.includes(this.state.app)) this.state.app = this.state.apps[0] || ''
-        Dboss.setQs('app', this.state.app)
-        this.state.needsSelectSync = true
-        if (this.state.app) {
-          const params = new URLSearchParams({ app: this.state.app, range: this.state.range })
-          const data = await Dboss.api(`/ui/traffic?${params}`)
-          this.shape(data.traffic)
-        }
+        const params = new URLSearchParams({ app: this.props.app, range: this.state.range })
+        const data = await Dboss.api(`/ui/traffic?${params}`)
+        this.shape(data.traffic)
         this.state.error = ''
       } catch (error) {
         this.state.error = error.message
       } finally {
         this.state.loading = false
       }
-    }
-
-    pickApp(name) {
-      this.state.app = name
-      Dboss.setQs('app', name)
-      this.load()
     }
 
     pickRange(value) {
@@ -123,26 +109,18 @@
       return `s${Math.floor(Number(code) / 100)}`
     }
 
-    // logsLink opens the #/logs route filtered to one value of the current view.
+    // logsLink opens the app's Logs tab filtered to one value of the current view.
     logsLink(key, value) {
-      const params = new URLSearchParams({ app: this.state.app, channel: 'request', range: this.state.range === '30d' ? 'all' : this.state.range })
+      const params = new URLSearchParams({ app: this.props.app, tab: 'logs', channel: 'request', range: this.state.range === '30d' ? 'all' : this.state.range })
       params.set(key, value)
-      return `/#/logs?${params}`
+      return `/#/app?${params}`
     }
   }
 </script>
 
-<div class="page-header">
-  <div>
-    <p class="page-pretitle">Traffic</p>
-    <h1 class="page-title">Requests &amp; latency</h1>
-  </div>
+<div class="tab-head">
+  <h2>Requests &amp; latency</h2>
   <div class="page-actions traffic-filters">
-    <select fez:this="appSelect" aria-label="App" onchange="fez.pickApp(this.value)">
-      {#each state.apps as name}
-        <option value={name}>{name}</option>
-      {/each}
-    </select>
     <select fez:this="rangeSelect" aria-label="Range" onchange="fez.pickRange(this.value)">
       <option value="1h">Last hour</option>
       <option value="24h">Last 24 hours</option>
@@ -166,8 +144,8 @@
       <span class="spinner" aria-hidden="true"></span>
       <strong>Reading the request log</strong>
     {:else}
-      <strong>No app to show</strong>
-      <span>Traffic appears once an app has served a request.</span>
+      <strong>No traffic to show</strong>
+      <span>Traffic appears once the app has served a request.</span>
     {/if}
   </div>
 {:else}

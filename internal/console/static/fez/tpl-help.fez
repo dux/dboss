@@ -702,7 +702,7 @@
           <li><a href="#/help?topic=logs">Logs</a> - full-text search and a time range over every channel, with level, method and status filters, a per-row detail view, copy and a text export. A Cloudflare Ray ID can be pasted as the query.</li>
           <li><a href="#/help?topic=traffic">Traffic</a> - requests over time, error rate, latency quantiles and the top paths, countries and clients, aggregated from the request rows.</li>
           <li><a href="#/help?topic=events">Events</a> - counts, filters, tag facets, funnels and SQL over the app's Parquet files.</li>
-          <li><a href="#/help?topic=blocked">Blocked requests</a> (<code>#/blocked</code>, from the Logs page) - the denied paths across every app, biggest first, capped at 200.</li>
+          <li><a href="#/help?topic=blocked">Blocked requests</a> (<code>#/blocked</code>, from the Sys page) - the denied paths across every app, biggest first, capped at 200.</li>
           <li><a href="#/help?topic=audit">Audit</a> - who did what, in the reserved <code>_dboss</code> database, with its own retention.</li>
         </ul>
         <h3>Config keys</h3>
@@ -755,7 +755,7 @@
     {#if state.topic === 'exceptions'}
       <section>
         <h2>Exceptions</h2>
-        <p>An app that writes <code>log/&#60;app&#62;.exceptions.log</code> gets an Exceptions tab. The Lux <code>web_common</code> plugin writes that file automatically from <code>Lux.error.log</code>, but any producer may append the same JSON lines. dboss tails it like any app log and groups the occurrences instead of storing one row each.</p>
+        <p>An app that writes <code>log/&#60;app&#62;.exceptions.log</code> gets errors on the Exceptions tab of its app page. The Lux <code>web_common</code> plugin writes that file automatically from <code>Lux.error.log</code>, but any producer may append the same JSON lines. dboss tails it like any app log and groups the occurrences instead of storing one row each.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>Seeing which errors actually happen, newest and most frequent first, without a database-backed error tracker.</li>
@@ -781,7 +781,7 @@
     {#if state.topic === 'blocked'}
       <section>
         <h2>Blocked requests</h2>
-        <p>Every path a <code>deny</code> rule refuses is counted by path, once across every app and over time, in the reserved <code>_dboss</code> database. The <strong>Blocked requests</strong> page (<code>#/blocked</code>, reached from the Logs page) lists them biggest first.</p>
+        <p>Every path a <code>deny</code> rule refuses is counted by path, once across every app and over time, in the reserved <code>_dboss</code> database. The <strong>Blocked requests</strong> page (<code>#/blocked</code>, reached from the Sys page) lists them biggest first.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>Seeing what scanners and bots are probing the host: <code>/wp-login.php</code>, <code>*.php</code>, <code>/.env</code> and the rest.</li>
@@ -806,7 +806,7 @@
     {#if state.topic === 'traffic'}
       <section>
         <h2>Traffic</h2>
-        <p>The Traffic tab aggregates the request log of one app: requests over time, error rate, latency and the busiest paths, countries and clients. It reads the same store as the Logs tab, so there is nothing to set up.</p>
+        <p>The Traffic tab of an app page (open an app from the Overview) aggregates its request log: requests over time, error rate, latency and the busiest paths, countries and clients. It reads the same store as the Logs tab, so there is nothing to set up.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>Seeing at a glance whether an app is healthy: request volume, the share of 5xx answers and p50, p95 and p99 latency.</li>
@@ -831,7 +831,7 @@
     {#if state.topic === 'events'}
       <section>
         <h2>Events</h2>
-        <p>An app records analytics by appending one JSON object per line to <code>log/&#60;ns&#62;.json.log</code>. dboss reads those lines like any app log, stores them as Parquet per app, namespace and day, and answers counts, filters, funnels and SQL from the Events tab or <code>dboss events</code>. There is no SDK and no analytics service to run.</p>
+        <p>An app records analytics by appending one JSON object per line to <code>log/&#60;ns&#62;.json.log</code>. dboss reads those lines like any app log, stores them as Parquet per app, namespace and day, and answers counts, filters, funnels and SQL from the Events tab of its app page or <code>dboss events</code>. There is no SDK and no analytics service to run.</p>
         <h3>What it helps with</h3>
         <ul>
           <li>Counting what users do (signups, checkouts, feature use) without sending data to a third party.</li>

@@ -4,6 +4,7 @@
     // the list behind it is filtered or older than its 200-row window.
     PROPS = {
       id: { type: Number, default: 0 },
+      back: { type: String, default: '#/audit' },
     }
 
     init() {
@@ -35,7 +36,7 @@
 
 <div class="page-header">
   <div>
-    <p class="page-pretitle"><a href="#/audit">&larr; Audit</a></p>
+    <p class="page-pretitle"><a href={props.back}>&larr; Audit</a></p>
     <h1 class="page-title">{state.row ? state.row.action : 'Audit entry'}</h1>
   </div>
   {#if state.row}

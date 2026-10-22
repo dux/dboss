@@ -1189,6 +1189,19 @@ The check is the connecting address and never a forwarded-for header, so a reque
 Production sign-in goes through AuthCog: the console redirects to `authcog_realm`, and only the addresses in `management.admins` are admitted. A console session lasts `defaults.session_ttl`.
 AuthCog sends the browser back to the address the sign-in started on, over http or https and on any port.
 
+A box with no hostname, reached by IP and port on a private network, can serve the console on its own address with a shared password instead:
+
+```yaml
+management:
+  listen: [":9000"]
+  password: $DBOSS_CONSOLE_PASSWORD   # plain or a bcrypt hash from `dboss password`
+```
+
+Every `listen` address serves the console whatever the Host header, outside the proxy, and never falls back to another port; it must stay outside `ports` and requires `password`.
+A request without a session gets the dboss password page, and the right password signs the browser in as `password@console` for `defaults.session_ttl`.
+Checks from one client IP are spaced 3s apart, and changing the password signs everyone out.
+The password only opens `listen` addresses: `management.host` stays AuthCog, and `listen` works without it.
+
 For local work there is `dboss login`:
 
 ```

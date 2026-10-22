@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"html"
 	"math"
 	"net/http"
 	"strconv"
@@ -78,12 +77,6 @@ func (h *Handler) passwordPage(w http.ResponseWriter, r *http.Request, app super
 		http.Error(w, "password required", status)
 		return
 	}
-	action := `<form class="password" method="post" action="` + passwordPath + `">`
-	if problem != "" {
-		action += `<p class="error">` + html.EscapeString(problem) + `</p>`
-	}
-	action += `<input type="password" name="password" aria-label="Password" placeholder="Password" autocomplete="off" autofocus required>` +
-		`<input type="hidden" name="to" value="` + html.EscapeString(to) + `">` +
-		`<button type="submit">Continue</button></form>`
+	action := pages.PasswordForm(passwordPath, to, problem)
 	pages.Page{Name: pages.Password, App: app.Name, Status: status, Action: action}.Write(w, h.pageDirs(app)...)
 }

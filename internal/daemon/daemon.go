@@ -252,6 +252,16 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 			return nil, err
 		}
 		d.servers = append(d.servers, startHTTPServer("management", listener, management))
+		// A listen address serves the console whatever the Host header and signs in with
+		// management.password; like the loopback port it never falls back.
+		for _, address := range cfg.Management.Listen {
+			listener, err := bind("management", address, "management.listen")
+			if err != nil {
+				d.Close()
+				return nil, err
+			}
+			d.servers = append(d.servers, startHTTPServer("management", listener, management.Direct()))
+		}
 	}
 	var login func() (string, string, error)
 	if d.management != nil {
@@ -283,6 +293,9 @@ func (d *Daemon) Serve(ctx context.Context) error {
 		}
 		if publicURL := d.cfg.Management.PublicURL(); publicURL != "" {
 			logx.Infof("management console: %s (AuthCog sign-in)", publicURL)
+		}
+		for _, address := range d.cfg.Management.Listen {
+			logx.Infof("management console: http://%s (password sign-in)", address)
 		}
 	}
 	logx.Infof("dboss ready: config=%s socket=%s listen=%s management=%s port=%d", d.cfg.SourcePath, d.cfg.Socket, strings.Join(d.listen, ","), strings.Join(d.cfg.Management.Host, ","), d.managementPort)

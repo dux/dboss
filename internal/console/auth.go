@@ -1,18 +1,27 @@
 package console
 
 import (
+	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
+	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"dboss/internal/authcog"
 	"dboss/internal/config"
+	"dboss/internal/httpx"
 	"dboss/internal/pages"
+	"dboss/internal/secret"
+	"dboss/internal/throttle"
 )
 
 const (
@@ -25,12 +34,30 @@ const (
 	cliLoginPath = "/login"
 	cliEmail     = "cli@localhost"
 	cliTokenTTL  = 3 * time.Minute
+	// A management.listen address signs in with management.password; the session belongs to
+	// passwordEmail, which AuthCog can never vouch for either.
+	passwordPath    = "/password"
+	passwordCookie  = "dboss_console_password"
+	passwordEmail   = "password@console"
+	passwordMaxForm = 4 << 10
 )
+
+// directKey marks a request that arrived on a management.listen address.
+type directKey struct{}
+
+func isDirect(r *http.Request) bool {
+	direct, _ := r.Context().Value(directKey{}).(bool)
+	return direct
+}
+
+func withDirect(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), directKey{}, true))
+}
 
 type authSession = authcog.Session
 
 // authenticator is the console's side of the shared AuthCog flow: admins only, plus the
-// one-time `dboss login` tokens.
+// one-time `dboss login` tokens and, on management.listen addresses, management.password.
 type authenticator struct {
 	flow         *authcog.Flow
 	gate         authcog.Gate
@@ -40,9 +67,14 @@ type authenticator struct {
 	local        bool
 	localSession authSession // the one local session a hand-run or dev session hands out
 	hostPages    func() string
+	password     string
+	// passwordGate signs password sessions; its audience carries a digest of the password, so
+	// changing it signs everyone out.
+	passwordGate authcog.Gate
+	passwords    *throttle.Throttle
 }
 
-func consoleAuthenticator(flow *authcog.Flow, cfg config.Config, hostPages func() string) (*authenticator, error) {
+func consoleAuthenticator(flow *authcog.Flow, cfg config.Config, hostPages func() string, passwords *throttle.Throttle) (*authenticator, error) {
 	management := cfg.Management
 	// A dev session (running an app from its own folder) and a hand-run host in a terminal both
 	// trust the machine's own loopback, so neither sends the operator through a token.
@@ -51,7 +83,15 @@ func consoleAuthenticator(flow *authcog.Flow, cfg config.Config, hostPages func(
 	for _, host := range management.Host {
 		hosts[strings.ToLower(host)] = true
 	}
-	auth := &authenticator{flow: flow, admins: map[string]bool{}, local: local, hostPages: hostPages}
+	auth := &authenticator{flow: flow, admins: map[string]bool{}, local: local, hostPages: hostPages, password: management.Password, passwords: passwords}
+	if management.Password != "" {
+		digest := sha256.Sum256([]byte(management.Password))
+		auth.passwordGate = authcog.Gate{
+			Audience:      authAudience + "-password:" + hex.EncodeToString(digest[:8]),
+			SessionCookie: passwordCookie,
+			TTL:           cfg.Defaults.SessionTTL.Value(),
+		}
+	}
 	for _, email := range management.Admins {
 		auth.admins[strings.ToLower(email)] = true
 	}
@@ -96,6 +136,9 @@ func (a *authenticator) authenticate(w http.ResponseWriter, r *http.Request) (au
 	if session, ok := a.validSession(r); ok {
 		return session, true
 	}
+	if isDirect(r) {
+		return a.passwordSession(w, r)
+	}
 	if a.local && loopbackPeer(r) {
 		// A hand-run or dev session answering its own machine is the operator's own terminal, so
 		// sending them to `dboss login` buys nothing; hand them the local session directly.
@@ -115,6 +158,57 @@ func (a *authenticator) authenticate(w http.ResponseWriter, r *http.Request) (au
 	}
 	a.flow.Start(w, r, a.gate)
 	return authSession{}, false
+}
+
+// passwordSession signs a management.listen request in with management.password: the session it
+// already holds, the form post, or the password page. Every check books a slot in the per-IP
+// throttle, a passing one too, so guessing is slow.
+func (a *authenticator) passwordSession(w http.ResponseWriter, r *http.Request) (authSession, bool) {
+	if r.URL.Path == passwordPath && r.Method == http.MethodPost {
+		r.Body = http.MaxBytesReader(w, r.Body, passwordMaxForm)
+		to := authcog.SafeRedirect(r.PostFormValue("to"), passwordPath)
+		slot, ok := a.passwords.Reserve(httpx.ClientIP(r))
+		if !ok {
+			seconds := int(math.Ceil(slot.Wait.Seconds()))
+			w.Header().Set("Retry-After", strconv.Itoa(seconds))
+			a.passwordPage(w, r, to, http.StatusTooManyRequests, fmt.Sprintf("Too many attempts. Try again in %d seconds.", seconds))
+			return authSession{}, false
+		}
+		time.Sleep(slot.Wait)
+		if !secret.Matches(a.password, r.PostFormValue("password")) {
+			a.passwordPage(w, r, to, http.StatusUnauthorized, "Wrong password.")
+			return authSession{}, false
+		}
+		if err := a.flow.SetSession(w, r, a.passwordGate, passwordEmail); err != nil {
+			http.Error(w, "authentication unavailable", http.StatusInternalServerError)
+			return authSession{}, false
+		}
+		http.Redirect(w, r, to, http.StatusSeeOther)
+		return authSession{}, false
+	}
+	if session, ok := a.flow.Session(r, a.passwordGate); ok {
+		return session, true
+	}
+	if strings.HasPrefix(r.URL.Path, "/ui/") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"authentication required"}`+"\n")
+		return authSession{}, false
+	}
+	a.passwordPage(w, r, authcog.SafeRedirect(r.URL.RequestURI(), passwordPath), http.StatusUnauthorized, "")
+	return authSession{}, false
+}
+
+// passwordPage answers status with the password form, and problem above it, for a browser and
+// a bare status otherwise.
+func (a *authenticator) passwordPage(w http.ResponseWriter, r *http.Request, to string, status int, problem string) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !strings.Contains(r.Header.Get("Accept"), "text/html") {
+		http.Error(w, "password required", status)
+		return
+	}
+	action := pages.PasswordForm(passwordPath, to, problem)
+	pages.Page{Name: pages.Password, App: "dboss console", Status: status, Action: action}.Write(w, a.hostPages())
 }
 
 // loopbackHost reports whether rawHost names this machine: localhost or a loopback address,
@@ -226,6 +320,9 @@ func (a *authenticator) validCSRF(r *http.Request, session authSession) bool {
 
 func (a *authenticator) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	a.flow.ClearSession(w, r, a.gate)
+	if a.password != "" {
+		a.flow.ClearSession(w, r, a.passwordGate)
+	}
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request, session authSession) {

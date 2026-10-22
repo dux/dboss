@@ -294,6 +294,39 @@ func TestManagementRequiresAuthAndProxyListener(t *testing.T) {
 	}
 }
 
+func TestManagementListenPairsWithPassword(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		listen   List
+		password string
+		want     string
+	}{
+		{"listen and password", List{":9000"}, "erpx", ""},
+		{"listen without password", List{":9000"}, "", "management.password"},
+		{"password without listen", nil, "erpx", "management.password"},
+		{"listen inside ports", List{":3200"}, "erpx", "overlaps ports"},
+		{"listen without a port", List{"10.0.0.5"}, "erpx", "management.listen"},
+	} {
+		cfg := Default()
+		cfg.Apps = "/apps"
+		cfg.Management.Listen = test.listen
+		cfg.Management.Password = test.password
+		err := cfg.Validate()
+		if test.want == "" {
+			if err != nil {
+				t.Errorf("%s: %v", test.name, err)
+			}
+			if !cfg.ConsoleEnabled() {
+				t.Errorf("%s: a listen address should serve the console", test.name)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%s: err = %v, want %q", test.name, err, test.want)
+		}
+	}
+}
+
 func TestParseSize(t *testing.T) {
 	got, err := ParseSize("512m")
 	if err != nil || got != 512<<20 {

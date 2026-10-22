@@ -170,6 +170,18 @@ func (p Page) Write(w http.ResponseWriter, dirs ...string) {
 	_, _ = w.Write(p.Render(dirs...))
 }
 
+// PasswordForm is the password page's {{action}}: a form posting the password and the address to
+// return to (to) to path, with problem above it when there is one.
+func PasswordForm(path, to, problem string) string {
+	action := `<form class="password" method="post" action="` + html.EscapeString(path) + `">`
+	if problem != "" {
+		action += `<p class="error">` + html.EscapeString(problem) + `</p>`
+	}
+	return action + `<input type="password" name="password" aria-label="Password" placeholder="Password" autocomplete="off" autofocus required>` +
+		`<input type="hidden" name="to" value="` + html.EscapeString(to) + `">` +
+		`<button type="submit">Continue</button></form>`
+}
+
 // ServeLogo answers LogoPath.
 func ServeLogo(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "image/svg+xml")

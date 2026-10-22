@@ -89,17 +89,24 @@ type ProxyTLS struct {
 
 func (t ProxyTLS) Enabled() bool { return t.Listen != "" }
 
-// Management is served by the proxy listener; any of the Host names selects the console.
+// Management is served by the proxy listener; any of the Host names selects the console and
+// signs in through AuthCog. Listen addresses serve it directly, whatever the Host header, and
+// sign in with Password.
 type Management struct {
-	Host   List `yaml:"host" json:"host"`
-	Admins List `yaml:"admins" json:"admins"`
+	Host     List   `yaml:"host" json:"host"`
+	Admins   List   `yaml:"admins" json:"admins"`
+	Listen   List   `yaml:"listen" json:"listen"`
+	Password string `yaml:"password" json:"password"`
 }
 
 func (m Management) Enabled() bool { return len(m.Host) > 0 }
 
 // ConsoleEnabled reports whether the console is served at all. A host serves it when it names a
-// hostname; a dev session always gets it, on its loopback port, with no management block.
-func (c Config) ConsoleEnabled() bool { return c.Management.Enabled() || c.Dev() }
+// hostname or a listen address; a dev session always gets it, on its loopback port, with no
+// management block.
+func (c Config) ConsoleEnabled() bool {
+	return c.Management.Enabled() || len(c.Management.Listen) > 0 || c.Dev()
+}
 
 // ConsoleURL is the console as something can reach it: the public management URL when one is
 // configured, else the loopback port of a dev session once it is bound, else empty. Hook URLs

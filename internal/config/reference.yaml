@@ -199,6 +199,17 @@ management:
   # Only these authenticated email addresses may open the console.
   admins:
     - admin@example.com
+  # Addresses that serve the console directly, outside the proxy, whatever the Host header: a
+  # box reached by IP and port on a private network, with no hostname or AuthCog. They never
+  # fall back to another port, must stay outside ports, and require password.
+  listen: []
+  #   [":9000"]
+  # The password asked on a listen address, plain or a bcrypt hash from `dboss password`. The
+  # right one signs the browser in as password@console for defaults.session_ttl; changing it
+  # signs everyone out. Checks from one client IP are spaced 3s apart, so guessing is slow. It
+  # only opens listen addresses: management.host stays AuthCog. Keep it out of a committed file
+  # with $DBOSS_CONSOLE_PASSWORD.
+  password: ""
 
 # --- Per-app defaults --------------------------------------------------------
 # Every key here can be overridden per app in the app's dboss.yaml with the same name.

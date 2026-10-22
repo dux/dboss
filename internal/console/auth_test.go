@@ -11,6 +11,7 @@ import (
 
 	"dboss/internal/authcog"
 	"dboss/internal/config"
+	"dboss/internal/throttle"
 )
 
 func TestCLILoginLinkSignsInOnce(t *testing.T) {
@@ -240,15 +241,84 @@ func testAuthenticator(hosts ...string) *authenticator {
 func devAuthenticator(dev bool, hosts ...string) *authenticator {
 	cfg := config.Default()
 	cfg.Management = config.Management{Host: hosts, Admins: []string{"admin@example.com"}}
-	cfg.Defaults.SessionTTL = config.Duration(time.Hour)
 	if dev {
 		cfg.App = &config.App{}
 	}
-	auth, err := consoleAuthenticator(authcog.NewWithKey([]byte("01234567890123456789012345678901")), cfg, func() string { return "" })
+	return authenticatorFor(cfg)
+}
+
+// authenticatorFor builds the gate for cfg with a one-hour session, a fixed signing key and an
+// unspaced throttle.
+func authenticatorFor(cfg config.Config) *authenticator {
+	cfg.Defaults.SessionTTL = config.Duration(time.Hour)
+	passwords := throttle.New()
+	passwords.Spacing = 0
+	auth, err := consoleAuthenticator(authcog.NewWithKey([]byte("01234567890123456789012345678901")), cfg, func() string { return "" }, passwords)
 	if err != nil {
 		panic(err)
 	}
 	return auth
+}
+
+func TestPasswordSignsInOnListenAddressesOnly(t *testing.T) {
+	cfg := config.Default()
+	cfg.Management = config.Management{Host: config.List{"dboss.lvh.me"}, Admins: []string{"admin@example.com"}, Listen: config.List{":9000"}, Password: "erpx"}
+	auth := authenticatorFor(cfg)
+	direct := func(method, target string, body string) *http.Request {
+		request := httptest.NewRequest(method, target, strings.NewReader(body))
+		request.Header.Set("Accept", "text/html")
+		if body != "" {
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		return withDirect(request)
+	}
+
+	anonymous := httptest.NewRecorder()
+	if _, ok := auth.authenticate(anonymous, direct(http.MethodGet, "http://10.0.0.5:9000/", "")); ok {
+		t.Fatal("anonymous direct request reached the console")
+	}
+	if anonymous.Code != http.StatusUnauthorized || !strings.Contains(anonymous.Body.String(), `action="/password"`) {
+		t.Fatalf("anonymous direct request = %d %q", anonymous.Code, anonymous.Body.String())
+	}
+	api := httptest.NewRecorder()
+	auth.authenticate(api, direct(http.MethodGet, "http://10.0.0.5:9000/ui/apps", ""))
+	if api.Code != http.StatusUnauthorized || !strings.Contains(api.Body.String(), "authentication required") {
+		t.Fatalf("anonymous direct /ui request = %d %q", api.Code, api.Body.String())
+	}
+
+	wrong := httptest.NewRecorder()
+	auth.authenticate(wrong, direct(http.MethodPost, "http://10.0.0.5:9000/password", "password=nope&to=%2Fapps"))
+	if wrong.Code != http.StatusUnauthorized || !strings.Contains(wrong.Body.String(), "Wrong password.") || len(wrong.Result().Cookies()) != 0 {
+		t.Fatalf("wrong password = %d %q %v", wrong.Code, wrong.Body.String(), wrong.Result().Cookies())
+	}
+
+	right := httptest.NewRecorder()
+	auth.authenticate(right, direct(http.MethodPost, "http://10.0.0.5:9000/password", "password=erpx&to=%2Fapps"))
+	if right.Code != http.StatusSeeOther || right.Header().Get("Location") != "/apps" {
+		t.Fatalf("right password = %d %s", right.Code, right.Header().Get("Location"))
+	}
+	cookie := cookieNamed(t, right.Result().Cookies(), passwordCookie)
+
+	signedIn := direct(http.MethodGet, "http://10.0.0.5:9000/", "")
+	signedIn.AddCookie(cookie)
+	if session, ok := auth.authenticate(httptest.NewRecorder(), signedIn); !ok || session.Email != passwordEmail {
+		t.Fatalf("password session = %+v %v", session, ok)
+	}
+
+	// The management host stays AuthCog-only: the password cookie does not open it.
+	onHost := httptest.NewRequest(http.MethodGet, "http://dboss.lvh.me/", nil)
+	onHost.AddCookie(cookie)
+	if _, ok := auth.authenticate(httptest.NewRecorder(), onHost); ok {
+		t.Fatal("password session opened the management host")
+	}
+
+	// A changed password signs the old session out.
+	cfg.Management.Password = "changed"
+	changed := direct(http.MethodGet, "http://10.0.0.5:9000/", "")
+	changed.AddCookie(cookie)
+	if _, ok := authenticatorFor(cfg).authenticate(httptest.NewRecorder(), changed); ok {
+		t.Fatal("session survived a password change")
+	}
 }
 
 func cookieNamed(t *testing.T, cookies []*http.Cookie, name string) *http.Cookie {

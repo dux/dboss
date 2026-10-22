@@ -39,8 +39,10 @@ var keySpecs = map[string]KeySpec{
 	"proxy.timeout":    {Block: "proxy", Name: "Upstream timeout", Description: "how long an app may take to start responding", Example: "5m"},
 
 	// --- Management console ---
-	"management.host":   {Block: "management", Name: "Console hosts", Description: "one or more hostnames of the management console, served at https://<first host>; omit to disable it", Example: "dboss.example.com"},
-	"management.admins": {Block: "management", Name: "Admins", Description: "email addresses allowed into the console", Example: "[admin@example.com]"},
+	"management.host":     {Block: "management", Name: "Console hosts", Description: "one or more hostnames of the management console, served at https://<first host>; omit to disable it", Example: "dboss.example.com"},
+	"management.admins":   {Block: "management", Name: "Admins", Description: "email addresses allowed into the console", Example: "[admin@example.com]"},
+	"management.listen":   {Block: "management", Name: "Console listen addresses", Description: "addresses that serve the console directly, whatever the Host header; sign-in is management.password", Example: "[\":9000\"]"},
+	"management.password": {Block: "management", Name: "Console password", Description: "password asked on management.listen addresses, plain or a bcrypt hash from dboss password; required by listen", Example: "$DBOSS_CONSOLE_PASSWORD", Secret: true},
 
 	// --- Notifications ---
 	"notify.url":     {Block: "notify", Name: "Webhook URL", Description: "webhook that receives crash and failure events; Slack, Discord and ntfy URLs get their own payload shape; empty disables notifications", Example: "$ALERT_WEBHOOK_URL"},

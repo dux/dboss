@@ -113,7 +113,9 @@ type actionRequest struct {
 }
 
 func New(cfg config.Config, flow *authcog.Flow, service *ops.Service, store ConfigStore, sys SysReader) (*Handler, error) {
-	auth, err := consoleAuthenticator(flow, cfg, service.HostPages)
+	// One per-IP queue for every secret the console checks: tokens and the console password.
+	tokens := throttle.New()
+	auth, err := consoleAuthenticator(flow, cfg, service.HostPages, tokens)
 	if err != nil {
 		return nil, err
 	}
@@ -122,13 +124,22 @@ func New(cfg config.Config, flow *authcog.Flow, service *ops.Service, store Conf
 		return nil, err
 	}
 	// The console's own listener sits on the first port of the range, reserved by the allocator.
-	handler := &Handler{service: service, store: store, auth: auth, static: static, managementPort: strconv.Itoa(cfg.ConsolePort), sys: sys, local: cfg.Dev() || cfg.Local, tokens: throttle.New()}
+	handler := &Handler{service: service, store: store, auth: auth, static: static, managementPort: strconv.Itoa(cfg.ConsolePort), sys: sys, local: cfg.Dev() || cfg.Local, tokens: tokens}
 	handler.hostname, _ = os.Hostname()
 	handler.mux = handler.routes()
 	if len(cfg.Management.Host) > 0 {
 		handler.publicHost = cfg.Management.Host[0]
 	}
 	return handler, nil
+}
+
+// Direct serves the console on a management.listen address: any Host header is accepted and a
+// request without a session is asked for management.password.
+func (h *Handler) Direct() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secureHeaders(w)
+		h.mux.ServeHTTP(w, withDirect(r))
+	})
 }
 
 // SetAppAddress is the scheme and port the proxy serves apps on, so app links point at the

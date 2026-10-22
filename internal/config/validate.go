@@ -35,23 +35,11 @@ func (c Config) validate(hasApp bool) error {
 	if c.Ports[0] < 1 || c.Ports[1] > 65535 || c.Ports[0] > c.Ports[1] {
 		return &Error{Key: "ports", Message: fmt.Sprintf("invalid range %v", c.Ports), Hint: "give [first, last] between 1 and 65535, e.g. [3100, 3990]"}
 	}
-	listeners := map[string]bool{}
-	for _, address := range c.Proxy.Listen {
-		_, portValue, err := net.SplitHostPort(address)
-		if err != nil {
-			return &Error{Key: "proxy.listen", Message: fmt.Sprintf("invalid address %q", address), Hint: "use host:port such as \":80\" or 127.0.0.1:8080"}
-		}
-		port, err := strconv.Atoi(portValue)
-		if err != nil || port < 1 || port > 65535 {
-			return keyErr("proxy.listen", "invalid port %q", portValue)
-		}
-		if port >= c.Ports[0] && port <= c.Ports[1] {
-			return keyErr("proxy.listen", "port %d overlaps ports", port)
-		}
-		if listeners[address] {
-			return keyErr("proxy.listen", "duplicate entry %q", address)
-		}
-		listeners[address] = true
+	if err := validateListen("proxy.listen", c.Proxy.Listen, c.Ports); err != nil {
+		return err
+	}
+	if err := validateListen("management.listen", c.Management.Listen, c.Ports); err != nil {
+		return err
 	}
 	if c.Proxy.Timeout <= 0 {
 		return keyErr("proxy.timeout", "must be positive")
@@ -100,7 +88,36 @@ func validateNotify(n Notify) error {
 	return nil
 }
 
+func validateListen(key string, addresses List, ports [2]int) error {
+	listeners := map[string]bool{}
+	for _, address := range addresses {
+		_, portValue, err := net.SplitHostPort(address)
+		if err != nil {
+			return &Error{Key: key, Message: fmt.Sprintf("invalid address %q", address), Hint: "use host:port such as \":80\" or 127.0.0.1:8080"}
+		}
+		port, err := strconv.Atoi(portValue)
+		if err != nil || port < 1 || port > 65535 {
+			return keyErr(key, "invalid port %q", portValue)
+		}
+		if port >= ports[0] && port <= ports[1] {
+			return keyErr(key, "port %d overlaps ports", port)
+		}
+		if listeners[address] {
+			return keyErr(key, "duplicate entry %q", address)
+		}
+		listeners[address] = true
+	}
+	return nil
+}
+
 func validateManagement(management Management, proxyEnabled, dev bool) error {
+	// The password is the only way into a listen address, and only a listen address takes it.
+	if len(management.Listen) > 0 && management.Password == "" {
+		return keyErr("password", "is required when listen is set")
+	}
+	if management.Password != "" && len(management.Listen) == 0 {
+		return keyErr("password", "is only used on listen addresses; set listen too")
+	}
 	if !management.Enabled() {
 		if len(management.Admins) > 0 {
 			return keyErr("host", "is required when management is configured")

@@ -37,7 +37,6 @@ var results = map[string]func() any{
 	ops.ActionPG:            func() any { return &pg.Snapshot{} },
 	ops.ActionPGBackups:     func() any { return &[]pg.Backup{} },
 	ops.ActionPGBackup:      func() any { return &[]pg.Backup{} },
-	ops.ActionPGRestore:     func() any { return &pg.RestoreResult{} },
 	ops.ActionPGDrop:        func() any { return new(string) },
 	ops.ActionPGDeleteDump:  func() any { return new(string) },
 	ops.ActionPubsub:        func() any { return &[]pubsub.App{} },
@@ -357,24 +356,6 @@ func (c CLI) parsePG(args []string) (ctl.Request, error) {
 		if len(args) == 2 {
 			request.Database = args[1]
 		}
-	case args[0] == "restore":
-		set := flag.NewFlagSet("pg restore", flag.ContinueOnError)
-		set.SetOutput(c.Err)
-		target := set.String("target", "", "target database (default: <source>_restore)")
-		force := set.Bool("force", false, "replace an existing target database")
-		operands, err := parseSubcommandFlags(set, args[1:])
-		if err != nil {
-			return request, err
-		}
-		if len(operands) != 1 {
-			return request, errors.New("usage: dboss pg restore <backup-id> [--target name] [--force]")
-		}
-		request.Method = ops.ActionPGRestore
-		request.BackupID = operands[0]
-		request.Target, request.Replace = *target, *force
-		if *force {
-			request.Confirm = *target
-		}
 	case args[0] == "delete":
 		if len(args) != 2 {
 			return request, errors.New("usage: dboss pg delete <backup-id>")
@@ -395,7 +376,7 @@ func (c CLI) parsePG(args []string) (ctl.Request, error) {
 		request.Method = ops.ActionPGDrop
 		request.Database, request.Confirm = operands[0], *confirm
 	default:
-		return request, errors.New("usage: dboss pg [backups | backup [database] | delete <backup-id> | restore <backup-id> | drop <database>]")
+		return request, errors.New("usage: dboss pg [backups | backup [database] | delete <backup-id> | drop <database>]")
 	}
 	return request, nil
 }

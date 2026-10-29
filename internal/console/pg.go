@@ -9,7 +9,6 @@ import (
 	"dboss/internal/apps"
 	"dboss/internal/config"
 	"dboss/internal/ops"
-	"dboss/internal/pg"
 
 	"gopkg.in/yaml.v3"
 )
@@ -78,9 +77,8 @@ func (h *Handler) pgDeleteBackup(w http.ResponseWriter, r *http.Request, session
 	writeJSON(w, http.StatusOK, map[string]any{"backups": h.service.Backups(), "updated_at": time.Now().UTC()})
 }
 
-// pgDownloadBackup streams one recorded dump exactly as it sits on disk, so the archive can be
-// carried to another host and uploaded there. It moves a full copy of a database off the box, so
-// it audits like a mutating action.
+// pgDownloadBackup streams one recorded dump exactly as it sits on disk. It moves a full copy of
+// a database off the box, so it audits like a mutating action.
 func (h *Handler) pgDownloadBackup(w http.ResponseWriter, r *http.Request, session authSession) {
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	entry, path, err := h.service.BackupFile(id)
@@ -93,58 +91,6 @@ func (h *Handler) pgDownloadBackup(w http.ResponseWriter, r *http.Request, sessi
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+entry.Database+"_"+entry.ID+"\"")
 	http.ServeFile(w, r, path)
-}
-
-// pgUploadBackup stores an archive the operator picked for ?database=<name>. The file streams
-// straight to disk: a dump is far larger than any JSON body this console handles.
-func (h *Handler) pgUploadBackup(w http.ResponseWriter, r *http.Request, session authSession) {
-	if !h.requireCSRF(w, r, session) {
-		return
-	}
-	database := strings.TrimSpace(r.URL.Query().Get("database"))
-	r.Body = http.MaxBytesReader(w, r.Body, maxBackupUpload)
-	parts, err := r.MultipartReader()
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "upload must be a multipart form")
-		return
-	}
-	for {
-		part, err := parts.NextPart()
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "upload is missing its file")
-			return
-		}
-		if part.FileName() == "" {
-			_ = part.Close()
-			continue
-		}
-		entry, err := h.service.ImportBackup(database, part)
-		_ = part.Close()
-		h.service.Audit(session.Email, "", "pg-upload-dump", database, err)
-		if err != nil {
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"backup": entry, "backups": h.service.Backups(), "updated_at": time.Now().UTC()})
-		return
-	}
-}
-
-func (h *Handler) pgRestore(w http.ResponseWriter, r *http.Request, session authSession) {
-	if !h.requireCSRF(w, r, session) {
-		return
-	}
-	var request pg.RestoreRequest
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	result, err := h.service.Do(ops.Request{Method: ops.ActionPGRestore, BackupID: strings.TrimSpace(request.ID), Target: strings.TrimSpace(request.Target), Replace: request.Replace, Confirm: request.Confirm, Actor: session.Email})
-	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
 }
 
 // pgDrop removes a database. The operator types its name as confirmation, which travels as the
@@ -166,28 +112,6 @@ func (h *Handler) pgDrop(w http.ResponseWriter, r *http.Request, session authSes
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"dropped": strings.TrimSpace(request.Database), "updated_at": time.Now().UTC()})
-}
-
-// pgQuery runs one SQL statement, or a batch of them, against a database and returns the last
-// result set. It can write, so it goes through Do and lands in the audit log with the statement.
-func (h *Handler) pgQuery(w http.ResponseWriter, r *http.Request, session authSession) {
-	if !h.requireCSRF(w, r, session) {
-		return
-	}
-	var request struct {
-		Database string `json:"database"`
-		SQL      string `json:"sql"`
-	}
-	if err := decodeJSON(w, r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	result, err := h.service.Do(ops.Request{Method: ops.ActionPGQuery, Database: strings.TrimSpace(request.Database), SQL: request.SQL, Actor: session.Email})
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"result": result, "updated_at": time.Now().UTC()})
 }
 
 // pgConfig writes the backup policy and database selection into the server-only host override

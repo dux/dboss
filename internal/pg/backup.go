@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,7 +34,7 @@ const (
 func (s *Service) Backups() []Backup { return s.catalog.list() }
 
 // BackupFile returns a recorded dump and its path on disk, for the console download. The archive
-// is handed out exactly as it was written, so it can be uploaded to another host.
+// is handed out exactly as it was written.
 func (s *Service) BackupFile(id string) (Backup, string, error) {
 	entry, ok := s.catalog.get(id)
 	if !ok {
@@ -49,60 +50,15 @@ func (s *Service) BackupFile(id string) (Backup, string, error) {
 	return entry, path, nil
 }
 
-// ImportBackup stores an archive an operator uploaded. The bytes land verbatim under the
-// database's backup directory and the entry is recorded as manual, so it restores through the
-// normal path and rotation never removes it.
-func (s *Service) ImportBackup(database string, source io.Reader) (Backup, error) {
-	if err := validDatabaseName(database); err != nil {
-		return Backup{}, err
+// fetch returns the dump's path on disk, or an error when the file is gone.
+func fetch(entry Backup) (string, error) {
+	if entry.LocalPath == "" {
+		return "", fmt.Errorf("backup %q has no local file", entry.ID)
 	}
-	s.mu.RLock()
-	opts := s.opts
-	s.mu.RUnlock()
-
-	dir, err := s.dumpDir(opts, database)
-	if err != nil {
-		return Backup{}, err
+	if _, err := os.Stat(entry.LocalPath); err != nil {
+		return "", fmt.Errorf("backup %q is missing from %s", entry.ID, entry.LocalPath)
 	}
-	temp, err := os.CreateTemp(dir, ".upload-*.zip")
-	if err != nil {
-		return Backup{}, err
-	}
-	tempPath := temp.Name()
-	defer func() { _ = os.Remove(tempPath) }()
-	_, copyErr := io.Copy(temp, source)
-	if closeErr := temp.Close(); copyErr == nil {
-		copyErr = closeErr
-	}
-	if copyErr != nil {
-		return Backup{}, copyErr
-	}
-	if err := readableArchive(tempPath); err != nil {
-		return Backup{}, err
-	}
-
-	started := time.Now()
-	name, finalPath := uniqueDump(dir, started)
-	if err := os.Rename(tempPath, finalPath); err != nil {
-		return Backup{}, err
-	}
-	size, err := fileSize(finalPath)
-	if err != nil {
-		return Backup{}, err
-	}
-	sum, err := fileSHA256(finalPath)
-	if err != nil {
-		return Backup{}, err
-	}
-	entry := Backup{
-		ID: name, Database: database, Time: started.UTC().Format(time.RFC3339), Status: "ok", Manual: true,
-		Bytes: size, SHA256: sum, LocalPath: finalPath,
-	}
-	if err := s.catalog.record(entry); err != nil {
-		return entry, err
-	}
-	logx.Infof("postgres backup uploaded: %s %s %s", database, humanize.Bytes(size), entry.Time)
-	return entry, nil
+	return entry.LocalPath, nil
 }
 
 // DeleteBackup removes one recorded dump from disk and the catalog.
@@ -225,8 +181,7 @@ func (s *Service) dumpDir(opts options, database string) (string, error) {
 
 // execDump runs pg_dump as plain SQL into path. The dump keeps schema, data, functions, triggers
 // and core objects, without the ownership, ACLs, comments, tablespace or replication metadata that
-// would not restore on another box. The connection password travels in the environment, never
-// argv.
+// would not load on another box. The connection password travels in the environment, never argv.
 func execDump(ctx context.Context, connConfig *pgx.ConnConfig, database, path string) error {
 	ctx, cancel := context.WithTimeout(ctx, backupTimeout)
 	defer cancel()
@@ -238,6 +193,22 @@ func execDump(ctx context.Context, connConfig *pgx.ConnConfig, database, path st
 		"--file="+path,
 		"--dbname="+databaseConnString(connConfig, database),
 	)
+}
+
+// runClient runs pg_dump against the server. The password travels in the environment, never
+// argv, and a failure reports the tool's first output line.
+func runClient(ctx context.Context, connConfig *pgx.ConnConfig, name string, args ...string) error {
+	command := exec.CommandContext(ctx, name, args...)
+	command.Env = processEnv(connConfig)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		message := firstLine(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("%s: %s", name, message)
+	}
+	return nil
 }
 
 // zipSQL stores the SQL dump at source in target as a zip archive. The archive holds one entry
@@ -333,32 +304,6 @@ func uniqueDump(dir string, at time.Time) (string, string) {
 		name = fmt.Sprintf("%s_%d.zip", strings.TrimSuffix(dumpName(at), ".zip"), index)
 		path = filepath.Join(dir, name)
 	}
-}
-
-// validDatabaseName keeps an uploaded archive inside the backup directory. PostgreSQL identifiers
-// stop at 63 bytes, so anything longer is a typo or an attempt at something else.
-func validDatabaseName(database string) error {
-	if database == "" {
-		return errors.New("database name is required")
-	}
-	if len(database) > 63 || strings.ContainsAny(database, `/\`) || strings.Contains(database, "..") || strings.HasPrefix(database, ".") {
-		return fmt.Errorf("%q is not a valid database name", database)
-	}
-	return nil
-}
-
-// readableArchive is the upload's integrity check: a truncated or mistyped file fails here rather
-// than at restore time, when a target database is already on the line.
-func readableArchive(path string) error {
-	reader, err := zip.OpenReader(path)
-	if err != nil {
-		return fmt.Errorf("upload is not a readable zip archive: %w", err)
-	}
-	defer reader.Close()
-	if len(reader.File) == 0 {
-		return fault.Invalidf("upload is an empty zip archive")
-	}
-	return nil
 }
 
 func fileSize(path string) (int64, error) {

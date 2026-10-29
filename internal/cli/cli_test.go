@@ -474,7 +474,7 @@ func TestParseSubcommandFlagsReadsFlagsAfterTheOperand(t *testing.T) {
 	}
 
 	// A bool flag between two operands must not swallow the one after it.
-	set = flag.NewFlagSet("pg restore", flag.ContinueOnError)
+	set = flag.NewFlagSet("example", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	target := set.String("target", "", "")
 	force := set.Bool("force", false, "")

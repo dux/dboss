@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"errors"
-	"io"
 	"slices"
 	"testing"
 	"time"
@@ -340,7 +339,6 @@ type fakePG struct {
 	available bool
 	backups   []pg.Backup
 	applied   int
-	queried   string
 }
 
 func (f *fakePG) Enabled() bool   { return f.enabled }
@@ -362,26 +360,10 @@ func (f *fakePG) BackupFile(id string) (pg.Backup, string, error) {
 	}
 	return pg.Backup{}, "", errors.New("unknown backup")
 }
-func (f *fakePG) ImportBackup(database string, source io.Reader) (pg.Backup, error) {
-	data, err := io.ReadAll(source)
-	if err != nil {
-		return pg.Backup{}, err
-	}
-	entry := pg.Backup{ID: "uploaded", Database: database, Status: "ok", Manual: true, Bytes: int64(len(data))}
-	f.backups = append(f.backups, entry)
-	return entry, nil
-}
-func (f *fakePG) DeleteBackup(string) error { return nil }
-func (f *fakePG) Restore(context.Context, pg.RestoreRequest) (pg.RestoreResult, error) {
-	return pg.RestoreResult{Target: "app_restore"}, nil
-}
+func (f *fakePG) DeleteBackup(string) error                          { return nil }
 func (f *fakePG) DropDatabase(context.Context, string, string) error { return nil }
-func (f *fakePG) Query(_ context.Context, database, sql string) (pg.QueryResult, error) {
-	f.queried = sql
-	return pg.QueryResult{Database: database, Columns: []string{"one"}, Rows: [][]any{{"1"}}, RowCount: 1, Command: "SELECT 1"}, nil
-}
-func (f *fakePG) BackupConfig() config.PostgresBackups { return config.PostgresBackups{} }
-func (f *fakePG) Apply(config.Config)                  { f.applied++ }
+func (f *fakePG) BackupConfig() config.PostgresBackups               { return config.PostgresBackups{} }
+func (f *fakePG) Apply(config.Config)                                { f.applied++ }
 
 func TestPGActionsDispatch(t *testing.T) {
 	postgres := &fakePG{enabled: true, available: true, backups: []pg.Backup{{ID: "b1", Database: "app"}}}
@@ -393,17 +375,8 @@ func TestPGActionsDispatch(t *testing.T) {
 	if _, err := service.Do(Request{Method: ActionPGBackup, Database: "app"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Do(Request{Method: ActionPGRestore, BackupID: "b1", Target: "app_restore"}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := service.Do(Request{Method: ActionPG}); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := service.Do(Request{Method: ActionPGQuery, Database: "app", SQL: "select 1"}); err != nil {
-		t.Fatal(err)
-	}
-	if postgres.queried != "select 1" {
-		t.Fatalf("query = %q", postgres.queried)
 	}
 	if entries := service.Backups(); len(entries) != 1 {
 		t.Fatalf("backups = %+v", entries)

@@ -23,10 +23,6 @@ const maxRequestBody = 1 << 20
 
 const maxHookBody = 1 << 20
 
-// maxBackupUpload bounds an uploaded dump. A database archive has nothing to do with the JSON
-// body cap, and a plain-SQL dump zips down far below this.
-const maxBackupUpload = 4 << 30
-
 //go:embed static/*
 var assets embed.FS
 

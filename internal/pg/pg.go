@@ -78,9 +78,9 @@ func connect(ctx context.Context, connConfig *pgx.ConnConfig) (*pgx.Conn, error)
 	return pgx.ConnectConfig(connectCtx, connConfig)
 }
 
-// processEnv is the libpq environment for a child process: the resolved host, port, user and
-// password so pg_dump and psql connect exactly as the inspector does. The password is
-// passed through the environment, never argv, so it stays out of the process list.
+// processEnv is the libpq environment for pg_dump: the resolved host, port, user and password so
+// it connects exactly as the inspector does. The password is passed through the environment,
+// never argv, so it stays out of the process list.
 func processEnv(connConfig *pgx.ConnConfig) []string {
 	env := os.Environ()
 	add := func(name, value string) {

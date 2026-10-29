@@ -2,7 +2,6 @@ package ops
 
 import (
 	"context"
-	"io"
 
 	"dboss/internal/config"
 	"dboss/internal/fault"
@@ -57,15 +56,6 @@ func (s *Service) runBackup(database string) ([]pg.Backup, error) {
 	return []pg.Backup{entry}, err
 }
 
-// restore loads a recorded dump into a database.
-func (s *Service) restore(request pg.RestoreRequest) (pg.RestoreResult, error) {
-	postgres, err := s.postgres()
-	if err != nil {
-		return pg.RestoreResult{}, err
-	}
-	return postgres.Restore(context.Background(), request)
-}
-
 // dropDatabase removes a database. The operator must repeat the name as confirmation.
 func (s *Service) dropDatabase(database, confirm string) error {
 	postgres, err := s.postgres()
@@ -75,16 +65,6 @@ func (s *Service) dropDatabase(database, confirm string) error {
 	return postgres.DropDatabase(context.Background(), database, confirm)
 }
 
-// runQuery executes SQL against one database and returns its last result set. It is a mutating
-// action by nature, so it goes through Do and is audited with the statement.
-func (s *Service) runQuery(database, sql string) (pg.QueryResult, error) {
-	postgres, err := s.postgres()
-	if err != nil {
-		return pg.QueryResult{}, err
-	}
-	return postgres.Query(context.Background(), database, sql)
-}
-
 // BackupFile returns one recorded dump and the archive's path on disk, for the console download.
 func (s *Service) BackupFile(id string) (pg.Backup, string, error) {
 	postgres, err := s.postgres()
@@ -92,16 +72,6 @@ func (s *Service) BackupFile(id string) (pg.Backup, string, error) {
 		return pg.Backup{}, "", err
 	}
 	return postgres.BackupFile(id)
-}
-
-// ImportBackup stores an uploaded archive for a database as a manual dump, so it can be restored
-// like any other recorded backup.
-func (s *Service) ImportBackup(database string, source io.Reader) (pg.Backup, error) {
-	postgres, err := s.postgres()
-	if err != nil {
-		return pg.Backup{}, err
-	}
-	return postgres.ImportBackup(database, source)
 }
 
 // deleteBackup removes one recorded dump from disk and the catalog.

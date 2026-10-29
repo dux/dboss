@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"time"
@@ -51,10 +50,8 @@ const (
 	ActionPG               = "pg"
 	ActionPGBackup         = "pg-backup"
 	ActionPGBackups        = "pg-backups"
-	ActionPGRestore        = "pg-restore"
 	ActionPGDrop           = "pg-drop"
 	ActionPGDeleteDump     = "pg-delete-dump"
-	ActionPGQuery          = "pg-query"
 	ActionPubsub           = "pubsub"
 	ActionPubsubSecret     = "pubsub-secret"
 	ActionPubsubRotate     = "pubsub-rotate"
@@ -80,7 +77,7 @@ const (
 var auditActions = map[string]bool{
 	ActionStart: true, ActionStop: true, ActionRestart: true, ActionDestroy: true, ActionMaintenance: true,
 	ActionRescan: true, ActionCronRun: true, ActionHookRun: true, ActionHostHookRun: true, ActionExec: true,
-	ActionPGBackup: true, ActionPGRestore: true, ActionPGDrop: true, ActionPGDeleteDump: true, ActionPGQuery: true,
+	ActionPGBackup: true, ActionPGDrop: true, ActionPGDeleteDump: true,
 	ActionPubsubSecret: true, ActionPubsubRotate: true, ActionPubsubPublish: true, ActionAdd: true,
 	ActionEventsQuery: true, ActionEventsSave: true, ActionEventsDelete: true,
 	ActionExceptionResolve: true, ActionExceptionIgnore: true, ActionExceptionDelete: true,
@@ -153,11 +150,8 @@ type PG interface {
 	BackupDatabase(ctx context.Context, database string, manual bool) (pg.Backup, error)
 	Backups() []pg.Backup
 	BackupFile(id string) (pg.Backup, string, error)
-	ImportBackup(database string, source io.Reader) (pg.Backup, error)
 	DeleteBackup(id string) error
-	Restore(ctx context.Context, request pg.RestoreRequest) (pg.RestoreResult, error)
 	DropDatabase(ctx context.Context, database, confirm string) error
-	Query(ctx context.Context, database, sql string) (pg.QueryResult, error)
 	BackupConfig() config.PostgresBackups
 	Apply(cfg config.Config)
 }
@@ -197,8 +191,6 @@ type Request struct {
 	Database string          `json:"database,omitempty"`
 	SQL      string          `json:"sql,omitempty"`
 	BackupID string          `json:"backup_id,omitempty"`
-	Target   string          `json:"target,omitempty"`
-	Replace  bool            `json:"replace,omitempty"`
 	Confirm  string          `json:"confirm,omitempty"`
 	// Params carries the request query parameters a hook ping arrived with, keyed by their QS_
 	// name. The built-in github_pr hook reads branch/repo/action/num from it.
@@ -313,14 +305,10 @@ func (s *Service) dispatch(request Request) (any, error) {
 		return s.runBackup(request.Database)
 	case ActionPGBackups:
 		return s.Backups(), nil
-	case ActionPGRestore:
-		return s.restore(pg.RestoreRequest{ID: request.BackupID, Target: request.Target, Replace: request.Replace, Confirm: request.Confirm})
 	case ActionPGDrop:
 		return request.Database, s.dropDatabase(request.Database, request.Confirm)
 	case ActionPGDeleteDump:
 		return request.BackupID, s.deleteBackup(request.BackupID)
-	case ActionPGQuery:
-		return s.runQuery(request.Database, request.SQL)
 	case ActionPubsub:
 		return s.PubsubApps(), nil
 	case ActionPubsubSecret:
@@ -419,22 +407,16 @@ func auditDetail(request Request) string {
 		return request.Hook
 	case ActionExec:
 		return strings.Join(request.Argv, " ")
-	case ActionPGBackup:
-		return request.Database
-	case ActionPGRestore:
-		return request.BackupID
-	case ActionPGDrop:
+	case ActionPGBackup, ActionPGDrop:
 		return request.Database
 	case ActionPGDeleteDump:
 		return request.BackupID
-	case ActionPGQuery:
-		return request.Database + ": " + pg.QueryAuditDetail(request.SQL)
 	case ActionPubsubPublish:
 		return request.Channel
 	case ActionPubsubSecret:
 		return request.Process
 	case ActionEventsQuery:
-		return pg.QueryAuditDetail(request.SQL)
+		return events.QueryAuditDetail(request.SQL)
 	case ActionEventsSave:
 		return request.Kind + " " + savedName(request.Data)
 	case ActionEventsDelete:

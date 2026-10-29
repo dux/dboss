@@ -358,7 +358,7 @@ func apiGuide(base string, enabled bool) string {
 	line("## Notes for agents")
 	line("")
 	line("* Call `ls` first: it returns every app name, its state and processes.")
-	line("* Read-only actions change nothing and are safe to repeat. Ask the operator before `destroy`, `pg-drop`, `pg-restore` with replace, `pg-delete-dump`, `exec`, `pg-query` and `events-query`: they delete data or run arbitrary code.")
+	line("* Read-only actions change nothing and are safe to repeat. Ask the operator before `destroy`, `pg-drop`, `pg-delete-dump`, `exec` and `events-query`: they delete data or run arbitrary code.")
 	line("* `restart` on a running web app rolls with no downtime; `stop` drains in-flight requests first.")
 	line("* A failed action is not retried by dboss; read error.message before trying again.")
 	line("")

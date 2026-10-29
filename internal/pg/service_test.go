@@ -120,11 +120,11 @@ func TestCatalogRefusesToOverwriteAnUnreadableFile(t *testing.T) {
 	}
 }
 
-func TestDropRefusesReservedDatabasesOnEveryPath(t *testing.T) {
-	connConfig := connConfig(t, "postgres://app@127.0.0.1:1/app")
+func TestDropRefusesReservedDatabases(t *testing.T) {
+	service := testService(t)
 	for _, name := range []string{"postgres", "template0", "template1"} {
-		if err := dropDatabase(context.Background(), connConfig, name); err == nil || !strings.Contains(err.Error(), "reserved") {
-			t.Fatalf("dropDatabase(%s) = %v, want reserved refusal", name, err)
+		if err := service.DropDatabase(context.Background(), name, name); err == nil || !strings.Contains(err.Error(), "reserved") {
+			t.Fatalf("DropDatabase(%s) = %v, want reserved refusal", name, err)
 		}
 	}
 }

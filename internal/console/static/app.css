@@ -1755,11 +1755,6 @@ input.ev-filter-input {
   padding: 4px 20px 12px;
 }
 
-/* The upload row sits above the backup list, which drops its own first border. */
-.pg-backup-upload {
-  border-bottom: 1px solid var(--border);
-}
-
 .pg-backup-line {
   display: flex;
   align-items: center;

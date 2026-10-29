@@ -26,18 +26,26 @@ const (
 	queryRowLimit = 500
 	// queryCellLimit keeps one wide value (a data blob) from filling the response.
 	queryCellLimit = 10000
-	// QueryAuditLimit is how much of a statement an audit row keeps.
-	QueryAuditLimit = 200
+	// queryAuditLimit is how much of a statement an audit row keeps.
+	queryAuditLimit = 200
 )
 
-// QueryResult is one DuckDB run, in the same shape as the Postgres runner's so the console can
-// share its grid. Rows hold JSON values as DuckDB printed them.
+// QueryResult is one DuckDB run. Rows hold JSON values as DuckDB printed them.
 type QueryResult struct {
 	Columns    []string `json:"columns"`
 	Rows       [][]any  `json:"rows"`
 	RowCount   int64    `json:"row_count"`
 	Truncated  bool     `json:"truncated"`
 	DurationMS int64    `json:"duration_ms"`
+}
+
+// QueryAuditDetail is the one-line form of a statement an audit row keeps.
+func QueryAuditDetail(sql string) string {
+	sql = strings.Join(strings.Fields(sql), " ")
+	if len(sql) > queryAuditLimit {
+		return sql[:queryAuditLimit] + "..."
+	}
+	return sql
 }
 
 // DuckDB is an external duckdb CLI. dboss stays pure Go: it never links DuckDB, it runs the CLI

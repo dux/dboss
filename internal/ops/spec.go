@@ -114,15 +114,8 @@ var specs = []Spec{
 	{Name: ActionPG, Group: "PostgreSQL", Summary: "Fresh inspection of the PostgreSQL server: databases, sizes and backup settings."},
 	{Name: ActionPGBackups, Group: "PostgreSQL", Summary: "The backup catalog, newest first."},
 	{Name: ActionPGBackup, Group: "PostgreSQL", Summary: "Dump one database now (kept until deleted), or every selected database when database is empty.", Params: []Param{opt("database", TypeString, "database name")}},
-	{Name: ActionPGRestore, Group: "PostgreSQL", Summary: "Restore a backup into a new database, or over an existing one with replace and confirm.", Params: []Param{
-		req("backup_id", TypeString, "backup id from pg-backups"),
-		opt("target", TypeString, "target database; defaults to the dumped one"),
-		opt("replace", TypeBoolean, "drop and recreate an existing target"),
-		opt("confirm", TypeString, "the target name, required with replace"),
-	}},
 	{Name: ActionPGDeleteDump, Group: "PostgreSQL", Summary: "Delete one backup file and its catalog row.", Params: []Param{req("backup_id", TypeString, "backup id from pg-backups")}},
 	{Name: ActionPGDrop, Group: "PostgreSQL", Summary: "Drop a database. postgres and the templates are refused.", Params: []Param{req("database", TypeString, "database name"), req("confirm", TypeString, "the database name again")}},
-	{Name: ActionPGQuery, Group: "PostgreSQL", Summary: "Run SQL on one database (30s timeout, 500 rows); a batch runs statement by statement and returns the last result.", Params: []Param{req("database", TypeString, "database name"), req("sql", TypeString, "SQL to run")}},
 
 	{Name: ActionPubsub, Group: "PubSub", Summary: "Every pubsub hub with its channels and subscriber counts."},
 	{Name: ActionPubsubSecret, Group: "PubSub", Summary: "The publish secret of one hub.", Params: []Param{pApp, opt("process", TypeString, "web process; needed when the app has several hubs")}},

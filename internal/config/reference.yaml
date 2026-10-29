@@ -396,8 +396,8 @@ notify:
 # facts, database sizes, activity and the backup history. With backups empty nothing is
 # scheduled, so the block is read-only until you select databases (the console writes the
 # selection to dboss-server.local.yaml). Dumps are zips of a plain-SQL pg_dump and always land under
-# pg_backup/<database>/ next to the apps. This feature needs pg_dump and psql on the service
-# user's PATH. `postgres: false` hides the tab and stops all inspection and backups.
+# pg_backup/<database>/ next to the apps. This feature needs pg_dump on the service user's PATH.
+# `postgres: false` hides the tab and stops all inspection and backups.
 
 postgres:
   # libpq connection string or URL. Keep a password out of the committed file with $DATABASE_URL.

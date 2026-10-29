@@ -12,11 +12,6 @@
       this.state.message = ''
       this.state.messageError = false
       this.state.filter = ''
-      this.state.tab = Dboss.readQs('tab') === 'sql' ? 'sql' : 'backup'
-      this.state.selectTab = (tab) => this.setTab(tab)
-      this.state.result = null
-      this.state.resultError = ''
-      this.state.running = false
     }
 
     onMount() {
@@ -92,21 +87,13 @@
       this.resolveSelected()
       this.state.message = ''
       this.state.messageError = false
-      this.clearResult()
       Fez.hqs('db', name)
     }
 
     closeDatabase() {
       this.state.db = ''
       this.state.selected = null
-      this.clearResult()
-      Dboss.setQs('tab', '')
       Fez.hqs('db', null)
-    }
-
-    setTab(tab) {
-      this.state.tab = tab
-      Dboss.setQs('tab', tab === 'backup' ? '' : tab)
     }
 
     rotationLabel(name) {
@@ -166,49 +153,6 @@
       }
     }
 
-    // uploadBackup sends the picked archive as it is; the server stores the bytes and records a
-    // manual entry, so an archive from another host restores through the normal path.
-    async uploadBackup() {
-      const node = this.state.uploadNode
-      const file = node && node.files && node.files[0]
-      const name = this.state.selected && this.state.selected.name
-      if (!file || !name || this.state.busy) return
-      const body = new FormData()
-      body.append('file', file)
-      try {
-        this.state.busy = true
-        const data = await Dboss.api(`/ui/pg/backup/upload?database=${encodeURIComponent(name)}`, { method: 'POST', body })
-        this.state.backups = data.backups || []
-        this.message(`Uploaded ${file.name} into ${name}.`)
-        Toast.show(`${name}: backup uploaded`)
-      } catch (error) {
-        this.message(error.message, true)
-        Toast.show(error.message, true)
-      } finally {
-        if (node) node.value = ''
-        this.state.busy = false
-      }
-    }
-
-    async restoreById(id) {
-      const entry = this.state.backups.find((candidate) => candidate.id === id)
-      if (!entry || this.state.busy) return
-      const target = window.prompt(`Restore ${entry.database} into which database?`, `${entry.database}_restore`)
-      if (!target) return
-      if (!window.confirm(`Restore backup ${entry.id} into ${target}?`)) return
-      try {
-        this.state.busy = true
-        const result = await Dboss.api('/ui/pg/restore', { method: 'POST', body: JSON.stringify({ id: entry.id, target }) })
-        Toast.show(`Restored into ${result.target}`)
-        this.message(`Restored into ${result.target}.`)
-      } catch (error) {
-        this.message(error.message, true)
-        Toast.show(error.message, true)
-      } finally {
-        this.state.busy = false
-      }
-    }
-
     async deleteBackup(id) {
       if (this.state.busy) return
       if (!window.confirm(`Delete backup ${id}?`)) return
@@ -248,42 +192,6 @@
       } finally {
         this.state.busy = false
       }
-    }
-
-    // The editor is a fez:keep textarea, so the statement is read off the node rather than held
-    // in a rendered state key: a result render must never touch what the operator typed.
-    async runSQL() {
-      const node = this.state.sqlNode
-      const name = this.state.selected && this.state.selected.name
-      const sql = node ? node.value.trim() : ''
-      if (!name || !sql || this.state.running) return
-      this.state.running = true
-      this.state.resultError = ''
-      try {
-        const data = await Dboss.api('/ui/pg/query', { method: 'POST', body: JSON.stringify({ database: name, sql }) })
-        this.state.result = data.result
-      } catch (error) {
-        this.state.result = null
-        this.state.resultError = error.message
-        Toast.show(error.message, true)
-      } finally {
-        this.state.running = false
-      }
-    }
-
-    sqlKeydown(event) {
-      if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
-      event.preventDefault()
-      this.runSQL()
-    }
-
-    clearResult() {
-      this.state.result = null
-      this.state.resultError = ''
-    }
-
-    cell(value) {
-      return value === null || value === undefined ? 'NULL' : value
     }
 
     message(text, error = false) {
@@ -348,65 +256,6 @@
     <span>Connecting to the local server and listing its databases.</span>
   </div>
 {:else if state.selected}
-  <ui-tabs tabs="backup:Backup,sql:SQL" active={state.tab} :onselect="state.selectTab" />
-{#if state.tab === 'sql'}
-  <div class="section-head">
-    <h2>SQL</h2>
-    <span class="text-muted">Runs on {state.selected.name} as the role dboss connects with</span>
-  </div>
-  <section class="card sql-runner">
-    <div fez:keep="sql-editor">
-      <textarea class="sql-editor" spellcheck="false" placeholder="select * from users order by created_at desc limit 20" fez:this="sqlNode" onkeydown="fez.sqlKeydown(event)"></textarea>
-    </div>
-    <div class="sql-actions">
-      <button class="btn btn-primary" type="button" onclick="fez.runSQL()" disabled={state.running}>
-        <svg class="icon"><use href="#i-play"></use></svg>
-        {state.running ? 'Running' : 'Run'}
-      </button>
-      <span class="text-muted">{state.running ? 'Waiting for the server' : 'Cmd/Ctrl+Enter runs. Several statements run in order; the last result set is shown. Every run is audited.'}</span>
-    </div>
-  </section>
-
-  {#if state.resultError}
-    <div class="alert alert-danger sql-error">{state.resultError}</div>
-  {/if}
-
-  {#if state.result}
-    <div class="section-head">
-      <h2>Result</h2>
-      <span class="text-muted">{state.result.command || '-'} · {Human.number(state.result.row_count)} rows · {Human.number(state.result.duration_ms)} ms</span>
-    </div>
-    <section class="card">
-      {#if state.result.columns}
-        <div class="sql-result">
-          <table class="sql-table">
-            <thead>
-              <tr>
-                {#each state.result.columns as column}
-                  <th>{column}</th>
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#each state.result.rows as row}
-                <tr>
-                  {#each row as value}
-                    <td class:sql-null={value === null}>{cell(value)}</td>
-                  {/each}
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-        {#if state.result.truncated}
-          <p class="text-muted sql-note">Showing the first {Human.number(state.result.rows.length)} of {Human.number(state.result.row_count)} rows. Add a LIMIT to see the rest.</p>
-        {/if}
-      {:else}
-        <p class="text-muted sql-note">{state.result.command || 'Done'} · {Human.number(state.result.row_count)} rows affected. The statement returned no result set.</p>
-      {/if}
-    </section>
-  {/if}
-{:else}
   <div class="section-head">
     <h2>Overview</h2>
   </div>
@@ -449,14 +298,6 @@
     <span class="text-muted">{backupsFor(state.selected.name).length} recorded</span>
   </div>
   <section class="card">
-    <div class="pg-detail-actions pg-backup-upload">
-      <label class="btn" disabled={state.busy}>
-        <svg class="icon"><use href="#i-upload"></use></svg>
-        Upload backup
-        <input type="file" accept=".zip,application/zip" hidden fez:this="uploadNode" onchange="fez.uploadBackup()" disabled={state.busy}>
-      </label>
-      <span class="text-muted">A dboss backup zip is stored as it is and kept until you remove it.</span>
-    </div>
     <div class="pg-backups">
       {#each backupsFor(state.selected.name) as entry}
         <div class="pg-backup-line">
@@ -471,7 +312,6 @@
           <span class="pg-backup-action">
             {#if entry.status === 'ok'}
               <a class="btn btn-sm" href="/ui/pg/backup/download?id={entry.id}" download>Download</a>
-              <button class="btn btn-sm" type="button" onclick="fez.restoreById('{entry.id}')" disabled={state.busy}>Restore</button>
             {:else}
               <span class="text-muted">{entry.error || '-'}</span>
             {/if}
@@ -483,7 +323,6 @@
       {/each}
     </div>
   </section>
-{/if}
 {:else}
   <section class="stat-row" aria-label="PostgreSQL summary">
     <article class="card stat-card">

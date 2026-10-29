@@ -49,7 +49,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Scheduled jobs** - per-app cron that runs even while the app is stopped.
 * **Access control** - basic auth, a shared password page, IP allowlists or SSO sign-in in front of any app, no app code changes.
 * **Web console** - live state, start/stop, log search, config editing with history, and an audit row for every action.
-* **PostgreSQL** - inspection, SQL prompt, scheduled backups, rotation and restore.
+* **PostgreSQL** - inspection, scheduled backups, rotation and download.
 * **PubSub** - realtime channels over WebSocket or SSE.
 * **Vibe** - an AI panel docked on the app's pages: a chat that edits it, its diffs, Restart, Reset, Commit and Push, and MCP for any agent.
 * **HTTP API** - every CLI action as `POST /api/<action>` with a bearer token, a guide at `GET /api` and an OpenAPI export.
@@ -896,12 +896,11 @@ curl -s -X POST https://dboss.example.com/api/restart -H "Authorization: Bearer 
 ```
 
 Every action is `POST`, reads included; only the guide and the export are `GET`, and both are open.
-Success is HTTP `200` `{"ok": true, "data": ...}`.
 A success is HTTP `200` `{"ok": true, "data": ...}`, with `data` null when the action returns nothing.
 A failure is `{"ok": false, "error": {"code": "...", "message": "..."}}`: HTTP `400` with `api_disabled` (no `tokens.dboss`), `unauthorized`, `rate_limited` (too many wrong tokens from this address, with `Retry-After`), `unknown_action`, `invalid_request` (an unknown param, a missing required one or a wrong type) or `failed` (the action refused: an unknown app, a state, a missing confirmation), and HTTP `500` with `internal` when dboss itself failed (a database, git or disk error).
 Audited actions write their audit row with the actor `api`.
 Without `tokens.dboss` the API refuses every call.
-The token grants everything the CLI can do, `exec`, `pg-query` and `destroy` included, so treat it like root on the box.
+The token grants everything the CLI can do, `exec` and `destroy` included, so treat it like root on the box.
 
 ## Notifications
 
@@ -936,23 +935,19 @@ The connection resolves in order: `postgres.dsn` when set, then a unix socket (`
 
 Backups are per-database logical dumps (`pg_dump --format=plain`) zipped as `pg_backup/<database>/BACKUP_<timestamp>.zip` next to the apps. One run happens each day at 04:00 local time; scheduled dumps older than the database's rotation window (7 days for `week`, 30 for `month`) are pruned from disk and the catalog, while a manual **Back up now** is kept. The catalog lives at `dir/state/pg-backups.json`.
 
-Every recorded dump has **Download**, which serves the stored zip as it is, and the per-database panel has **Upload backup**, which stores an archive you picked and records it as a manual entry.
-Together they move a database between hosts: download on one box, upload on the other, restore there.
+Every recorded dump has **Download**, which serves the stored zip as it is.
 
-Each database page has two tabs: **Backup** is everything above, and **SQL** is a runner.
-It executes whatever you type against that database as the role dboss connects with - `Cmd/Ctrl+Enter` runs, several statements run in order and the last result set is shown, `NULL` is rendered as such, and long results stop at 500 rows with the full count reported.
-A run is bounded by a 30 second `statement_timeout`, so closing the tab cannot leave a query burning CPU, and it can write, so every run lands in the audit log as `pg-query` with the statement.
+The console writes the selection to `dboss-server.local.yaml` (the host override is created from the base when missing) and hot-reloads the daemon, so no restart is needed. A plain edit on disk applies on the next config save or `dboss rescan`. The per-database panel also has **Drop database**, which needs the database name typed as confirmation.
 
-The console writes the selection to `dboss-server.local.yaml` (the host override is created from the base when missing) and hot-reloads the daemon, so no restart is needed. A plain edit on disk applies on the next config save or `dboss rescan`. Restore verifies the archive and loads into a **new** database named `<source>_restore_<timestamp>` by default; replacing an existing database requires an explicit target and confirmation. The per-database panel also has **Drop database**, which needs the database name typed as confirmation.
+dboss has no SQL runner, upload or restore: load a dump with `psql` on the box (`unzip -p BACKUP_<timestamp>.zip | psql <database>`).
 
-On the box this feature needs `pg_dump` and `psql` on the service user's `PATH`, and a role that can read every selected database (`pg_read_all_data` or ownership). The CLI mirrors the tab:
+On the box this feature needs `pg_dump` on the service user's `PATH`, and a role that can read every selected database (`pg_read_all_data` or ownership). The CLI mirrors the tab:
 
 ```bash
 dboss pg                      # server summary and databases
 dboss pg backups              # recorded dumps
 dboss pg backup [database]    # dump one or every selected database
 dboss pg delete <backup-id>   # remove one recorded dump
-dboss pg restore <id> [--target name] [--force]
 dboss pg drop <database> --confirm <database>
 ```
 
@@ -1291,7 +1286,7 @@ internal/tmpclean/    daily sweep of each app's ./tmp (tmp_clean)
 internal/diskusage/   daily measurement of what each app occupies on disk
 internal/logx/        leveled logger for dboss's own output (log_level)
 internal/sysinfo/     read-only host inspection: OS, load, memory, disks and installed toolchains
-internal/pg/          PostgreSQL inspection, scheduled dumps, retention and restore
+internal/pg/          PostgreSQL inspection, scheduled dumps and retention
 internal/metrics/     Prometheus text rendered from the app snapshots
 internal/notify/      debounced operator webhook for crash and failure events
 internal/version/     build version: .version, injected at build time

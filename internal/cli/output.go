@@ -329,9 +329,6 @@ func (c CLI) printHuman(method string, data any) error {
 			}
 			fmt.Fprintf(c.Out, "%s: %d bytes in %dms\n", entry.Database, entry.Bytes, entry.DurationMS)
 		}
-	case ops.ActionPGRestore:
-		result := data.(pg.RestoreResult)
-		fmt.Fprintf(c.Out, "restored %d bytes into %s\n", result.Bytes, result.Target)
 	case ops.ActionPGDrop:
 		fmt.Fprintf(c.Out, "dropped %s\n", data.(string))
 	case ops.ActionPGDeleteDump:

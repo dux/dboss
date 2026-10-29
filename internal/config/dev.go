@@ -6,9 +6,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DevSuffix marks the development variant of a key: `listen: ":80"` next to `listen_dev: ":3000"`
-// keeps both values in one file, and the session picks one at load time.
-const DevSuffix = "_dev"
+// DevSuffix and ProdSuffix mark the session variants of a key: `listen: ":80"` next to
+// `listen_dev: ":3000"` or `listen_prod: ":8080"` keeps every value in one file, and the
+// session picks one at load time. A variant with no base key exists only in its session.
+const (
+	DevSuffix  = "_dev"
+	ProdSuffix = "_prod"
+)
+
+// profileSuffixes are every variant suffix; the inactive ones are dropped at load.
+var profileSuffixes = []string{DevSuffix, ProdSuffix}
 
 // Dev reports whether this is a development session: the config dboss was pointed at is an app
 // (it has procfile:), so one app is being run from its own folder rather than a host serving an
@@ -17,10 +24,10 @@ func (c Config) Dev() bool { return c.App != nil }
 
 // applyProfile resolves the variant suffixes across a whole document, before the schema check turns
 // it into structs. Every `<key><active>` replaces `<key>` and creates it when it is absent; every
-// other variant is dropped, so an app file carries its dev values into a host unread.
-// active is "" for the box, where every variant is dropped. The value replaces the base outright,
-// so a block override names the leaf key it changes rather than restating the block. It reports
-// whether the tree changed.
+// other variant is dropped. active is DevSuffix in a dev session and ProdSuffix everywhere else, so
+// an app file's dev values are never read on a host and its prod values never in a dev session.
+// The value replaces the base outright, so a block override names the leaf key it changes rather
+// than restating the block. It reports whether the tree changed.
 func applyProfile(node *yaml.Node, active string) bool {
 	changed := false
 	switch node.Kind {
@@ -45,7 +52,7 @@ func resolveProfile(node *yaml.Node, active string) bool {
 			overrides = append(overrides, i)
 		}
 	}
-	if active != "" && len(overrides) > 0 {
+	if len(overrides) > 0 {
 		at := map[string]int{}
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			at[node.Content[i].Value] = i
@@ -76,7 +83,7 @@ func resolveProfile(node *yaml.Node, active string) bool {
 
 // variantBase is name without the active suffix, or "" when name does not carry it.
 func variantBase(name, active string) string {
-	if active == "" || len(name) <= len(active) || !strings.HasSuffix(name, active) {
+	if len(name) <= len(active) || !strings.HasSuffix(name, active) {
 		return ""
 	}
 	return strings.TrimSuffix(name, active)
@@ -89,7 +96,12 @@ func isVariantKey(name string) bool {
 
 // variantOf is name without its profile suffix, or "" when it carries none.
 func variantOf(name string) string {
-	return variantBase(name, DevSuffix)
+	for _, suffix := range profileSuffixes {
+		if base := variantBase(name, suffix); base != "" {
+			return base
+		}
+	}
+	return ""
 }
 
 // hasTopKey reports whether the document's root mapping has name, so dev mode can be read off the

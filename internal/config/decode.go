@@ -32,8 +32,8 @@ var hostTopKeys = append(append([]string{}, hostKeys...), "hooks", "pages")
 
 // decode parses one document into raw and reports every top-level key present in it. The node
 // tree is kept so every error can be pointed at a line and a key. profile is the variant suffix
-// the document is read with when it turns out to be an app (DevSuffix for a dev session); a host
-// file and an app read under a host use none.
+// the document is read with: DevSuffix for an app loaded as the root config, ProdSuffix for a
+// host file or an app read under a host.
 func decode(data []byte, path string, raw *file, profile string) (map[string]bool, *yaml.Node, error) {
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
@@ -43,7 +43,7 @@ func decode(data []byte, path string, raw *file, profile string) (map[string]boo
 		return nil, nil, located(err, path, &root)
 	}
 	if !hasTopKey(&root, "procfile") {
-		profile = ""
+		profile = ProdSuffix
 	}
 	changed := applyProfile(&root, profile)
 	changed = expandEnv(&root, "") || changed

@@ -261,7 +261,8 @@ A leading `*.` in a host matches subdomains only; a leading `.` matches the bare
 The web process can also set `canonical_host` (one of its hosts); every other host answers 301 to it, so `www` never serves content.
 `proxy.listen` and `management.host` are such lists: several listen addresses each get a listener with the same routing, and several console hostnames are all accepted.
 A `$NAME` in a value is replaced with that variable from the daemon's environment at load time, so `url: $ALERT_WEBHOOK_URL` keeps a secret out of the file; only all-uppercase names expand, an unset name stays as written, and `procfile` and cron commands are never expanded because they are runtime shell lines.
-Any key can be written twice, once with a `_dev` suffix: a dev session - one app run from its own folder, `dboss s` where the config file has `procfile` - takes the `_dev` value, and every other session drops it, so one committed app file serves both.
+Any key can carry a `_dev` or `_prod` suffix: a dev session - one app run from its own folder, `dboss s` where the config file has `procfile` - takes the `_dev` value and drops `_prod`, and every other session (a host, and every app under it) takes the `_prod` value and drops `_dev`, so one committed app file serves both.
+A variant with no base key exists only in its session.
 
 ```yaml
 procfile:
@@ -270,9 +271,11 @@ procfile:
 env:
   API_URL: https://api.example.com
   API_URL_dev: http://lvh.me:4000
+headers_prod:
+  Strict-Transport-Security: max-age=31536000
 ```
 
-The suffix works at every depth and inside free-form maps such as `procfile`, `env` and `headers`; the value replaces the base key outright, so a block override names the leaf key it changes (`alerts: {error_rate_dev: 0}`) rather than restating the block. A `<key>_dev` is checked against the schema in both modes, so a typo is caught by `dboss check` on the host too.
+The suffix works at every depth and inside free-form maps such as `procfile`, `env` and `headers`; the value replaces the base key outright, so a block override names the leaf key it changes (`alerts: {error_rate_dev: 0}`) rather than restating the block. A `<key>_dev` or `<key>_prod` is checked against the schema in both modes, so a typo is caught whichever session reads it.
 Every app-level key can be set once under `defaults:` in the host file and repeated at the top level of an app file; the app value wins key by key.
 `dboss config --keys [filter]` lists every key grouped by block, with a one-line description, its default and, when useful, an example; the same list is behind the Help button in the console's Configuration view.
 `dboss config --reference` prints the long annotated reference, and `dboss config [app] -d` prints a resolved config with every default filled in.

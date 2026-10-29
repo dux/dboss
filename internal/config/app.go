@@ -698,7 +698,7 @@ func LoadApp(path string, defaults Defaults) (App, error) {
 // ParseApp is LoadApp on bytes already in memory.
 func ParseApp(data []byte, path string, defaults Defaults) (App, error) {
 	raw := file{Config: Default()}
-	keys, root, err := decode(data, path, &raw, "")
+	keys, root, err := decode(data, path, &raw, ProdSuffix)
 	if err != nil {
 		return App{}, err
 	}

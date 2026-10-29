@@ -120,12 +120,101 @@ func TestDevSuffixStillRejectsUnknownKey(t *testing.T) {
 	for _, document := range []string{
 		"procfile:\n  web: ./server\nbogus_dev: 1\n",
 		"apps: ./apps\nbogus_dev: 1\n",
+		"procfile:\n  web: ./server\nbogus_prod: 1\n",
+		"apps: ./apps\nbogus_prod: 1\n",
 		"procfile:\n  web: ./server\nproxy:\n  bogus_dev: 1\n",
 	} {
 		writeConfigFile(t, path, document)
 		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "unknown key") {
 			t.Fatalf("%q: expected unknown-key error, got %v", document, err)
 		}
+	}
+}
+
+// prodFile is an app document with prod variants: read under a host they win, in a dev session the
+// base values stand.
+const prodFile = `procfile:
+  web:
+    command: ./server -e development
+    command_prod: ./server -e production
+    host: [demo.lvh.me]
+    host_prod: [demo.test]
+env:
+  API_URL: http://lvh.me:4000
+  API_URL_prod: https://api.example.com
+`
+
+func TestProdSuffixOverridesUnderHost(t *testing.T) {
+	app, err := ParseApp([]byte(prodFile), "/srv/apps/demo/"+FileName, Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := app.Procfile["web"]
+	if web.Command != "./server -e production" {
+		t.Fatalf("procfile.web.command = %q", web.Command)
+	}
+	if got := strings.Join(web.Host, ","); got != "demo.test" {
+		t.Fatalf("procfile.web.hosts = %q", got)
+	}
+	if got := app.Env["API_URL"]; got != "https://api.example.com" {
+		t.Fatalf("env.API_URL = %q", got)
+	}
+	if _, ok := app.Env["API_URL_prod"]; ok {
+		t.Fatal("the _prod entry must not survive as its own env var")
+	}
+
+	path := filepath.Join(t.TempDir(), FileName)
+	writeConfigFile(t, path, prodFile)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev := cfg.App.Procfile["web"]
+	if dev.Command != "./server -e development" {
+		t.Fatalf("dev procfile.web.command = %q", dev.Command)
+	}
+	if got := strings.Join(dev.Host, ","); got != "demo.lvh.me" {
+		t.Fatalf("dev procfile.web.hosts = %q", got)
+	}
+	if got := cfg.App.Env["API_URL"]; got != "http://lvh.me:4000" {
+		t.Fatalf("dev env.API_URL = %q", got)
+	}
+	if _, ok := cfg.App.Env["API_URL_prod"]; ok {
+		t.Fatal("the _prod entry must be dropped in a dev session")
+	}
+}
+
+// A host file is never dev, so its _prod keys apply.
+func TestProdSuffixInHostFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ServerFileName)
+	writeConfigFile(t, path, "apps: ./apps\nproxy:\n  listen: \":80\"\n  listen_prod: \":8080\"\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cfg.Proxy.Listen, ","); got != ":8080" {
+		t.Fatalf("proxy.listen = %q, want :8080", got)
+	}
+}
+
+// A key written only with a suffix exists only in that session; no empty base key is needed.
+func TestSuffixWithoutBaseKeyExistsOnlyInItsSession(t *testing.T) {
+	document := "procfile:\n  web:\n    command: ./server\n    host: [demo.test]\nheaders_dev:\n  X-Dev: \"1\"\nheaders_prod:\n  X-Prod: \"1\"\n"
+	path := filepath.Join(t.TempDir(), FileName)
+	writeConfigFile(t, path, document)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.App.Headers; len(got) != 1 || got["X-Dev"] != "1" {
+		t.Fatalf("dev headers = %v, want only X-Dev", got)
+	}
+	app, err := ParseApp([]byte(document), "/srv/apps/demo/"+FileName, Default().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := app.Headers; len(got) != 1 || got["X-Prod"] != "1" {
+		t.Fatalf("host headers = %v, want only X-Prod", got)
 	}
 }
 

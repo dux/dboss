@@ -18,7 +18,7 @@ import (
 	"dboss/internal/fsutil"
 )
 
-// errGone is what startTime reports for a pid with no live process.
+// errGone is what StartTime reports for a pid with no live process.
 var errGone = errors.New("no such process")
 
 // Ledger is one file per live child under <state dir>/children, named by pid and holding the
@@ -38,7 +38,7 @@ func (l Ledger) Start(cmd *exec.Cmd, label string) error {
 	err := os.MkdirAll(l.dir, 0o750)
 	if err == nil {
 		var start string
-		if start, err = startTime(pid); err == nil || errors.Is(err, errors.ErrUnsupported) {
+		if start, err = StartTime(pid); err == nil || errors.Is(err, errors.ErrUnsupported) {
 			err = fsutil.WriteFile(l.path(pid), []byte(start+"\n"+label+"\n"), 0o640)
 		}
 	}
@@ -105,7 +105,7 @@ func (l Ledger) Reap(timeout time.Duration) ([]string, error) {
 // lives its start time must match. Once it is gone a surviving group can only be the old one: the
 // kernel never hands out a pid that is still a live group's id.
 func orphaned(pid int, recorded string) bool {
-	start, err := startTime(pid)
+	start, err := StartTime(pid)
 	switch {
 	case err == nil:
 		return recorded != "" && start == recorded

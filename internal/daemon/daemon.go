@@ -100,8 +100,14 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 			return nil, err
 		}
 	}
-	// Everything below kills what an earlier session left, so a live one must stop us first.
-	if err := ctl.Idle(cfg.Socket); err != nil {
+	// Everything below kills what an earlier session left, so a live one must be gone first. A dev
+	// session stops the earlier session of its folder (a forgotten terminal or agent run); a host
+	// never does, since that would fight the systemd service.
+	if cfg.Dev() {
+		if err := ctl.TakeOver(cfg.Socket, cfg.Defaults.StopTimeout.Value()+10*time.Second); err != nil {
+			return nil, err
+		}
+	} else if err := ctl.Idle(cfg.Socket); err != nil {
 		return nil, err
 	}
 	reaped, err := children.New(cfg.StateDir).Reap(cfg.Defaults.StopTimeout.Value())

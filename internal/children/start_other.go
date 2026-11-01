@@ -4,5 +4,5 @@ package children
 
 import "errors"
 
-// startTime has no source here, so Reap never signals a group it cannot verify.
-func startTime(int) (string, error) { return "", errors.ErrUnsupported }
+// StartTime has no source here, so nothing signals a process it cannot verify.
+func StartTime(int) (string, error) { return "", errors.ErrUnsupported }

@@ -293,7 +293,8 @@ Tokens  (dboss-server.yaml)
 ## Commands
 
 `dboss start` (or `dboss s`) automatically removes a stale control socket when no service is listening, prints a warning, and continues startup.
-An active listener still blocks a second session; permission errors and non-socket files are left untouched.
+In a dev session (an app folder) an earlier session of the same folder that still runs is stopped first: the session records its pid and process start time in `dboss.pid` next to the socket, and a new start sends it SIGTERM (SIGKILL after `stop_timeout` plus 10 seconds) and takes over, so a forgotten terminal or background run never blocks `dboss s`.
+A host session never does that and refuses while another one answers, since it would fight the systemd service; an active socket without a matching pid file blocks a dev session too, and permission errors and non-socket files are left untouched.
 It also stops every app process, cron job or hook a session killed without cleanup (kill -9, a crash) left running, recorded under `dir/state/children`, and starts fresh copies; `dboss kill` does the same when no daemon answers.
 
 ```

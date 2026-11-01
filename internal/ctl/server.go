@@ -8,9 +8,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"dboss/internal/children"
+	"dboss/internal/fsutil"
 	"dboss/internal/logx"
 	"dboss/internal/ops"
 )
@@ -47,6 +50,55 @@ func Idle(path string) error {
 	return nil
 }
 
+// owner is the pid file of the session serving a control socket (`dboss.sock` -> `dboss.pid`):
+// its pid and the kernel start time that tells it apart from a later process given the same pid.
+type owner struct {
+	PID   int    `json:"pid"`
+	Start string `json:"start"`
+}
+
+func ownerPath(socket string) string { return strings.TrimSuffix(socket, ".sock") + ".pid" }
+
+// TakeOver stops the earlier session of the socket when its pid file still names that very
+// process, waits for it to exit (killing it after timeout; the next start reaps what it left),
+// then clears the socket like Idle. A live socket no pid file vouches for is still refused, and an
+// unreadable pid file vouches for nothing.
+func TakeOver(path string, timeout time.Duration) error {
+	var previous owner
+	_ = fsutil.ReadJSON(ownerPath(path), &previous)
+	if previous.PID > 1 && previous.PID != os.Getpid() && same(previous) {
+		logx.Warnf("stopping the earlier session (pid %d) still serving %s", previous.PID, path)
+		if err := syscall.Kill(previous.PID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return fmt.Errorf("stop the earlier session (pid %d): %w", previous.PID, err)
+		}
+		if !exited(previous, timeout) {
+			_ = syscall.Kill(previous.PID, syscall.SIGKILL)
+			if !exited(previous, 5*time.Second) {
+				return fmt.Errorf("the earlier session (pid %d) did not exit", previous.PID)
+			}
+		}
+	}
+	return Idle(path)
+}
+
+// same reports whether the recorded process still runs.
+func same(o owner) bool {
+	start, err := children.StartTime(o.PID)
+	return err == nil && o.Start != "" && start == o.Start
+}
+
+// exited waits up to timeout for the recorded process to be gone.
+func exited(o owner, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for same(o) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return true
+}
+
 // Listen serves the control socket. login mints console login links and is nil when the
 // management console is not enabled.
 func Listen(path string, service *ops.Service, login func() (string, string, error)) (*Server, error) {
@@ -64,6 +116,12 @@ func Listen(path string, service *ops.Service, login func() (string, string, err
 		_ = listener.Close()
 		return nil, err
 	}
+	if start, err := children.StartTime(os.Getpid()); err == nil {
+		if err := fsutil.WriteJSON(ownerPath(path), owner{PID: os.Getpid(), Start: start}, 0o640); err != nil {
+			_ = listener.Close()
+			return nil, err
+		}
+	}
 	server := &Server{path: path, listener: listener, service: service, login: login}
 	go server.serve()
 	return server, nil
@@ -72,6 +130,7 @@ func Listen(path string, service *ops.Service, login func() (string, string, err
 func (s *Server) Close() error {
 	err := s.listener.Close()
 	removeErr := os.Remove(s.path)
+	_ = os.Remove(ownerPath(s.path))
 	if err != nil && !errors.Is(err, net.ErrClosed) {
 		return err
 	}

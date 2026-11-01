@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// startTime is field 22 of /proc/<pid>/stat: clock ticks since boot, fixed at fork.
-func startTime(pid int) (string, error) {
+// StartTime is field 22 of /proc/<pid>/stat: clock ticks since boot, fixed at fork.
+func StartTime(pid int) (string, error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if errors.Is(err, os.ErrNotExist) {
 		return "", errGone

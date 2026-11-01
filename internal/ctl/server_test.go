@@ -7,12 +7,16 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
+	"dboss/internal/children"
 	"dboss/internal/config"
+	"dboss/internal/fsutil"
 	"dboss/internal/logstore"
 	"dboss/internal/ops"
 	"dboss/internal/supervisor"
@@ -211,9 +215,16 @@ func TestListenServesAndRefusesASecondServer(t *testing.T) {
 	if info.Mode().Perm() != 0o660 {
 		t.Fatalf("socket mode = %o, want 660", info.Mode().Perm())
 	}
+	var recorded owner
+	if err := fsutil.ReadJSON(ownerPath(socket), &recorded); err != nil || recorded.PID != os.Getpid() || recorded.Start == "" {
+		t.Fatalf("pid file = %+v, %v; want this process", recorded, err)
+	}
 
 	if _, err := Listen(socket, service, nil); err == nil {
 		t.Fatal("second Listen on an active socket should fail")
+	}
+	if err := TakeOver(socket, time.Second); err == nil {
+		t.Fatal("TakeOver must refuse a live socket its pid file does not hand over")
 	}
 
 	var apps []supervisor.Snapshot
@@ -229,6 +240,59 @@ func TestListenServesAndRefusesASecondServer(t *testing.T) {
 	}
 	if _, err := os.Stat(socket); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("socket still present after Close: %v", err)
+	}
+	if _, err := os.Stat(ownerPath(socket)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("pid file still present after Close: %v", err)
+	}
+}
+
+// earlierSession starts a process standing in for a session that is still running, records it in
+// the socket's pid file with start (its own start time when empty) and reports when it exits.
+func earlierSession(t *testing.T, socket, start string) <-chan struct{} {
+	t.Helper()
+	cmd := exec.Command("sleep", "30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }()
+	if start == "" {
+		var err error
+		if start, err = children.StartTime(cmd.Process.Pid); err != nil {
+			t.Skipf("no process start time here: %v", err)
+		}
+	}
+	if err := fsutil.WriteJSON(ownerPath(socket), owner{PID: cmd.Process.Pid, Start: start}, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	return done
+}
+
+func TestTakeOverStopsTheEarlierSession(t *testing.T) {
+	socket := testSocketPath(t)
+	done := earlierSession(t, socket, "")
+	if err := TakeOver(socket, 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("the earlier session still runs")
+	}
+}
+
+func TestTakeOverLeavesAReusedPidAlone(t *testing.T) {
+	socket := testSocketPath(t)
+	done := earlierSession(t, socket, "1.000000")
+	if err := TakeOver(socket, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+		t.Fatal("a process the pid file does not describe was stopped")
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 

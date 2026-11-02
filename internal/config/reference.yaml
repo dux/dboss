@@ -431,7 +431,9 @@ postgres:
 # its own hosts, health, canonical host and realtime hub, and each bound to its own PORT. Hosts
 # are matched against the request Host header, case-insensitive, port stripped. A leading "*."
 # in a host matches subdomains only; a leading "." matches the bare domain and every subdomain,
-# so ".myapp.com" means "myapp.com" and "*.myapp.com". Longest match wins.
+# so ".myapp.com" means "myapp.com" and "*.myapp.com". A trailing ".*" after one label matches
+# that label on any domain: "mail.*" serves mail.acme.com, not mail.com. Longest match wins, and
+# "mail.*" loses to any other match.
 # A host beats a hostname derived from subdomain, in this app or another one: a landing app with
 # host: myapp.com takes the bare domain from a tenant app with subdomain ["@", "*"], which keeps
 # *.myapp.com. Two host claims, or two subdomain claims, of one hostname are an error (between

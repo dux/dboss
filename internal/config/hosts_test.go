@@ -38,6 +38,46 @@ func TestBestMatchPrefersTheMostSpecificPattern(t *testing.T) {
 	}
 }
 
+func TestAnyDomainPatternMatchesItsLabelOnEveryDomain(t *testing.T) {
+	for host, want := range map[string]bool{
+		"mail.acme.com":      true,
+		"mail.acme.co.uk":    true,
+		"mail.com":           false,
+		"mail":               false,
+		"webmail.acme.com":   false,
+		"mx.mail.acme.com":   false,
+		"mailer.example.org": false,
+	} {
+		if _, ok := MatchHost(host, "Mail.*"); ok != want {
+			t.Errorf("MatchHost(%q, mail.*) = %v, want %v", host, ok, want)
+		}
+	}
+	concrete, _ := BestMatch("mail.acme.com", []string{"mail.acme.com"})
+	subdomains, _ := BestMatch("mail.acme.com", []string{"*.acme.com"})
+	anyDomain, _ := BestMatch("mail.acme.com", []string{"mail.*"})
+	if anyDomain >= subdomains || anyDomain >= concrete {
+		t.Fatalf("mail.* score %d should lose to *.acme.com %d and mail.acme.com %d", anyDomain, subdomains, concrete)
+	}
+}
+
+func TestValidHostPattern(t *testing.T) {
+	for pattern, want := range map[string]bool{
+		"mail.*":          true,
+		"app.example.com": true,
+		"*.example.com":   true,
+		".example.com":    true,
+		"*":               false,
+		".*":              false,
+		"a.b.*":           false,
+		"*.mail.*":        false,
+		"-mail.*":         false,
+	} {
+		if got := validHostPattern(pattern); got != want {
+			t.Errorf("validHostPattern(%q) = %v, want %v", pattern, got, want)
+		}
+	}
+}
+
 func TestConcreteHostAlwaysBeatsWildcard(t *testing.T) {
 	patterns := []string{"*.foo.com", "baz.foo.com"}
 	for _, host := range []string{"baz.foo.com", "qux.foo.com"} {
@@ -74,6 +114,7 @@ func TestWebURL(t *testing.T) {
 		{"canonical wins", "https", "", "b.example.com", []string{"a.example.com", "b.example.com"}, "https://b.example.com"},
 		{"leading dot matches its apex", "http", "3110", "", []string{".sinatra.lvh.me"}, "http://sinatra.lvh.me:3110"},
 		{"wildcard only has no address", "http", "3100", "", []string{"*.example.com"}, ""},
+		{"any-domain pattern has no address", "https", "", "", []string{"mail.*"}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := WebURL(test.scheme, test.port, test.canonical, test.hosts); got != test.want {
@@ -95,6 +136,7 @@ func TestPrimaryHostPicksOneAddress(t *testing.T) {
 		{"leading dot matches its apex", "", []string{".sinatra.lvh.me"}, "sinatra.lvh.me"},
 		{"concrete beats a pattern", "", []string{"*.example.com", "app.example.com"}, "app.example.com"},
 		{"subdomains only has no apex", "", []string{"*.example.com"}, ""},
+		{"any-domain pattern is skipped", "", []string{"mail.*", "mail.example.com"}, "mail.example.com"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := PrimaryHost(test.canonical, test.hosts); got != test.want {

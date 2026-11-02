@@ -21,8 +21,9 @@ func NormalizePattern(pattern string) string {
 }
 
 // MatchHost scores a normalized host against a hosts pattern. A leading "*." matches subdomains
-// only, a leading "." matches the bare domain and every subdomain, and a plain pattern must be an
-// exact match. The score is the pattern length, so a longer, more specific match wins.
+// only, a leading "." matches the bare domain and every subdomain, a trailing ".*" matches that
+// first label on any domain ("mail.*": mail.acme.com, not mail.com), and a plain pattern must be
+// an exact match. The score is the pattern length, so a longer, more specific match wins.
 func MatchHost(host, pattern string) (int, bool) {
 	pattern = NormalizePattern(pattern)
 	if host == pattern {
@@ -38,7 +39,17 @@ func MatchHost(host, pattern string) (int, bool) {
 		suffix := pattern[1:]
 		return len(suffix), strings.HasSuffix(host, suffix) && len(host) > len(suffix)
 	}
+	if prefix, ok := anyDomainPrefix(pattern); ok {
+		domain, found := strings.CutPrefix(host, prefix)
+		return len(prefix), found && strings.Contains(domain, ".")
+	}
 	return 0, false
+}
+
+// anyDomainPrefix is "mail." of a trailing-".*" pattern such as "mail.*".
+func anyDomainPrefix(pattern string) (string, bool) {
+	label, ok := strings.CutSuffix(pattern, ".*")
+	return label + ".", ok
 }
 
 // BestMatch is the highest MatchHost score of host against any of patterns.
@@ -54,14 +65,14 @@ func BestMatch(host string, patterns []string) (int, bool) {
 
 // PrimaryHost is the one concrete hostname a web process answers on, for links, example URLs and
 // the health probe's Host header: the canonical host when set (every other host redirects to it),
-// then the first concrete host, then a leading-dot pattern's apex. A process with only "*."
-// patterns has none and gets "".
+// then the first concrete host, then a leading-dot pattern's apex. A process with only "*." or
+// ".*" patterns has none and gets "".
 func PrimaryHost(canonical string, hosts []string) string {
 	if canonical != "" {
 		return canonical
 	}
 	for _, host := range hosts {
-		if !strings.HasPrefix(host, "*.") && !strings.HasPrefix(host, ".") {
+		if !strings.HasPrefix(host, "*.") && !strings.HasPrefix(host, ".") && !strings.HasSuffix(host, ".*") {
 			return host
 		}
 	}

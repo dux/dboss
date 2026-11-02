@@ -258,6 +258,8 @@ Two `host` claims, or two `subdomain` claims, of one hostname are still an error
 A request goes to the most specific match, so `host: api.myapp.com` also beats `*.myapp.com`.
 Every key that takes a list also accepts a single value, so `allow_ips: 10.0.0.0/8` equals `allow_ips: [10.0.0.0/8]`.
 A leading `*.` in a host matches subdomains only; a leading `.` matches the bare domain and every subdomain, so `host: .myapp.com` covers `myapp.com` and `*.myapp.com`.
+A trailing `.*` after one label matches that label on any domain: `host: [mail.myapp.com, "mail.*"]` also serves `mail.acme.com` and `mail.acme.co.uk` (not `mail.com`), for an app that customers point their own `mail.` hostname at.
+It is the weakest pattern, so any other app's `*.acme.com` or `mail.acme.com` wins, and with `proxy.tls` every matching hostname may get a certificate on its first visit, so pair it with `proxy.cloudflare: true`.
 The web process can also set `canonical_host` (one of its hosts); every other host answers 301 to it, so `www` never serves content.
 `proxy.listen` and `management.host` are such lists: several listen addresses each get a listener with the same routing, and several console hostnames are all accepted.
 A `$NAME` in a value is replaced with that variable from the daemon's environment at load time, so `url: $ALERT_WEBHOOK_URL` keeps a secret out of the file; only all-uppercase names expand, an unset name stays as written, and `procfile` and cron commands are never expanded because they are runtime shell lines.

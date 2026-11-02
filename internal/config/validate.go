@@ -158,9 +158,12 @@ func validateManagement(management Management, proxyEnabled, dev bool) error {
 }
 
 // validHostPattern accepts a hostname, optionally led by "*." (subdomains) or "." (apex and
-// subdomains).
+// subdomains), or one label followed by ".*" (that label on any domain, e.g. mail.*).
 func validHostPattern(pattern string) bool {
 	pattern = NormalizePattern(pattern)
+	if label, ok := strings.CutSuffix(pattern, ".*"); ok {
+		return label != "" && !strings.Contains(label, ".") && validHostname(label)
+	}
 	if rest, ok := strings.CutPrefix(pattern, "*."); ok {
 		pattern = rest
 	} else {

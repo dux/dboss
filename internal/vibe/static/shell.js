@@ -30,7 +30,7 @@
       .handle:hover, .dragging .handle { background: rgb(59 130 246 / 35%); }
       iframe { flex: 1; width: 100%; height: 100%; border: 0; background: #fff; }
       .dragging iframe { pointer-events: none; }
-      .tab { position: absolute; top: 50%; left: 0; padding: 12px 6px; border: 1px solid #e3e5e8; border-left: 0; border-radius: 0 8px 8px 0; color: #334155; background: #fff; box-shadow: 4px 0 12px rgb(15 23 42 / 10%); font: 600 12px/1 system-ui, sans-serif; letter-spacing: .04em; writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg); cursor: pointer; }
+      .tab { position: absolute; top: 50%; left: 0; padding: 12px 6px; border: 1px solid #e3e5e8; border-right: 0; border-radius: 8px 0 0 8px; color: #334155; background: #fff; box-shadow: -4px 0 12px rgb(15 23 42 / 10%); font: 600 12px/1 system-ui, sans-serif; letter-spacing: .04em; writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg); cursor: pointer; }
       .tab[hidden] { display: none; }
     </style>
     <div class="panel"><div class="handle" title="Drag to resize"></div><iframe title="vibe" src="/_dboss_/vibe/panel"></iframe></div>

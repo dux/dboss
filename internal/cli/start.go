@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -20,7 +21,7 @@ import (
 
 // start runs the session in the foreground. Under systemd this is the service process; on a
 // terminal every app's output is echoed with an app/proc prefix, and the apps wait for ENTER
-// after the banner so its addresses can be opened first.
+// after the banner so its addresses can be opened first. A dev session then restarts its app on r.
 func (c CLI) start(args []string) error {
 	set := flag.NewFlagSet("start", flag.ContinueOnError)
 	set.SetOutput(c.Err)
@@ -70,33 +71,47 @@ func (c CLI) start(args []string) error {
 	if err := session.Serve(ctx); err != nil {
 		return err
 	}
-	if echo != nil && !*yes && !c.waitForEnter(ctx) {
+	if echo == nil {
+		session.Boot()
+		<-ctx.Done()
+		return nil
+	}
+	keys, restore := c.terminalKeys()
+	defer restore()
+	if !*yes && !c.waitForEnter(ctx, keys) {
 		return nil
 	}
 	session.Boot()
-	<-ctx.Done()
+	if keys == nil || !cfg.Dev() {
+		restore()
+		<-ctx.Done()
+		return nil
+	}
+	app := filepath.Base(cfg.Dir)
+	say := func(text string) { echo.Print(echo.Key("dboss", "dboss") + text) }
+	say("press r to restart " + app + ", Ctrl-C to stop")
+	restartOnKeys(ctx, keys, app, say, session.RestartApp)
 	return nil
 }
 
 // waitForEnter holds the apps until ENTER and reports false when the session is interrupted
 // first. Without a terminal on stdin nobody can press it, so it does not wait.
-func (c CLI) waitForEnter(ctx context.Context) bool {
-	in, ok := c.In.(*os.File)
-	if !ok || !term.IsTerminal(int(in.Fd())) {
+func (c CLI) waitForEnter(ctx context.Context, keys <-chan byte) bool {
+	if keys == nil {
 		return true
 	}
 	fmt.Fprint(c.Out, "Press ENTER to start the apps (dboss start -y skips this) ")
-	pressed := make(chan struct{})
-	go func() {
-		_, _ = bufio.NewReader(in).ReadString('\n')
-		close(pressed)
-	}()
-	select {
-	case <-pressed:
-		return true
-	case <-ctx.Done():
-		fmt.Fprintln(c.Out)
-		return false
+	// Single-key input does not echo, so the ENTER that ends the prompt line is printed here.
+	defer fmt.Fprintln(c.Out)
+	for {
+		select {
+		case key, open := <-keys:
+			if !open || key == '\n' || key == '\r' {
+				return true
+			}
+		case <-ctx.Done():
+			return false
+		}
 	}
 }
 

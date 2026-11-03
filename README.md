@@ -378,9 +378,14 @@ web     | http://sinatra.lvh.me:3110
 job     | worker
 console | http://127.0.0.1:3101  open on this machine
 Press ENTER to start the apps (dboss start -y skips this)
+dboss   | press r to restart sinatra, Ctrl-C to stop
 web     | == Sinatra (v4.1.1) has taken the stage on 3107
 job     | tick
 ```
+
+Once the app runs, pressing `r` in that terminal restarts it without asking.
+It is the same audited restart as `dboss restart`, so a web process rolls with no downtime.
+Typed keys are not echoed while a dev session runs, and Ctrl-C still stops it.
 
 A web process shows the address to open (its `canonical_host`, else its first hostname), a worker says `worker`, and an app in maintenance says so.
 

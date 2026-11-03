@@ -50,6 +50,7 @@ import (
 type Daemon struct {
 	cfg            config.Config
 	manager        *supervisor.Manager
+	service        *ops.Service
 	modules        *module.Manager
 	control        *ctl.Server
 	management     *console.Handler
@@ -190,7 +191,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 		closeRegistry(registry)
 		return nil, err
 	}
-	d := &Daemon{cfg: cfg, manager: manager, modules: module.NewManager(logs, ingester, eventModule, alerts.New(manager, logs, sysInfo.Inspector(), notifier), tmpclean.New(manager), sizes, sysInfo, postgres, channels, harness), notifier: notifier, echo: echo, managementPort: managementPort, registry: registry}
+	d := &Daemon{cfg: cfg, manager: manager, service: service, modules: module.NewManager(logs, ingester, eventModule, alerts.New(manager, logs, sysInfo.Inspector(), notifier), tmpclean.New(manager), sizes, sysInfo, postgres, channels, harness), notifier: notifier, echo: echo, managementPort: managementPort, registry: registry}
 	// The console has its own loopback listener, so it is built and bound outside the proxy
 	// block: a dev session with proxy.listen turned off still gets a console and `dboss login`.
 	var management *console.Handler
@@ -312,6 +313,13 @@ func (d *Daemon) Serve(ctx context.Context) error {
 
 // Boot starts the apps that were running before.
 func (d *Daemon) Boot() { d.manager.Boot() }
+
+// RestartApp restarts a dev session's app through the audited restart action, the same one the
+// console and `dboss restart` use, and waits for the outcome.
+func (d *Daemon) RestartApp() error {
+	_, err := d.service.Do(ops.Request{Method: ops.ActionRestart, App: filepath.Base(d.cfg.Dir), Actor: "cli"})
+	return err
+}
 
 // LoginURL mints a one-time console sign-in link; it fails when the console is off.
 func (d *Daemon) LoginURL() (local, public string, err error) {

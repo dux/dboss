@@ -314,16 +314,7 @@ func TestRemoveShippedDoesNotFollowSymlinks(t *testing.T) {
 	}
 }
 
-func TestSplitTarget(t *testing.T) {
-	host, path, err := splitTarget("deploy@box.example.com:/srv/dboss/apps/myapp/")
-	if err != nil || host != "deploy@box.example.com" || path != "/srv/dboss/apps/myapp" {
-		t.Fatalf("got %q %q %v", host, path, err)
-	}
-	for _, bad := range []string{"box", "box:relative/path", ":/srv/x", "-oProxyCommand=x:/srv/x", "box:/", "box:/srv/my app", "box:/srv/$(id)"} {
-		if _, _, err := splitTarget(bad); err == nil {
-			t.Fatalf("%q was accepted", bad)
-		}
-	}
+func TestSyncArgs(t *testing.T) {
 	if got := rsyncArgs("box", "/srv/a", true); !slices.Equal(got, []string{"-az", "--files-from=-", "-n", "-v", "./", "box:/srv/a/"}) {
 		t.Fatalf("rsync args = %v", got)
 	}

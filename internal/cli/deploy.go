@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,7 +15,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"reflect"
 	"slices"
 	"sort"
@@ -24,6 +24,7 @@ import (
 	"dboss/internal/config"
 	"dboss/internal/fsutil"
 	"dboss/internal/supervisor"
+	"dboss/internal/sysinfo"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,15 +43,9 @@ var deployPoll = time.Second
 
 var deployClient = &http.Client{Timeout: 30 * time.Second}
 
-// defaultHostDir is where `install.sh --server` puts the host, and so where a host sync goes.
-const defaultHostDir = "/srv/dboss"
-
 // syncProtected are never removed by apply, even when an earlier sync shipped them: they are
 // server-only by convention and may have been placed on the box since.
 var syncProtected = []string{syncManifestName, config.LocalFileName, config.ServerLocalFileName, ".env.local"}
-
-// remoteSafe limits what goes into the ssh command line, which the remote shell parses.
-var remoteSafe = regexp.MustCompile(`^[A-Za-z0-9._/@+=:,-]+$`)
 
 func (c CLI) deploy(args []string) error {
 	if len(args) == 0 {
@@ -65,6 +60,8 @@ func (c CLI) deploy(args []string) error {
 		return c.deployApply(args[1:])
 	case "pull":
 		return c.deployPull(args[1:])
+	case "ip":
+		return c.deployIP(args[1:])
 	case "help":
 		return c.help(c.Out, "deploy")
 	default:
@@ -87,7 +84,7 @@ func (c CLI) deploySync(args []string) error {
 	if err != nil {
 		return err
 	}
-	usage := errors.New("usage: dboss deploy sync [user@host:/path] [--app name] [-n] (the target is required in an app folder)")
+	usage := errors.New("usage: dboss deploy sync [user@host:/path] [--app name] [-n] (in an app folder the target defaults to its server key)")
 	if len(operands) > 1 {
 		return usage
 	}
@@ -103,10 +100,12 @@ func (c CLI) deploySync(args []string) error {
 		target = operands[0]
 	case isHost:
 		target = defaultHostTarget(cfg.Dir)
+	case cfg.App.Server != "":
+		target = cfg.App.ServerTarget(filepath.Base(cfg.Dir))
 	default:
 		return usage
 	}
-	host, remotePath, err := splitTarget(target)
+	host, remotePath, err := config.SplitTarget(target)
 	if err != nil {
 		return err
 	}
@@ -118,7 +117,7 @@ func (c CLI) deploySync(args []string) error {
 		if *app == "" {
 			*app = path.Base(remotePath)
 		}
-		if !remoteSafe.MatchString(*app) {
+		if !config.RemoteSafe.MatchString(*app) {
 			return fmt.Errorf("app name %q has characters the remote shell would read", *app)
 		}
 		if err := checkBranch(cfg.Dir, cfg.App.Branch); err != nil {
@@ -165,7 +164,7 @@ func (c CLI) deploySync(args []string) error {
 // defaultHostTarget is the box a host folder deploys to: its folder name is the ssh destination,
 // so ~/dev/servers/deb1 goes to `deb1`, with the user from ~/.ssh/config.
 func defaultHostTarget(dir string) string {
-	return filepath.Base(dir) + ":" + defaultHostDir
+	return filepath.Base(dir) + ":" + config.DefaultServerDir
 }
 
 // checkHostManifest refuses a host sync that does not carry the host file, or that would ship into
@@ -191,23 +190,6 @@ func checkHostManifest(cfg config.Config, configFile string, files []string) err
 		}
 	}
 	return nil
-}
-
-// splitTarget reads rsync's host:path form. The path must be absolute, and both parts are kept
-// to characters the remote shell passes through untouched.
-func splitTarget(target string) (string, string, error) {
-	host, remotePath, ok := strings.Cut(target, ":")
-	if !ok || host == "" || strings.HasPrefix(host, "-") {
-		return "", "", fmt.Errorf("target %q is not user@host:/path", target)
-	}
-	if !path.IsAbs(remotePath) {
-		return "", "", fmt.Errorf("remote path %q must be absolute", remotePath)
-	}
-	remotePath = path.Clean(remotePath)
-	if remotePath == "/" || !remoteSafe.MatchString(host) || !remoteSafe.MatchString(remotePath) {
-		return "", "", fmt.Errorf("target %q has characters the remote shell would read", target)
-	}
-	return host, remotePath, nil
 }
 
 // syncManifest lists the files git tracks in dir, relative to it, and counts the untracked files
@@ -476,7 +458,7 @@ func (c CLI) deployPull(args []string) error {
 	if len(operands) == 1 {
 		target = operands[0]
 	}
-	host, remotePath, err := splitTarget(target)
+	host, remotePath, err := config.SplitTarget(target)
 	if err != nil {
 		return err
 	}
@@ -508,6 +490,22 @@ func (c CLI) deployPull(args []string) error {
 	if overridden {
 		fmt.Fprintf(c.Err, "the box runs from %s; after the first deploy sync, remove it there so the shipped file applies\n", config.ServerLocalFileName)
 	}
+	return nil
+}
+
+// deployIP is the box's half of `cf dns`: it prints the address the app's DNS records point at,
+// the same public IP the console's Sys tab shows.
+func (c CLI) deployIP(args []string) error {
+	if len(args) != 0 {
+		return errors.New("usage: dboss deploy ip")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	address, err := sysinfo.PublicIP(ctx)
+	if err != nil {
+		return fmt.Errorf("this box has no routable address of its own and asking for it failed: %w", err)
+	}
+	fmt.Fprintln(c.Out, address)
 	return nil
 }
 

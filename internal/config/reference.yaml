@@ -459,6 +459,13 @@ domain: myapp.com
 # another branch.
 branch: main
 #
+# The box the app deploys to. Only your machine reads it; the box ignores it. `dboss deploy
+# sync` uses it as the target when none is given, and `dboss cf dns` asks it for the address the
+# app's DNS records point at (over ssh, `dboss deploy ip`). A bare ssh destination (a ~/.ssh/config
+# alias, host or user@host) means <server>:/srv/dboss/apps/<app folder name>, the layout of
+# `install.sh --server`; a full user@host:/path names the app folder on the box as written.
+server: deb1
+#
 # A web process may set `subdomain`, one label or wildcard pattern or a list, prepended to the
 # domain; "@" is the domain itself (quote it, like "*"). "*" is every subdomain at any depth and
 # never the apex, so ["@", "*"] is the apex plus every subdomain. With "@" and no "www", dboss

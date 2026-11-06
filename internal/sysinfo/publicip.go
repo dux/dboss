@@ -21,6 +21,20 @@ var echoClient = &http.Client{Timeout: 10 * time.Second}
 // from outside, which is also what a Tailscale address looks like.
 var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
 
+// PublicIP is the address an operator would point DNS at: the box's own routable address when
+// it has one, which is the normal case for a server and costs nothing, and otherwise the
+// address an echo service sees, so a box behind NAT still reports something usable.
+func PublicIP(ctx context.Context) (string, error) {
+	return publicIP(ctx, echoPublicIP)
+}
+
+func publicIP(ctx context.Context, echo func(context.Context) (string, error)) (string, error) {
+	if addr := interfacePublicIP(); addr != "" {
+		return addr, nil
+	}
+	return echo(ctx)
+}
+
 // interfacePublicIP is the first routable address on this box's interfaces. On a server that is
 // the address DNS points at, which is why it wins over asking an echo service. IPv4 is
 // preferred, since an A record is what an operator usually needs.

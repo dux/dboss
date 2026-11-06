@@ -685,6 +685,38 @@ It needs `git`, `rsync` and `ssh` locally, and `rsync` plus `dboss` on the ssh u
 It posts to the app's `deploy` hook (automatic for a Git checkout with a remote, else `hooks: {deploy: true}`, see below) with the token from `--token` or `$DBOSS_TOKEN` (the webhook token or `tokens.dboss`) as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
 A failed pull prints git's answer and exits with its code; an app without the hook gets the line to add.
 
+### The app's server
+
+`server` in `dboss.yaml` names the box the app deploys to, so `dboss deploy sync` needs no target:
+
+```yaml
+server: deb1                          # deb1:/srv/dboss/apps/<folder name>
+# server: deploy@deb1:/opt/apps/shop  # a full target, taken as written
+```
+
+A bare ssh destination (a `~/.ssh/config` alias, host or `user@host`) means `/srv/dboss/apps/<app folder name>` on that box, the layout `install.sh --server` creates.
+Only your machine reads the key; the box ignores it.
+An explicit target on the command line still wins.
+
+### DNS on Cloudflare
+
+`dboss cf dns` points every hostname the app answers at its server:
+
+```
+export CLOUDFLARE_API_TOKEN=...   # Zone:Read + DNS:Edit on the app's zones
+dboss cf dns                      # show each name's current and wanted record
+dboss cf dns --set                # create the missing records, update the ones that differ
+```
+
+The hostnames come from the shipped `dboss.yaml`, read the way the box reads it: `host`, or `subdomain` and `domain`, the www/apex redirect included.
+A hostname is one record, `*.x` a wildcard record, and `.x` both `x` and `*.x`; `mail.*` and IP literals are skipped with a warning.
+The address is the box's public IP, asked over ssh with `dboss deploy ip` (the address the console's Sys tab shows), or `--ip` to skip asking.
+An IPv4 address makes `A` records, an IPv6 one `AAAA`.
+Records are proxied unless `--dns-only`, which a box that terminates TLS itself (`proxy.tls`) needs.
+Records are only ever created or updated in place, never deleted.
+A second record of the same type at a name is a conflict to resolve in Cloudflare, a CNAME is only replaced with `--force`, and records of other types (MX, TXT) are left alone.
+A name with a conflict, or in no zone the token can read, is reported and skipped while the rest are set, and `--set` then exits non-zero.
+
 ### Host config in a repository
 
 `dboss deploy sync` also ships a host folder, so every box's `dboss-server.yaml` can live in one private repository on your machine, one folder per ssh host:
@@ -1324,6 +1356,7 @@ internal/metrics/     Prometheus text rendered from the app snapshots
 internal/notify/      debounced operator webhook for crash and failure events
 internal/version/     build version: .version, injected at build time
 internal/release/     the GitHub release source: the latest tag, its URLs and tag comparison
+internal/cloudflare/  the Cloudflare DNS calls behind dboss cf dns: zone lookup, records, plan
 internal/console/     management console: auth, JSON API, embedded fez frontend
 internal/ctl/         control socket protocol, server and client
 internal/ops/         one implementation of every app action, shared by CLI and console

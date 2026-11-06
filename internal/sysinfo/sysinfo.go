@@ -255,14 +255,11 @@ func (i *Inspector) Refresh(ctx context.Context) Snapshot {
 	return snapshot
 }
 
-// publicIP is the address an operator would point DNS at: the box's own routable address when
-// it has one, which is the normal case for a server and costs nothing, and otherwise the
-// address an echo service sees, so a box behind NAT still reports something usable.
+// publicIP is the address an operator would point DNS at (see PublicIP), with the echo answer
+// cached, since the Sys tab refreshes often.
 func (i *Inspector) publicIP(ctx context.Context) string {
-	if addr := interfacePublicIP(); addr != "" {
-		return addr
-	}
-	return i.echo.get(ctx)
+	address, _ := publicIP(ctx, func(ctx context.Context) (string, error) { return i.echo.get(ctx), nil })
+	return address
 }
 
 func (i *Inspector) collectTools(ctx context.Context) []Tool {

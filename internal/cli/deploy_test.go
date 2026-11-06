@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"dboss/internal/config"
 	"dboss/internal/ctl"
 )
 
@@ -135,9 +136,9 @@ func TestDeployApplyRemovesOnlyWhatItShipped(t *testing.T) {
 	}
 }
 
-func TestDeployApplyRescansBeforeRestart(t *testing.T) {
-	root := t.TempDir()
-	writeFiles(t, root, map[string]string{"dboss.yaml": "procfile:\n  web: ./server\n"})
+// fakeDaemon answers every control request with ok and reports each method on the channel.
+func fakeDaemon(t *testing.T) (string, chan string) {
+	t.Helper()
 	// A short directory keeps the socket path under the macOS sun_path limit.
 	dir, err := os.MkdirTemp("", "dboss")
 	if err != nil {
@@ -164,6 +165,13 @@ func TestDeployApplyRescansBeforeRestart(t *testing.T) {
 			conn.Close()
 		}
 	}()
+	return socket, methods
+}
+
+func TestDeployApplyRescansBeforeRestart(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"dboss.yaml": "procfile:\n  web: ./server\n"})
+	socket, methods := fakeDaemon(t)
 
 	var out bytes.Buffer
 	cli := CLI{In: strings.NewReader("dboss.yaml\n"), Out: &out, Err: &out}
@@ -172,6 +180,103 @@ func TestDeployApplyRescansBeforeRestart(t *testing.T) {
 	}
 	if first, second := <-methods, <-methods; first != "rescan" || second != "restart" {
 		t.Fatalf("calls = %s, %s; want rescan, restart", first, second)
+	}
+}
+
+func TestDeployApplyHostRescansAndNeverRestarts(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"dboss-server.yaml":       "proxy:\n  listen: \":80\"\n",
+		"dboss-server.local.yaml": "proxy:\n  listen: \":8080\"\n",
+		"pages/old.html":          "dropped",
+		"apps/shop/dboss.yaml":    "procfile:\n  web: ./server\n",
+		syncManifestName:          "dboss-server.yaml\ndboss-server.local.yaml\npages/old.html\n",
+	})
+	socket, methods := fakeDaemon(t)
+
+	var out, errOut bytes.Buffer
+	cli := CLI{In: strings.NewReader("dboss-server.yaml\n"), Out: &out, Err: &errOut}
+	if err := cli.deployApply([]string{root, "--socket", socket}); err != nil {
+		t.Fatal(err)
+	}
+	if method := <-methods; method != "rescan" {
+		t.Fatalf("first call = %s, want rescan", method)
+	}
+	select {
+	case method := <-methods:
+		t.Fatalf("a host apply also sent %s", method)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(root, "pages")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a file the host no longer ships was kept: %v", err)
+	}
+	for _, kept := range []string{"dboss-server.local.yaml", "apps/shop/dboss.yaml"} {
+		if _, err := os.Stat(filepath.Join(root, kept)); err != nil {
+			t.Fatalf("%s was removed", kept)
+		}
+	}
+	if !strings.Contains(errOut.String(), "replaces dboss-server.yaml entirely") || !strings.Contains(errOut.String(), "it differs at: proxy.listen") {
+		t.Fatalf("no override warning: %q", errOut.String())
+	}
+}
+
+func TestDeployApplyRefusesAnInvalidHostFile(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"dboss-server.yaml": "proxy:\n  listen: 80\n",
+		"old.txt":           "x",
+		syncManifestName:    "dboss-server.yaml\nold.txt\n",
+	})
+	cli := CLI{In: strings.NewReader("dboss-server.yaml\n"), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
+	if err := cli.deployApply([]string{root, "--socket", filepath.Join(root, "none.sock")}); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("an invalid host file was applied: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "old.txt")); err != nil {
+		t.Fatal("a refused apply removed a file")
+	}
+	// The next sync must still know what the last good one shipped.
+	if manifest, _ := os.ReadFile(filepath.Join(root, syncManifestName)); string(manifest) != "dboss-server.yaml\nold.txt\n" {
+		t.Fatalf("manifest = %q", manifest)
+	}
+}
+
+func TestCheckHostManifest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dboss-server.yaml")
+	writeFiles(t, dir, map[string]string{"dboss-server.yaml": "apps: ./apps\n"})
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkHostManifest(cfg, path, []string{"dboss-server.yaml", "public/error_pages/error.html"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkHostManifest(cfg, path, []string{"README.md"}); err == nil || !strings.Contains(err.Error(), "git add") {
+		t.Fatalf("a sync without the host file was accepted: %v", err)
+	}
+	for _, owned := range []string{"apps/shop/dboss.yaml", ".dboss/state/running.json"} {
+		if err := checkHostManifest(cfg, path, []string{"dboss-server.yaml", owned}); err == nil {
+			t.Fatalf("%s was accepted", owned)
+		}
+	}
+	// A runtime dir outside the folder (dir: /var/lib/dboss) owns nothing in it.
+	writeFiles(t, dir, map[string]string{"dboss-server.yaml": "dir: /var/lib/dboss\napps: /srv/apps\n"})
+	if cfg, err = config.Load(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkHostManifest(cfg, path, []string{"dboss-server.yaml", "apps/notes.md"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDifferingKeys(t *testing.T) {
+	base := []byte("proxy:\n  listen: \":80\"\n  cloudflare: true\nmanagement:\n  admins: [a@b.c]\n")
+	local := []byte("proxy:\n  listen: \":80\"\n  cloudflare: false\nmanagement:\n  admins: [a@b.c, d@e.f]\npostgres: false\n")
+	if got := strings.Join(differingKeys(base, local), ","); got != "management.admins,postgres,proxy.cloudflare" {
+		t.Fatalf("got %s", got)
+	}
+	if keys := differingKeys(base, base); len(keys) != 0 {
+		t.Fatalf("equal files differ at %v", keys)
 	}
 }
 

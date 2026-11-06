@@ -685,6 +685,28 @@ It needs `git`, `rsync` and `ssh` locally, and `rsync` plus `dboss` on the ssh u
 It posts to the app's `deploy` hook (automatic for a Git checkout with a remote, else `hooks: {deploy: true}`, see below) with the token from `--token` or `$DBOSS_TOKEN` (the webhook token or `tokens.dboss`) as a bearer token, then polls `GET /hooks/<app>/deploy` until the pull and the restart are done, and prints the hook's output.
 A failed pull prints git's answer and exits with its code; an app without the hook gets the line to add.
 
+### Host config in a repository
+
+`dboss deploy sync` also ships a host folder, so every box's `dboss-server.yaml` can live in one private repository on your machine, one folder per ssh host:
+
+```
+~/dev/servers/deb1/dboss-server.yaml
+cd ~/dev/servers/deb1
+dboss deploy pull      # once: copy the box's live host file here
+dboss deploy sync -n   # what would change
+dboss deploy sync      # ship it, validate it on the box, rescan
+```
+
+In a host folder the target defaults to `<folder name>:/srv/dboss`, so the folder name is the ssh destination and the user comes from `~/.ssh/config`; pass `user@host:/path` to override it.
+The sync ships the tracked files of the folder and refuses one without a tracked `dboss-server.yaml` or with files inside the host's `apps` or runtime `dir`, which belong to the box.
+On the box, `dboss deploy apply` validates the shipped `dboss-server.yaml` before anything is removed (an invalid file leaves the daemon on its running config), then rescans: app-level keys and `defaults` apply at once, and changed host keys are listed as restart required (`sudo systemctl restart dboss`).
+It never restarts the daemon, since that takes every app down.
+
+`dboss-server.local.yaml` replaces `dboss-server.yaml` entirely, so while the box has one nothing a sync ships applies; every host sync warns about it and lists the keys where the two differ.
+Keep secrets in the repository's `dboss-server.yaml` and the repository private.
+The console's PostgreSQL selection and config form write the local file, so fold such a change into the repository and remove the local file on the box.
+`pull` copies the live file (the local one when the box has it) into `./dboss-server.yaml` with mode 0600, and refuses to overwrite a local file that differs unless `--force`.
+
 ## Deploy hooks
 
 An app can declare one-shot commands a signed HTTP ping triggers, so a Git host webhook can start a deploy without any shell access:

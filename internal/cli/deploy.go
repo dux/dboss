@@ -15,13 +15,16 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
 	"dboss/internal/config"
 	"dboss/internal/fsutil"
 	"dboss/internal/supervisor"
+	"gopkg.in/yaml.v3"
 )
 
 // syncManifestName is the file in the remote app folder listing what the last sync shipped. It is
@@ -39,9 +42,12 @@ var deployPoll = time.Second
 
 var deployClient = &http.Client{Timeout: 30 * time.Second}
 
+// defaultHostDir is where `install.sh --server` puts the host, and so where a host sync goes.
+const defaultHostDir = "/srv/dboss"
+
 // syncProtected are never removed by apply, even when an earlier sync shipped them: they are
 // server-only by convention and may have been placed on the box since.
-var syncProtected = []string{syncManifestName, config.LocalFileName, ".env.local"}
+var syncProtected = []string{syncManifestName, config.LocalFileName, config.ServerLocalFileName, ".env.local"}
 
 // remoteSafe limits what goes into the ssh command line, which the remote shell parses.
 var remoteSafe = regexp.MustCompile(`^[A-Za-z0-9._/@+=:,-]+$`)
@@ -57,15 +63,18 @@ func (c CLI) deploy(args []string) error {
 		return c.deployGit(args[1:])
 	case "apply":
 		return c.deployApply(args[1:])
+	case "pull":
+		return c.deployPull(args[1:])
 	case "help":
 		return c.help(c.Out, "deploy")
 	default:
-		return fmt.Errorf("unknown deploy subcommand %q (use sync or git)", args[0])
+		return fmt.Errorf("unknown deploy subcommand %q (use sync, git or pull)", args[0])
 	}
 }
 
-// deploySync ships the tracked files of the app folder with rsync, then runs `deploy apply` on the
-// box over ssh, which drops what the app no longer ships and restarts it.
+// deploySync ships the tracked files of the app or host folder with rsync, then runs `deploy apply`
+// on the box over ssh, which drops what the folder no longer ships and restarts the app or rescans
+// the host.
 func (c CLI) deploySync(args []string) error {
 	set := flag.NewFlagSet("deploy sync", flag.ContinueOnError)
 	set.SetOutput(c.Err)
@@ -78,33 +87,52 @@ func (c CLI) deploySync(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(operands) != 1 {
-		return errors.New("usage: dboss deploy sync <user@host:/path> [--app name] [-n]")
-	}
-	host, remotePath, err := splitTarget(operands[0])
-	if err != nil {
-		return err
-	}
-	if *app == "" {
-		*app = path.Base(remotePath)
-	}
-	if !remoteSafe.MatchString(*app) {
-		return fmt.Errorf("app name %q has characters the remote shell would read", *app)
+	usage := errors.New("usage: dboss deploy sync [user@host:/path] [--app name] [-n] (the target is required in an app folder)")
+	if len(operands) > 1 {
+		return usage
 	}
 	here := &workdir{explicit: *configPath}
 	configFile, cfg, err := here.load()
 	if err != nil {
 		return err
 	}
-	if cfg.App == nil {
-		return fmt.Errorf("%s is a host config; run deploy sync inside an app folder", configFile)
+	isHost := cfg.App == nil
+	var target string
+	switch {
+	case len(operands) == 1:
+		target = operands[0]
+	case isHost:
+		target = defaultHostTarget(cfg.Dir)
+	default:
+		return usage
 	}
-	if err := checkBranch(cfg.Dir, cfg.App.Branch); err != nil {
+	host, remotePath, err := splitTarget(target)
+	if err != nil {
 		return err
+	}
+	if isHost {
+		if *app != "" {
+			return fmt.Errorf("--app names an app, and %s is a host config", configFile)
+		}
+	} else {
+		if *app == "" {
+			*app = path.Base(remotePath)
+		}
+		if !remoteSafe.MatchString(*app) {
+			return fmt.Errorf("app name %q has characters the remote shell would read", *app)
+		}
+		if err := checkBranch(cfg.Dir, cfg.App.Branch); err != nil {
+			return err
+		}
 	}
 	files, untracked, err := syncManifest(cfg.Dir)
 	if err != nil {
 		return err
+	}
+	if isHost {
+		if err := checkHostManifest(cfg, configFile, files); err != nil {
+			return err
+		}
 	}
 	if untracked > 0 {
 		fmt.Fprintf(c.Err, "skipped %d untracked %s (git add to ship them)\n", untracked, plural(untracked, "file"))
@@ -129,7 +157,38 @@ func (c CLI) deploySync(args []string) error {
 		return fmt.Errorf("ssh: %w", err)
 	}
 	if !dryRun {
-		fmt.Fprintf(c.Out, "deployed %s: %d files synced to %s:%s\n", *app, len(files), host, remotePath)
+		fmt.Fprintf(c.Out, "deployed %s: %d %s synced to %s:%s\n", orElse(*app, "host"), len(files), plural(len(files), "file"), host, remotePath)
+	}
+	return nil
+}
+
+// defaultHostTarget is the box a host folder deploys to: its folder name is the ssh destination,
+// so ~/dev/servers/deb1 goes to `deb1`, with the user from ~/.ssh/config.
+func defaultHostTarget(dir string) string {
+	return filepath.Base(dir) + ":" + defaultHostDir
+}
+
+// checkHostManifest refuses a host sync that does not carry the host file, or that would ship into
+// the apps or runtime folder, which belong to the box.
+func checkHostManifest(cfg config.Config, configFile string, files []string) error {
+	base, err := filepath.Rel(cfg.Dir, filepath.Join(filepath.Dir(configFile), config.ServerFileName))
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(files, filepath.ToSlash(base)) {
+		return fmt.Errorf("%s is not tracked; git add it, a host sync ships exactly that file", base)
+	}
+	for _, owned := range []string{cfg.Apps, cfg.RuntimeDir} {
+		rel, err := filepath.Rel(cfg.Dir, owned)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+			continue
+		}
+		prefix := filepath.ToSlash(rel) + "/"
+		for _, name := range files {
+			if strings.HasPrefix(name, prefix) {
+				return fmt.Errorf("cannot ship %s: %s belongs to the box", name, prefix)
+			}
+		}
 	}
 	return nil
 }
@@ -229,8 +288,12 @@ func rsyncArgs(host, remotePath string, dryRun bool) []string {
 	return append(args, "./", host+":"+remotePath+"/")
 }
 
+// applyArgs builds the box's half of sync; a host sync has no app.
 func applyArgs(host, remotePath, app string, dryRun bool) []string {
-	args := []string{host, "dboss", "deploy", "apply", remotePath, "--app", app}
+	args := []string{host, "dboss", "deploy", "apply", remotePath}
+	if app != "" {
+		args = append(args, "--app", app)
+	}
 	if dryRun {
 		args = append(args, "-n")
 	}
@@ -238,8 +301,9 @@ func applyArgs(host, remotePath, app string, dryRun bool) []string {
 }
 
 // deployApply is the box's half of `deploy sync`: it reads the new manifest on stdin, removes the
-// files the previous manifest listed and this one does not, records the new manifest and restarts
-// the app through the control socket.
+// files the previous manifest listed and this one does not and records the new manifest. In an app
+// folder it then rescans and restarts the app; in a host folder it validates the shipped host file
+// first and only rescans, since a daemon restart takes every app down.
 func (c CLI) deployApply(args []string) error {
 	set := flag.NewFlagSet("deploy apply", flag.ContinueOnError)
 	set.SetOutput(c.Err)
@@ -253,19 +317,26 @@ func (c CLI) deployApply(args []string) error {
 		return err
 	}
 	if len(operands) != 1 || !filepath.IsAbs(operands[0]) {
-		return errors.New("usage: dboss deploy apply </absolute/app/path> [--app name] [-n]")
+		return errors.New("usage: dboss deploy apply </absolute/folder> [--app name] [-n]")
 	}
 	root := filepath.Clean(operands[0])
-	if *app == "" {
-		*app = filepath.Base(root)
-	}
-	// A mistyped path must delete nothing, so the folder has to be an app.
-	if configFile, err := config.FindInDir(root); err != nil {
-		return fmt.Errorf("%s holds no app config: %w", root, err)
+	// A mistyped path must delete nothing, so the folder has to be a host or an app.
+	var hostBase string
+	if found, err := config.FindServerInDir(root); err == nil {
+		if *app != "" {
+			return fmt.Errorf("--app names an app, and %s is a host folder", root)
+		}
+		hostBase = filepath.Join(filepath.Dir(found), config.ServerFileName)
+	} else if !errors.Is(err, config.ErrNoConfig) {
+		return err
+	} else if configFile, err := config.FindInDir(root); err != nil {
+		return fmt.Errorf("%s holds no app or host config: %w", root, err)
 	} else if cfg, err := config.Load(configFile); err != nil {
 		return err
 	} else if cfg.App == nil {
 		return fmt.Errorf("%s is a host config, not an app", configFile)
+	} else if *app == "" {
+		*app = filepath.Base(root)
 	}
 	next, err := readManifest(c.In)
 	if err != nil {
@@ -280,11 +351,20 @@ func (c CLI) deployApply(args []string) error {
 		return err
 	}
 	removed := staleFiles(previous, next)
+	if hostBase != "" {
+		c.warnLocalOverride(hostBase)
+	}
 	if dryRun {
 		for _, name := range removed {
 			fmt.Fprintf(c.Out, "would remove %s\n", name)
 		}
 		return nil
+	}
+	if hostBase != "" {
+		// The manifest stays at the previous sync, so the next one still knows what to remove.
+		if _, err := config.Load(hostBase); err != nil {
+			return fmt.Errorf("the shipped %s is invalid, the daemon keeps its running config: %w", config.ServerFileName, err)
+		}
 	}
 	for _, name := range removed {
 		if err := removeShipped(root, name); err != nil {
@@ -292,16 +372,20 @@ func (c CLI) deployApply(args []string) error {
 		}
 	}
 	if len(removed) > 0 {
-		fmt.Fprintf(c.Out, "removed %d %s the app no longer ships\n", len(removed), plural(len(removed), "file"))
+		fmt.Fprintf(c.Out, "removed %d %s the folder no longer ships\n", len(removed), plural(len(removed), "file"))
 	}
 	if err := fsutil.WriteFile(filepath.Join(root, syncManifestName), []byte(strings.Join(next, "\n")+"\n"), 0o644); err != nil {
 		return err
 	}
-	// The synced dboss.yaml may differ from the spec the daemon holds; restart alone keeps the old one.
 	var scan []string
 	if *socket != "" {
 		scan = []string{"--socket", *socket}
 	}
+	if hostBase != "" {
+		// Rescan applies the app-level keys and lists the host keys that wait for a daemon restart.
+		return c.remote("rescan", append(scan, "-c", hostBase))
+	}
+	// The synced dboss.yaml may differ from the spec the daemon holds; restart alone keeps the old one.
 	if err := c.remote("rescan", scan); err != nil {
 		return fmt.Errorf("rescan: %w", err)
 	}
@@ -310,6 +394,137 @@ func (c CLI) deployApply(args []string) error {
 		return fmt.Errorf("restart %s: %w", *app, err)
 	}
 	return nil
+}
+
+// warnLocalOverride says when the box's dboss-server.local.yaml shadows the shipped host file: the
+// local file replaces it entirely, so nothing a sync ships applies until the local file is gone.
+func (c CLI) warnLocalOverride(base string) {
+	local := config.LocalFor(base)
+	localData, err := os.ReadFile(local)
+	if err != nil {
+		return
+	}
+	baseData, _ := os.ReadFile(base)
+	fmt.Fprintf(c.Err, "warning: %s replaces %s entirely, so the shipped file does not apply until it is removed\n", local, filepath.Base(base))
+	if keys := differingKeys(baseData, localData); len(keys) > 0 {
+		fmt.Fprintf(c.Err, "  it differs at: %s\n", strings.Join(keys, ", "))
+	}
+}
+
+// differingKeys lists the dotted key paths whose values differ between two YAML documents; nil
+// when either does not parse.
+func differingKeys(a, b []byte) []string {
+	var left, right any
+	if yaml.Unmarshal(a, &left) != nil || yaml.Unmarshal(b, &right) != nil {
+		return nil
+	}
+	var keys []string
+	diffYAML("", left, right, &keys)
+	sort.Strings(keys)
+	return keys
+}
+
+func diffYAML(prefix string, a, b any, keys *[]string) {
+	left, leftMap := a.(map[string]any)
+	right, rightMap := b.(map[string]any)
+	if !leftMap || !rightMap {
+		if !reflect.DeepEqual(a, b) {
+			*keys = append(*keys, orElse(prefix, "(the whole file)"))
+		}
+		return
+	}
+	seen := map[string]bool{}
+	for _, side := range []map[string]any{left, right} {
+		for key := range side {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			name := key
+			if prefix != "" {
+				name = prefix + "." + key
+			}
+			diffYAML(name, left[key], right[key], keys)
+		}
+	}
+}
+
+// deployPull copies a box's live host config into the current folder as dboss-server.yaml, so the
+// host can be kept in a repository and shipped back with `deploy sync`. The live file is the box's
+// dboss-server.local.yaml when it has one, since that replaces the base entirely.
+func (c CLI) deployPull(args []string) error {
+	set := flag.NewFlagSet("deploy pull", flag.ContinueOnError)
+	set.SetOutput(c.Err)
+	force := set.Bool("force", false, "overwrite a local dboss-server.yaml that differs from the box")
+	operands, err := parseSubcommandFlags(set, args)
+	if err != nil {
+		return err
+	}
+	if len(operands) > 1 {
+		return errors.New("usage: dboss deploy pull [user@host:/path] [--force]")
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if _, err := config.FindInDir(dir); err == nil {
+		return fmt.Errorf("%s is an app folder; pull fetches a host config", dir)
+	} else if !errors.Is(err, config.ErrNoConfig) {
+		return err
+	}
+	target := defaultHostTarget(dir)
+	if len(operands) == 1 {
+		target = operands[0]
+	}
+	host, remotePath, err := splitTarget(target)
+	if err != nil {
+		return err
+	}
+	source := path.Join(remotePath, config.ServerLocalFileName)
+	data, err := remoteFile(host, source)
+	overridden := err == nil
+	if errors.Is(err, os.ErrNotExist) {
+		source = path.Join(remotePath, config.ServerFileName)
+		data, err = remoteFile(host, source)
+	}
+	if err != nil {
+		return err
+	}
+	dest := filepath.Join(dir, config.ServerFileName)
+	if current, err := os.ReadFile(dest); err == nil {
+		if bytes.Equal(current, data) {
+			fmt.Fprintf(c.Out, "%s matches %s:%s\n", config.ServerFileName, host, source)
+			return nil
+		}
+		if !*force {
+			return fmt.Errorf("%s differs from %s:%s; commit or drop the local edits, or pass --force", dest, host, source)
+		}
+	}
+	// Host files carry tokens and passwords.
+	if err := fsutil.WriteFile(dest, data, 0o600); err != nil {
+		return err
+	}
+	fmt.Fprintf(c.Out, "pulled %s:%s into %s\n", host, source, dest)
+	if overridden {
+		fmt.Fprintf(c.Err, "the box runs from %s; after the first deploy sync, remove it there so the shipped file applies\n", config.ServerLocalFileName)
+	}
+	return nil
+}
+
+// remoteFile reads one file on the box over ssh; os.ErrNotExist when it is not there.
+func remoteFile(host, name string) ([]byte, error) {
+	command := exec.Command("ssh", host, "cat", name)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	out, err := command.Output()
+	if err == nil {
+		return out, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() != 255 && strings.Contains(stderr.String(), "No such file") {
+		return nil, os.ErrNotExist
+	}
+	return nil, fmt.Errorf("ssh %s cat %s: %w: %s", host, name, err, strings.TrimSpace(stderr.String()))
 }
 
 // readManifest reads one relative path per line and refuses anything that would leave the app

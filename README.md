@@ -1059,7 +1059,7 @@ With nothing else allowed, a sandboxed app may:
 * listen on its `PORT`,
 * connect to no TCP port at all.
 
-It never sees the dboss runtime folder (control socket, state, logs), the other apps in the apps folder or the Unix sockets under `/run`.
+It never sees the dboss runtime folder (control socket, state, logs), its own `dboss.yaml` and `dboss.local.yaml` (basic_auth, passwords, tokens), the other apps in the apps folder or the Unix sockets under `/run`.
 It cannot read another process's environment or memory, signal a process outside its sandbox, or reach an abstract Unix socket.
 Its own environment (`.env`, `env`) stays its own, as for any process; inside the sandbox nothing else can read it, and it can read nothing else.
 

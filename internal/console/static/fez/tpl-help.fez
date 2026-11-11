@@ -649,7 +649,7 @@
         <h3>What it helps with</h3>
         <ul>
           <li>Running several apps on one box, each with its own secrets, where one compromised app cannot read another's <code>.env</code>, database socket or files.</li>
-          <li>Keeping an app away from dboss itself: the control socket, the runtime folder and the logs of every other app.</li>
+          <li>Keeping an app away from dboss itself: the control socket, the runtime folder, the logs of every other app and its own <code>dboss.yaml</code> and <code>dboss.local.yaml</code>, with their passwords and tokens.</li>
           <li>Limiting what a compromised app can reach on the network: only the TCP ports it names, so a stolen secret cannot be sent anywhere over TCP.</li>
           <li>Keeping a file out of reach even inside the app folder, such as a master key the running app never needs.</li>
         </ul>

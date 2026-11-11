@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 
 	"dboss/internal/apps"
@@ -72,7 +73,7 @@ func sandboxPolicy(cfg config.Config, spec *apps.App, box config.Sandbox, comman
 		Dir:     spec.Dir,
 		Read:    paths(box.Read),
 		Write:   paths(box.Write),
-		Deny:    append(paths(box.Deny), cfg.RuntimeDir),
+		Deny:    append(paths(box.Deny), dbossFiles(spec.Dir, cfg.RuntimeDir)...),
 		Sockets: paths(box.Sockets),
 		Bind:    append([]int(nil), box.Bind...),
 		Connect: box.Connect,
@@ -84,6 +85,18 @@ func sandboxPolicy(cfg config.Config, spec *apps.App, box config.Sandbox, comman
 		policy.Bind = append(policy.Bind, port)
 	}
 	return policy, nil
+}
+
+// dbossFiles are the paths a sandboxed app never reads, whatever it allows: the runtime folder
+// (control socket, state, every app's logs) and its own dboss.yaml and dboss.local.yaml, in the
+// folder or its config/, which hold basic_auth, passwords and tokens. A file that does not exist
+// is skipped by the launcher.
+func dbossFiles(dir, runtimeDir string) []string {
+	files := []string{runtimeDir}
+	for _, folder := range []string{dir, filepath.Join(dir, config.ConfigDir)} {
+		files = append(files, filepath.Join(folder, config.FileName), filepath.Join(folder, config.LocalFileName))
+	}
+	return files
 }
 
 // exitCode is what Wait reported: 0 on success, the exit status, or -1 when the child did not

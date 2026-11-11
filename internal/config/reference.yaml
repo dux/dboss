@@ -298,9 +298,10 @@ defaults:
   #            /dev/shm of its own
   #   listen   on its PORT
   #   connect  to no TCP port at all; UDP (DNS) is not filtered
-  # It never sees the dboss runtime folder (control socket, state, logs), the other apps in the
-  # apps folder, or the Unix sockets under /run, and it cannot read another process's
-  # environment or memory, signal a process outside its sandbox, or reach an abstract socket.
+  # It never sees the dboss runtime folder (control socket, state, logs), its own dboss.yaml and
+  # dboss.local.yaml (basic_auth, passwords, tokens), the other apps in the apps folder, or the
+  # Unix sockets under /run, and it cannot read another process's environment or memory, signal
+  # a process outside its sandbox, or reach an abstract socket.
   # Its own environment (.env, env) is its own, as always. dboss drops DBOSS_SOCKET and
   # DBOSS_EVENTS_DIR from it: both point into the hidden runtime folder. dboss's own commands (the
   # branch checkout and the deploy: true pull) run outside it, since they rewrite the checkout.

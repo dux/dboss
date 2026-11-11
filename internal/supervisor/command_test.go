@@ -71,7 +71,7 @@ func TestSandboxPolicyConfinesAppCommandsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	if policy.Dir != spec.Dir || !slices.Equal(policy.Read, []string{"/srv/shared"}) || !slices.Equal(policy.Write, []string{"/srv/dboss/apps/shop/storage"}) ||
-		!slices.Equal(policy.Deny, []string{"/srv/dboss/apps/shop/.env", "/srv/dboss/.dboss"}) || !slices.Equal(policy.Hide, []string{"/srv/dboss/apps"}) ||
+		!slices.Equal(policy.Deny, []string{"/srv/dboss/apps/shop/.env", "/srv/dboss/.dboss", "/srv/dboss/apps/shop/dboss.yaml", "/srv/dboss/apps/shop/dboss.local.yaml", "/srv/dboss/apps/shop/config/dboss.yaml", "/srv/dboss/apps/shop/config/dboss.local.yaml"}) || !slices.Equal(policy.Hide, []string{"/srv/dboss/apps"}) ||
 		!slices.Equal(policy.Bind, []int{2525, 3100}) || !slices.Equal(policy.Connect, []int{5432}) {
 		t.Fatalf("policy = %+v", policy)
 	}

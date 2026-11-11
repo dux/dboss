@@ -22,6 +22,9 @@ type Command struct {
 	Name string   `json:"name"`
 	Line string   `json:"line"`
 	Argv []string `json:"argv,omitempty"` // dboss exec only
+	// Builtin marks a command dboss writes itself (the branch checkout, the deploy: true pull):
+	// it rewrites the checkout, so it runs outside the app's sandbox.
+	Builtin bool `json:"-"`
 }
 
 type App struct {
@@ -325,7 +328,9 @@ func buildApp(name, dir string, appCfg config.App) (*App, error) {
 	lifecycle := buildLifecycle(appCfg.Lifecycle)
 	// Only a checkout of its own: an app inside a larger repository never stashes or switches it.
 	if appCfg.Branch != "" && checkout {
-		lifecycle["branch"] = Step{Command: newCommand("branch", config.BranchCommand(appCfg.Branch)), Timeout: config.DefaultLifecycleTimeout}
+		checkoutBranch := newCommand("branch", config.BranchCommand(appCfg.Branch))
+		checkoutBranch.Builtin = true
+		lifecycle["branch"] = Step{Command: checkoutBranch, Timeout: config.DefaultLifecycleTimeout}
 	}
 	return &App{Name: name, Dir: dir, Commands: commands, Cron: cron, Hooks: hooks, Lifecycle: lifecycle, Env: env, FileEnv: fileEnv, Config: appCfg, Branch: branch, BranchURL: branchURL, GitConnected: gitConnected}, nil
 }
@@ -369,8 +374,10 @@ func buildHook(name string, hook config.Hook, branch string) Hook {
 	if hook.Pull {
 		hook.Command = config.PullCommand(branch)
 	}
+	command := newCommand(name, hook.Command)
+	command.Builtin = hook.Pull
 	return Hook{
-		Command:  newCommand(name, hook.Command),
+		Command:  command,
 		Timeout:  hook.Timeout.Value(),
 		Restart:  hook.Restart,
 		Overlap:  hook.Overlap,

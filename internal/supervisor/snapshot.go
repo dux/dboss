@@ -20,15 +20,17 @@ const (
 // ProcessSnapshot is one instance: Name is "web", or "web.2" when the procfile entry Type runs
 // several copies.
 type ProcessSnapshot struct {
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Command     string    `json:"command"`
-	State       State     `json:"state"`
-	PID         int       `json:"pid,omitempty"`
-	Port        int       `json:"port"`
-	Restarts    int       `json:"restarts"`
-	MemoryBytes int64     `json:"memory_bytes,omitempty"`
-	StartedAt   time.Time `json:"started_at,omitempty"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Command     string `json:"command"`
+	State       State  `json:"state"`
+	PID         int    `json:"pid,omitempty"`
+	Port        int    `json:"port"`
+	Restarts    int    `json:"restarts"`
+	MemoryBytes int64  `json:"memory_bytes,omitempty"`
+	// Sandbox reports that the running process was started in the app's sandbox.
+	Sandbox   bool      `json:"sandbox,omitempty"`
+	StartedAt time.Time `json:"started_at,omitempty"`
 }
 
 type RequestRates struct {

@@ -129,7 +129,7 @@ var commands = []command{
 		details: []string{"Exits 1 and lists each invalid app when something is wrong. Good as a pre-deploy step."},
 		options: []option{configOption, jsonOption}},
 	{name: "doctor", args: "[-c path]", group: "Config", summary: "preflight a box: tools, writable directories, valid config and a clear port range",
-		details: []string{"Checks that lsof is on PATH, that dir and its state and log folders are writable, that the config and every app load, and whether anything still listens in ports. Warns on listeners a start would clear; fails on anything that would stop the session."},
+		details: []string{"Checks that lsof is on PATH, that dir and its state and log folders are writable, that the config and every app load, and whether anything still listens in ports. Warns on listeners a start would clear; fails on anything that would stop the session.", "When an app turns on its sandbox it also checks that this machine can run one (Linux 6.12+ with Landlock and unprivileged user namespaces) and that every sandboxed bind port is allowed without a capability."},
 		options: []option{configOption, jsonOption}},
 	{name: "rescan", args: "", group: "Config", summary: "re-read dboss-server.yaml, the apps directory and every app dboss.yaml",
 		details: []string{"App-level changes apply right away. Host keys that changed (proxy, ports, apps, ...) are listed as restart required."},

@@ -58,7 +58,11 @@ func (a *appRuntime) spawn(name string, log *logWriter) (*process, error) {
 	defaults := a.spec.Config.Process(proc)
 	env := processEnv(a.spec, proc, port, a.cfg.Socket, a.cfg.LogDir, defaults.Env)
 	env["PROC_INSTANCE"] = strconv.Itoa(index)
-	cmd, err := newCommand(a.spec.Dir, command, env)
+	policy, err := sandboxPolicy(a.cfg, a.spec, defaults.Sandbox, command, port)
+	if err != nil {
+		return nil, fmt.Errorf("start %s: %w", name, err)
+	}
+	cmd, err := newCommand(a.spec.Dir, command, env, policy)
 	if err != nil {
 		return nil, fmt.Errorf("start %s: %w", name, err)
 	}
@@ -107,7 +111,7 @@ func (a *appRuntime) spawn(name string, log *logWriter) (*process, error) {
 		closeLog()
 		return nil, err
 	}
-	p := &process{name: name, proc: proc, index: index, slot: slot, cmd: cmd, pid: cmd.Process.Pid, port: port, startedAt: time.Now(), restarts: a.failures[name], oomBase: backend.OOMKills(a.spec.Name, slot), log: logFile, done: make(chan struct{}), waited: make(chan struct{})}
+	p := &process{name: name, proc: proc, index: index, slot: slot, cmd: cmd, pid: cmd.Process.Pid, port: port, sandboxed: policy != nil, startedAt: time.Now(), restarts: a.failures[name], oomBase: backend.OOMKills(a.spec.Name, slot), log: logFile, done: make(chan struct{}), waited: make(chan struct{})}
 	go func() {
 		err := cmd.Wait()
 		ledger.Done(p.pid)
@@ -290,7 +294,7 @@ func (a *appRuntime) snapshot() Snapshot {
 		}
 		if p := a.processes[name]; p != nil {
 			entry.State = Running
-			entry.PID, entry.Port, entry.StartedAt = p.pid, p.port, p.startedAt
+			entry.PID, entry.Port, entry.StartedAt, entry.Sandbox = p.pid, p.port, p.startedAt, p.sandboxed
 			stats, _ := a.backendFor(proc).Stats(a.spec.Name, p.slot, []int{p.pid})
 			entry.MemoryBytes = stats.MemoryBytes
 			total.MemoryBytes += stats.MemoryBytes

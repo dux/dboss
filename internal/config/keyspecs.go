@@ -87,6 +87,15 @@ var keySpecs = map[string]KeySpec{
 	"memory_max":          {Block: "runtime", Name: "Memory limit", Description: "memory limit, cgroup v2 hosts only; 0 unlimited", Example: "512m"},
 	"cpu_max":             {Block: "runtime", Name: "CPU limit", Description: "CPU limit in percent of one core, cgroup v2 hosts only; 0 unlimited", Example: "200"},
 
+	// --- Sandbox ---
+	"sandbox.enabled": {Block: "sandbox", Name: "Sandbox", Description: "confine every command dboss runs for the app (Linux 6.12+): it reads its own folder and the system, writes ./tmp, ./log and a private /tmp, binds only its PORT and connects to no TCP port unless the keys below allow more; sandbox: true turns it on, writing the block turns it on unless enabled: false", Example: "true"},
+	"sandbox.read":    {Block: "sandbox", Name: "Readable paths", Description: "more folders or files the app may read, relative to the app folder", Example: "[/srv/shared/assets]"},
+	"sandbox.write":   {Block: "sandbox", Name: "Writable paths", Description: "folders or files the app may write besides ./tmp and ./log, relative to the app folder; a missing one is created as a folder", Example: "[./storage, /var/lib/shop]"},
+	"sandbox.deny":    {Block: "sandbox", Name: "Denied paths", Description: "paths the app may not open even inside an allowed folder; deny wins over every allow", Example: "[./.env.production, ./config/master.key]"},
+	"sandbox.sockets": {Block: "sandbox", Name: "Unix sockets", Description: "Unix sockets, or the folders holding them, the app may connect to; every other socket under /run, the apps folder and the dboss runtime folder is hidden", Example: "[/run/postgresql]"},
+	"sandbox.bind":    {Block: "sandbox", Name: "Bind ports", Description: "TCP ports the app may listen on besides its PORT; a port below net.ipv4.ip_unprivileged_port_start needs that lowered", Example: "[25, 587]"},
+	"sandbox.connect": {Block: "sandbox", Name: "Connect ports", Description: "TCP ports the app may connect to, on any host; UDP is not filtered", Example: "[5432, 443]"},
+
 	// --- Web ---
 	"static":              {Block: "web", Name: "Static directory", Description: "directory served straight from disk for GET and HEAD on every web process; true means ./public (the default), false disables serving", Example: "./public"},
 	"static_immutable":    {Block: "web", Name: "Immutable prefixes", Description: "path prefixes under the static directory cached as immutable for a year", Example: "[/assets/, /packs/]"},

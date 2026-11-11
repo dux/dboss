@@ -65,7 +65,11 @@ func (m *Manager) Exec(name string, argv []string, timeout time.Duration) (ExecR
 // environment, combined output, and the process group killed on timeout.
 func (m *Manager) run(spec *apps.App, procType string, line apps.Command, timeout time.Duration) (ExecResult, error) {
 	env := processEnv(spec, procType, 0, m.cfg.Socket, m.cfg.LogDir, spec.Config.Env)
-	command, err := newCommand(spec.Dir, line, env)
+	policy, err := sandboxPolicy(m.cfg, spec, spec.Config.Sandbox, line, 0)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	command, err := newCommand(spec.Dir, line, env, policy)
 	if err != nil {
 		return ExecResult{}, err
 	}

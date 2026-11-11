@@ -55,6 +55,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **HTTP API** - every CLI action as `POST /api/<action>` with a bearer token, a guide at `GET /api` and an OpenAPI export.
 * **Metrics and alerts** - Prometheus `/metrics`, `/healthz`, `/readyz`, and webhook alerts on crashes, OOM kills, full disks, error rates and slow responses.
 * **Resource limits** - per-process memory and CPU limits on a cgroup v2 host.
+* **Sandbox** - confine an app to its own folder and the ports it names, with every other app, socket and secret on the box hidden from it (Linux 6.12+, no root, no containers).
 
 Install is one command and the service runs as an ordinary user, not root.
 `dboss start` on your laptop gives you the same thing locally, with no sudo and no setup.
@@ -1034,6 +1035,56 @@ procfile:
 * Stop signals go to the whole process group, so `docker compose up` receives `stop_signal` and stops its containers; a detached `docker compose up -d` would exit at once and leave them running outside dboss.
 * A container dboss does not run keeps its ports outside `ports`: on start dboss clears every listener in the range and before each spawn frees the app's fixed port.
 
+## Sandbox
+
+`sandbox: true` confines every command dboss runs for an app: its procfile processes, cron jobs, hooks, lifecycle steps and `dboss exec`.
+It needs Linux 6.12+ (Landlock ABI 6) with unprivileged user namespaces, and nothing else: no root, no container runtime, no extra package.
+
+```yaml
+sandbox:
+  write: [./storage]             # besides ./tmp and ./log
+  deny: [./config/master.key]    # hidden even inside the app folder
+  sockets: [/run/postgresql]     # the database's Unix socket
+  connect: [443]                 # outbound HTTPS, on any host
+processes:
+  worker:
+    sandbox:
+      connect: [443, 6379]       # the worker also reaches Redis
+```
+
+With nothing else allowed, a sandboxed app may:
+
+* read its own folder, the system (`/usr`, `/etc`, `/proc`, `/sys`, the random devices) and the toolchains on its `PATH` - the install prefix above each `bin` folder, so a mise toolchain works without opening the home folder,
+* write `./tmp` and `./log` (created when missing) and a private, empty `/tmp`, `/var/tmp` and `/dev/shm` of its own,
+* listen on its `PORT`,
+* connect to no TCP port at all.
+
+It never sees the dboss runtime folder (control socket, state, logs), the other apps in the apps folder or the Unix sockets under `/run`.
+It cannot read another process's environment or memory, signal a process outside its sandbox, or reach an abstract Unix socket.
+Its own environment (`.env`, `env`) stays its own, as for any process; inside the sandbox nothing else can read it, and it can read nothing else.
+
+The keys of the block allow more, one path or port at a time:
+
+* `read` and `write` add paths, relative to the app folder; a missing `write` path is created as a folder.
+* `deny` hides a path even inside an allowed folder, and wins over every allow: a denied file cannot be opened, a denied folder is empty and closed.
+* `sockets` names the Unix sockets the app may reach, or the folders holding them; every other socket under `/run` is hidden, the database's included.
+* `bind` adds TCP ports to listen on besides `PORT`. A sandboxed process holds no capability on the host, so a port below 1024 needs `sysctl -w net.ipv4.ip_unprivileged_port_start=<port>` (kept in `/etc/sysctl.d`); the process refuses to start until then and `dboss doctor` names the port.
+* `connect` lists the TCP ports the app may dial, on any host. UDP is not filtered, so DNS keeps working.
+
+Like every process key it can be set under `defaults:` for every app, at the top level of an app file and under `processes.<name>`.
+A list replaces the inherited one, `sandbox: true` turns it on with nothing extra, writing the block turns it on unless it says `enabled: false`, and `sandbox: false` turns it off for an app or a process.
+
+How it works: dboss starts each command through its own binary (`dboss sandbox-exec`, the running version) in a new user and mount namespace that maps only the service user.
+The launcher covers `/run`, the apps folder and the private folders with empty tmpfs mounts, binds back the app folder and every allowed path, covers each denied path and the dboss runtime folder, applies a Landlock ruleset for the paths and TCP ports (plus the signal and abstract-socket scopes), installs a seccomp filter that refuses MPTCP, SCTP, SMC and io_uring sockets (Landlock checks TCP sockets only, and those reach TCP ports around it), drops its capabilities and execs the command.
+Everything the command starts inherits all of it, and Landlock forbids undoing the mounts.
+
+* A host that cannot sandbox (another OS, an older kernel, user namespaces restricted, as Ubuntu's AppArmor does by default) refuses to start a sandboxed process, so an app that asked for one never runs without it. A dev session warns and runs it unconfined.
+* `dboss doctor` checks the machine and every sandboxed bind port; the console's app card shows a **Sandbox** badge while a process runs in it, and `dboss status --json` reports `"sandbox": true` per process.
+* `dboss exec` runs in the sandbox too, which makes it the quickest way to try one: `dboss exec shop cat ../other/.env` fails. To step outside, use a shell on the box.
+* `DBOSS_SOCKET` and `DBOSS_EVENTS_DIR` are not set inside it, since both point into the hidden runtime folder; publish to PubSub over HTTP with the hub's secret instead.
+* dboss's own commands, the `branch` checkout and the `deploy: true` pull, run outside it, because they rewrite the checkout.
+* Only Linux amd64 and arm64 are supported; a 32-bit system call from inside the sandbox kills the process.
+
 ## Access control
 
 `basic_auth` puts HTTP basic auth in front of the whole app, static files included.
@@ -1361,6 +1412,7 @@ internal/console/     management console: auth, JSON API, embedded fez frontend
 internal/ctl/         control socket protocol, server and client
 internal/ops/         one implementation of every app action, shared by CLI and console
 internal/res/         resource backend: process groups or cgroup v2 limits
+internal/sandbox/     the app sandbox: namespaces, Landlock, socket filter and the dboss sandbox-exec launcher
 demo/                 host config and four sample apps
 e2e/                  end-to-end suite: the built binary on a copy of demo/ (build tag e2e)
 ```

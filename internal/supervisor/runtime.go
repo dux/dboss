@@ -86,6 +86,7 @@ type process struct {
 	cmd       *exec.Cmd
 	pid       int
 	port      int
+	sandboxed bool // started through the sandbox launcher
 	startedAt time.Time
 	restarts  int
 	oomBase   int64 // the domain's OOM kill count at spawn, so a reused cgroup's history is ignored

@@ -847,12 +847,14 @@ input[type="radio"] {
 }
 
 .badge-pubsub,
-.badge-vibe {
+.badge-vibe,
+.badge-sandbox {
   text-decoration: none;
   text-transform: none;
 }
 
-.badge-vibe {
+.badge-vibe,
+.badge-sandbox {
   --state-color: var(--primary);
 }
 

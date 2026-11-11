@@ -240,7 +240,12 @@ func (a *appRuntime) startJob(state *jobState, now time.Time, manual bool) error
 	if token := a.host().Tokens.Github; state.pull && token != "" {
 		git.AuthEnv(env, token)
 	}
-	cmd, err := newCommand(a.spec.Dir, state.command, env)
+	policy, err := sandboxPolicy(a.cfg, a.spec, a.spec.Config.Sandbox, state.command, 0)
+	if err != nil {
+		state.lastError = err.Error()
+		return err
+	}
+	cmd, err := newCommand(a.spec.Dir, state.command, env, policy)
 	if err != nil {
 		state.lastError = err.Error()
 		return err

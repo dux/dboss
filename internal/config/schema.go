@@ -35,6 +35,7 @@ var blocks = []Block{
 	{ID: "hooks", Title: "Hooks", Summary: "One-shot commands triggered over HTTP.", Scope: ScopeApp},
 	{ID: "lifecycle", Title: "Lifecycle", Summary: "Commands run when the app is created, started and destroyed.", Scope: ScopeApp},
 	{ID: "runtime", Title: "Runtime", Summary: "How a process is checked, restarted, limited and logged.", Scope: ScopeBoth},
+	{ID: "sandbox", Title: "Sandbox", Summary: "What an app's commands may read, write, listen on and connect to (Linux).", Scope: ScopeBoth},
 	{ID: "web", Title: "Web", Summary: "Proxy behaviour in front of the app.", Scope: ScopeBoth},
 	{ID: "auth", Title: "Sign-in", Summary: "AuthCog sign-in in front of the app, or run for the app.", Scope: ScopeBoth},
 	{ID: "vibe", Title: "Vibe", Summary: "The AI harness docked onto every page of a web process with vibe.", Scope: ScopeBoth},

@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 
 	"dboss/internal/apps"
@@ -17,6 +19,7 @@ import (
 	"dboss/internal/events"
 	"dboss/internal/ops"
 	"dboss/internal/ports"
+	"dboss/internal/sandbox"
 	"dboss/internal/supervisor"
 )
 
@@ -95,7 +98,7 @@ func (c CLI) doctor(args []string) error {
 		}
 		add("ok", fmt.Sprintf("%s %s is writable", dir.name, dir.path))
 	}
-	_, invalid, scanErr := apps.Discover(cfg)
+	specs, invalid, scanErr := apps.Discover(cfg)
 	switch {
 	case scanErr != nil:
 		add("fail", "config: "+scanErr.Error())
@@ -106,6 +109,7 @@ func (c CLI) doctor(args []string) error {
 	default:
 		add("ok", "config and every app are valid")
 	}
+	sandboxFindings(cfg, specs, add)
 	listeners, listenErr := ports.ListenersInRange(cfg.Ports)
 	switch {
 	case listenErr != nil:
@@ -159,6 +163,59 @@ func writable(dir string) error {
 	name := file.Name()
 	_ = file.Close()
 	return os.Remove(name)
+}
+
+// sandboxFindings checks the sandbox once an app turns it on: this machine must be able to run
+// it (a host refuses to start a sandboxed process otherwise), and a bind port below the
+// unprivileged start needs that setting lowered, since a sandboxed process holds no capability.
+func sandboxFindings(cfg config.Config, specs []*apps.App, add func(level, message string)) {
+	var names []string
+	binds := map[string][]int{}
+	for _, spec := range specs {
+		boxes := []config.Sandbox{spec.Config.Sandbox}
+		for name := range spec.Config.Procfile {
+			boxes = append(boxes, spec.Config.Process(name).Sandbox)
+		}
+		for _, box := range boxes {
+			if !box.Enabled {
+				continue
+			}
+			if !slices.Contains(names, spec.Name) {
+				names = append(names, spec.Name)
+			}
+			for _, port := range box.Bind {
+				if !slices.Contains(binds[spec.Name], port) {
+					binds[spec.Name] = append(binds[spec.Name], port)
+				}
+			}
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	slices.Sort(names)
+	if err := sandbox.Check(); err != nil {
+		level := "fail"
+		if cfg.Dev() {
+			level = "warn"
+		}
+		add(level, fmt.Sprintf("sandbox for %s: %v", strings.Join(names, ", "), err))
+		return
+	}
+	version, _ := sandbox.ABI()
+	add("ok", fmt.Sprintf("sandbox available (Landlock ABI %d) for %s", version, strings.Join(names, ", ")))
+	start, err := sandbox.UnprivilegedPortStart()
+	if err != nil {
+		return
+	}
+	for _, name := range names {
+		slices.Sort(binds[name])
+		for _, port := range binds[name] {
+			if port < start {
+				add("fail", fmt.Sprintf("%s binds port %d in its sandbox, below net.ipv4.ip_unprivileged_port_start (%d); lower it with sysctl -w net.ipv4.ip_unprivileged_port_start=%d and keep it in /etc/sysctl.d", name, port, start, port))
+			}
+		}
+	}
 }
 
 // kill stops every app through the daemon, when one answers, then clears the whole port range.

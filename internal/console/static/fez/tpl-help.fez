@@ -18,6 +18,7 @@
         { id: 'idle', title: 'Idle stop & wake', summary: 'Stops apps nobody uses and starts them again on the next request.' },
         { id: 'routing', title: 'Routing', summary: 'Sends each hostname to the right app, with redirects, headers and maintenance mode.' },
         { id: 'access', title: 'Access control', summary: 'AuthCog sign-in, basic auth, a shared password page, IP allow lists, per-client rate limits and a Cloudflare-only origin.' },
+        { id: 'sandbox', title: 'Sandbox', summary: 'Confines an app to its own folder and the ports it names, and hides every other app, socket and secret on the box (Linux).' },
         { id: 'static', title: 'Static files', summary: 'Serves CSS, JS, images and fonts from a folder on disk, at the same URL, without waking the app.' },
         { id: 'pages', title: 'Error pages', summary: 'Replaces server errors and every page dboss answers with, from one HTML template you can replace.' },
         { id: 'cron', title: 'Scheduled jobs', summary: 'One-shot commands on an interval or a cron expression.' },
@@ -152,6 +153,24 @@
     # host file
     proxy:
       cloudflare: true
+    `,
+    sandbox: `
+    # app file, or under defaults: in the host file
+    sandbox:
+      write: [./storage]
+      deny: [./config/master.key]
+      sockets: [/run/postgresql]
+      connect: [443]
+    processes:
+      worker:
+        sandbox:
+          connect: [443, 6379]
+    `,
+    sandboxDoctor: `
+    $ dboss doctor
+    ok   sandbox available (Landlock ABI 6) for shop
+    $ dboss exec shop cat ../other/.env
+    cat: ../other/.env: No such file or directory
     `,
     static: `
     procfile:
@@ -623,6 +642,35 @@
       </section>
     {/if}
 
+    {#if state.topic === 'sandbox'}
+      <section>
+        <h2>Sandbox</h2>
+        <p><code>sandbox: true</code> confines every command dboss runs for an app: its procfile processes, cron jobs, hooks, lifecycle steps and <code>dboss exec</code>. The app reads its own folder and the system, writes <code>./tmp</code>, <code>./log</code> and a private <code>/tmp</code>, listens on its <code>PORT</code> and connects to no TCP port. The keys of the block allow more, one path or port at a time.</p>
+        <h3>What it helps with</h3>
+        <ul>
+          <li>Running several apps on one box, each with its own secrets, where one compromised app cannot read another's <code>.env</code>, database socket or files.</li>
+          <li>Keeping an app away from dboss itself: the control socket, the runtime folder and the logs of every other app.</li>
+          <li>Limiting what a compromised app can reach on the network: only the TCP ports it names, so a stolen secret cannot be sent anywhere over TCP.</li>
+          <li>Keeping a file out of reach even inside the app folder, such as a master key the running app never needs.</li>
+        </ul>
+        <h3>Config keys</h3>
+        <div fez:keep="keys-sandbox"><db-config-keys paths="sandbox.enabled,sandbox.read,sandbox.write,sandbox.deny,sandbox.sockets,sandbox.bind,sandbox.connect" /></div>
+        <h3>Example</h3>
+        <db-preview-yaml :text="state.examples.sandbox" />
+        <db-preview-yaml :text="state.examples.sandboxDoctor" lang="text" />
+        <h3>Details</h3>
+        <ul>
+          <li>It needs Linux 6.12+ (Landlock ABI 6) and unprivileged user namespaces; no root, no container runtime. dboss starts each command through its own binary in a new user and mount namespace, which hides <code>/run</code>, the apps folder and the dboss runtime folder, then applies Landlock and a socket filter, and everything the command starts inherits them.</li>
+          <li>A host that cannot sandbox refuses to start a sandboxed process, so an app that asked for one never runs without it. A dev session warns and runs it unconfined. <code>dboss doctor</code> checks the machine and the bind ports, and the app card shows <strong>Sandbox</strong> while a process runs in it.</li>
+          <li>Readable without listing: the app folder, <code>/usr</code>, <code>/etc</code>, <code>/proc</code>, <code>/sys</code> and the toolchains on its <code>PATH</code> (the install prefix above each <code>bin</code> folder, so a mise toolchain works). Another process's environment and memory stay closed, and it cannot signal a process outside its sandbox or reach an abstract Unix socket.</li>
+          <li>Paths are relative to the app folder. A missing <code>write</code> path is created as a folder, <code>deny</code> wins over every allow, and a list replaces the inherited one, so <code>processes.&#60;name&#62;.sandbox</code> can give one process more or less.</li>
+          <li><code>sockets</code> names the Unix sockets the app may reach, or their folder: every other socket under <code>/run</code> is hidden, the database's included. <code>connect</code> filters TCP by port on any host; UDP (DNS) is not filtered.</li>
+          <li>A sandboxed process holds no capability on the host, so a <code>bind</code> port below 1024 needs <code>net.ipv4.ip_unprivileged_port_start</code> lowered; the process refuses to start until it is.</li>
+          <li><code>DBOSS_SOCKET</code> and <code>DBOSS_EVENTS_DIR</code> are not set inside the sandbox, since both point into the hidden runtime folder. dboss's own commands, the <code>branch</code> checkout and the <code>deploy: true</code> pull, run outside it because they rewrite the checkout.</li>
+        </ul>
+      </section>
+    {/if}
+
     {#if state.topic === 'static'}
       <section>
         <h2>Static files</h2>
@@ -949,6 +997,7 @@
           <li>A host another app already claims the same way (both <code>host</code>, or both <code>subdomain</code>) is refused before the rescan. A <code>host</code> may take a hostname a running app only derives from its <code>subdomain</code>; that app keeps serving its other hostnames.</li>
           <li>When anything fails after the clone the folder is removed again, and the reason stays in the dialog. The action is audited as <code>add</code> with the URL.</li>
           <li>Secrets are not in the repository: put <code>.env</code> or <code>dboss.local.yaml</code> in the app folder and restart when the first start needs them. The clone gets the automatic <code>deploy</code> hook, so <code>dboss deploy git</code> and the card's <strong>Redeploy</strong> update the app afterwards.</li>
+          <li>Over the API, <code>add</code> also takes <code>env</code>, an object of string values written to the checkout's <code>.env.local</code> before the first start, where it outranks <code>.env</code> and the config <code>env</code>. The file is hidden from git through the clone's own exclude file, the audit row lists the names only, and a repository that commits its own <code>.env.local</code> is refused.</li>
         </ul>
       </section>
     {/if}

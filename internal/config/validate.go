@@ -245,7 +245,7 @@ func validateProcess(d Process) error {
 			return keyErr(key, "cannot be negative")
 		}
 	}
-	return nil
+	return validateSandbox(d.Sandbox)
 }
 
 func validateBasicAuth(users map[string]string, key string) error {

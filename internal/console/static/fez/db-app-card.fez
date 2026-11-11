@@ -64,6 +64,7 @@
       this.state.changing = app.state === 'starting' || app.state === 'stopping'
       this.state.live = app.state === 'running' || app.state === 'starting'
       this.state.processes = app.processes || []
+      this.state.sandboxed = this.state.processes.filter((process) => process.sandbox).map((process) => process.name)
       const hubs = (app.web_processes || []).filter((web) => web.pubsub && web.pubsub.path)
       this.state.pubsub = hubs.map((web) => `${web.name} ${web.pubsub.path}`)
       // One badge links the first harness's app, where the vibe panel docks; a host pattern with no
@@ -225,6 +226,9 @@
         <a class="badge badge-vibe" href={state.vibeUrl} target="_blank" rel="noreferrer" title="AI harness on {state.vibe.join(', ')}: open it">Vibe</a>
       {:else if state.vibe.length}
         <span class="badge badge-vibe" title="AI harness on {state.vibe.join(', ')}">Vibe</span>
+      {/if}
+      {#if state.sandboxed.length}
+        <span class="badge badge-sandbox" title="Running in the sandbox: {state.sandboxed.join(', ')}">Sandbox</span>
       {/if}
       {#if props.app.maintenance}
         <span class="badge badge-warning">maintenance</span>

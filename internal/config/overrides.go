@@ -31,6 +31,7 @@ type ProcessOverrides struct {
 	Env                map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
 	MemoryMax          *Size             `yaml:"memory_max,omitempty" json:"memory_max,omitempty"`
 	CPUMax             *int              `yaml:"cpu_max,omitempty" json:"cpu_max,omitempty"`
+	Sandbox            *SandboxOverrides `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
 }
 
 type WebOverrides struct {

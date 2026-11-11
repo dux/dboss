@@ -123,6 +123,8 @@ func typesOf(t reflect.Type) []string {
 		return []string{"string", "bool"}
 	case reflect.TypeOf(StaticPath("")):
 		return []string{"string", "bool"}
+	case reflect.TypeOf(Ports(nil)):
+		return []string{"int", "list"}
 	}
 	switch t.Kind() {
 	case reflect.String:
@@ -164,6 +166,12 @@ func formatValue(value reflect.Value) string {
 			return ""
 		}
 		return "[" + strings.Join(v, ", ") + "]"
+	case Ports:
+		parts := make([]string, len(v))
+		for i, port := range v {
+			parts[i] = strconv.Itoa(port)
+		}
+		return formatValue(reflect.ValueOf(parts))
 	case []any:
 		if len(v) == 0 {
 			return ""

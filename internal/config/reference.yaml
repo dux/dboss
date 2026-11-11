@@ -288,6 +288,35 @@ defaults:
   memory_max: 0             # 0 = unlimited. e.g. 512m
   cpu_max: 0                # 0 = unlimited. percent of one core, e.g. 150
 
+  # Sandbox (Linux 6.12+). Every command dboss runs for the app - procfile processes, cron jobs,
+  # hooks, lifecycle steps and `dboss exec` - starts through the dboss binary in a new user and
+  # mount namespace, under Landlock and a socket filter, and everything it starts inherits that.
+  # With nothing else allowed it may:
+  #   read     its own folder, the system (/usr, /etc, /proc, /sys, ...) and the toolchains on its
+  #            PATH (the prefix above each bin folder, so a mise install works)
+  #   write    ./tmp and ./log (created when missing) and a private, empty /tmp, /var/tmp and
+  #            /dev/shm of its own
+  #   listen   on its PORT
+  #   connect  to no TCP port at all; UDP (DNS) is not filtered
+  # It never sees the dboss runtime folder (control socket, state, logs), the other apps in the
+  # apps folder, or the Unix sockets under /run, and it cannot read another process's
+  # environment or memory, signal a process outside its sandbox, or reach an abstract socket.
+  # Its own environment (.env, env) is its own, as always. dboss drops DBOSS_SOCKET and
+  # DBOSS_EVENTS_DIR from it: both point into the hidden runtime folder. dboss's own commands (the
+  # branch checkout and the deploy: true pull) run outside it, since they rewrite the checkout.
+  # A host that cannot sandbox (another OS, an older kernel, user namespaces turned off) refuses
+  # to start a sandboxed process; a dev session warns and runs it unconfined. `dboss doctor`
+  # checks the host. Lists replace the inherited list; deny wins over every allow.
+  sandbox:
+    enabled: false          # true, or write the block, to turn it on
+    read: []                # more readable paths, relative to the app folder. e.g. [/srv/shared]
+    write: []               # more writable paths; a missing one is created as a folder
+    deny: []                # hidden even inside the app folder. e.g. [./.env.production]
+    sockets: []             # Unix sockets (or their folder) it may reach. e.g. [/run/postgresql]
+    bind: []                # TCP ports to listen on besides PORT. e.g. [25, 587]; below 1024
+                            # needs sysctl net.ipv4.ip_unprivileged_port_start lowered
+    connect: []             # TCP ports it may connect to, on any host. e.g. [5432, 443]
+
   # --- Web keys: what nginx or Caddy did in front of the app. Shared by every web process. ----
   # Set here for every app, or at the top level of one app's file to override it there. The
   # per-process web keys (host, subdomain, pubsub, health, canonical_host) live on the procfile
@@ -597,6 +626,10 @@ max_db_size: 500m
 tmp_clean: false            # this app keeps its own ./tmp
 memory_max: 512m
 cpu_max: 0
+sandbox:                    # on, with a database over TCP and outbound HTTPS
+  write: [./storage]
+  deny: [./config/master.key]
+  connect: [5432, 443]
 env:
   MALLOC_ARENA_MAX: "2"
 static: ./public
@@ -873,7 +906,8 @@ running.json:
 #   dboss pages [app] | dump [app] [name...]   list the dboss pages or write them out to edit
 #   dboss maintenance [app] on|off             answer with the maintenance page, app keeps running
 #   dboss password                             print a bcrypt hash for basic_auth
-#   DBOSS_SOCKET is injected into app processes, so a process can always find its host.
+#   DBOSS_SOCKET is injected into app processes, so a process can always find its host; a
+#   sandboxed process gets none, since the sandbox hides the socket.
 #
 # `dboss config` validates the host file and prints it as written, comments included.
 # `dboss config <app>` does the same for that app's file.

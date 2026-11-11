@@ -33,6 +33,7 @@ type Process struct {
 	Env                map[string]string `yaml:"env" json:"env"`
 	MemoryMax          Size              `yaml:"memory_max" json:"memory_max"`
 	CPUMax             int               `yaml:"cpu_max" json:"cpu_max"`
+	Sandbox            Sandbox           `yaml:"sandbox" json:"sandbox"`
 }
 
 // PublicHealthPath is the status path the proxy answers itself on every app host, before any

@@ -210,6 +210,11 @@ func runDeployBuild(dir, command string, out, errOut io.Writer) error {
 // names one, else the files git tracks in the config folder.
 func (c CLI) shipList(cfg config.Config, isHost bool) (string, []string, error) {
 	if !isHost && cfg.App.Deploy.Dir != "" {
+		// A build that packs from git leaves a new, never-added file behind while an edited
+		// tracked file that uses it ships, so name them; outside a repository there is nothing to say.
+		if untracked, err := gitList(cfg.Dir, "ls-files", "-z", "--others", "--exclude-standard", "--directory", "--no-empty-directory"); err == nil && len(untracked) > 0 {
+			fmt.Fprintf(c.Err, "%d untracked %s, not in git (a build that packs from git leaves them out):\n  %s\n", len(untracked), plural(len(untracked), "path"), strings.Join(untracked, "\n  "))
+		}
 		source := filepath.Join(cfg.Dir, cfg.App.Deploy.Dir)
 		files, err := dirManifest(source)
 		return source, files, err

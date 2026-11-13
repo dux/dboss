@@ -123,8 +123,11 @@ func (c CLI) deploySync(args []string) error {
 		if err := checkBranch(cfg.Dir, cfg.App.Branch); err != nil {
 			return err
 		}
+		if err := runDeployBuild(cfg.Dir, cfg.App.Deploy.Build, c.Out, c.Err); err != nil {
+			return err
+		}
 	}
-	files, untracked, err := syncManifest(cfg.Dir)
+	source, files, err := c.shipList(cfg, isHost)
 	if err != nil {
 		return err
 	}
@@ -133,13 +136,10 @@ func (c CLI) deploySync(args []string) error {
 			return err
 		}
 	}
-	if untracked > 0 {
-		fmt.Fprintf(c.Err, "skipped %d untracked %s (git add to ship them)\n", untracked, plural(untracked, "file"))
-	}
 	manifest := strings.Join(files, "\n") + "\n"
 
 	rsync := exec.Command("rsync", rsyncArgs(host, remotePath, dryRun)...)
-	rsync.Dir = cfg.Dir
+	rsync.Dir = source
 	rsync.Stdin = strings.NewReader(manifest)
 	rsync.Stdout, rsync.Stderr = c.Out, c.Err
 	if err := rsync.Run(); err != nil {
@@ -190,6 +190,80 @@ func checkHostManifest(cfg config.Config, configFile string, files []string) err
 		}
 	}
 	return nil
+}
+
+// runDeployBuild runs the app's deploy.build in its folder; nothing ships when it fails.
+func runDeployBuild(dir, command string, out, errOut io.Writer) error {
+	if command == "" {
+		return nil
+	}
+	build := exec.Command("sh", "-c", command)
+	build.Dir = dir
+	build.Stdout, build.Stderr = out, errOut
+	if err := build.Run(); err != nil {
+		return fmt.Errorf("deploy.build: %w", err)
+	}
+	return nil
+}
+
+// shipList is the folder a sync copies from and the files it ships: an app's deploy.dir when it
+// names one, else the files git tracks in the config folder.
+func (c CLI) shipList(cfg config.Config, isHost bool) (string, []string, error) {
+	if !isHost && cfg.App.Deploy.Dir != "" {
+		source := filepath.Join(cfg.Dir, cfg.App.Deploy.Dir)
+		files, err := dirManifest(source)
+		return source, files, err
+	}
+	files, untracked, err := syncManifest(cfg.Dir)
+	if err != nil {
+		return "", nil, err
+	}
+	if untracked > 0 {
+		fmt.Fprintf(c.Err, "skipped %d untracked %s (git add to ship them)\n", untracked, plural(untracked, "file"))
+	}
+	return cfg.Dir, files, nil
+}
+
+// dirManifest lists every file and symlink under root, relative to it: the release a deploy.build
+// produced. The box owns its env and local config, so a top-level copy of one is refused rather
+// than allowed to overwrite the box's.
+func dirManifest(root string) ([]string, error) {
+	if info, err := os.Stat(root); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("deploy.dir %s is not a folder; does deploy.build create it?", root)
+	}
+	var files []string
+	err := filepath.WalkDir(root, func(name string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(root, name)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if strings.ContainsAny(rel, "\n\r") {
+			return fmt.Errorf("cannot ship %q: the name has a line break", rel)
+		}
+		if boxOwned(rel) {
+			return fmt.Errorf("cannot ship %s from deploy.dir: the box owns it", rel)
+		}
+		if rel != syncManifestName {
+			files = append(files, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("deploy.dir %s is empty", root)
+	}
+	return files, nil
+}
+
+// boxOwned is a top-level file only the box may hold: its env and its local config overrides.
+func boxOwned(name string) bool {
+	return name == ".env" || strings.HasPrefix(name, ".env.") || name == config.LocalFileName || name == config.ServerLocalFileName
 }
 
 // syncManifest lists the files git tracks in dir, relative to it, and counts the untracked files

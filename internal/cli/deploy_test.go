@@ -92,6 +92,42 @@ func TestSyncManifestNeedsARepository(t *testing.T) {
 	}
 }
 
+// A built release ships whole, hidden folders and symlinks included, minus the box's manifest; a
+// top-level env or local override in it would overwrite the box's own and is refused.
+func TestDirManifestShipsTheBuiltRelease(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"dboss.yaml":           "procfile:\n  web: ./server\n",
+		".libs/gem/lib/gem.rb": "ok",
+		"public/assets/app.js": "ok",
+		"config/.env.example":  "nested env files are app files",
+		".dboss-sync":          "stale manifest from an old layout",
+	})
+	if err := os.Symlink("public", filepath.Join(root, "static")); err != nil {
+		t.Fatal(err)
+	}
+	files, err := dirManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".libs/gem/lib/gem.rb", "config/.env.example", "dboss.yaml", "public/assets/app.js", "static"}
+	if !slices.Equal(files, want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for _, owned := range []string{".env", ".env.local", "dboss.local.yaml", "dboss-server.local.yaml"} {
+		writeFiles(t, root, map[string]string{owned: "SECRET=x"})
+		if _, err := dirManifest(root); err == nil || !strings.Contains(err.Error(), "the box owns it") {
+			t.Fatalf("%s: err = %v", owned, err)
+		}
+		if err := os.Remove(filepath.Join(root, owned)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := dirManifest(filepath.Join(root, "missing")); err == nil {
+		t.Fatal("a missing deploy.dir was accepted")
+	}
+}
+
 func TestDeployApplyRemovesOnlyWhatItShipped(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{

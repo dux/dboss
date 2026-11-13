@@ -496,6 +496,17 @@ branch: main
 # `install.sh --server`; a full user@host:/path names the app folder on the box as written.
 server: deb1
 #
+# How `dboss deploy sync` builds and ships the app. Only your machine reads it; the box ignores
+# it. `build` runs in the app folder (sh -c) before anything ships, and a failure stops the
+# deploy. `dir`, a folder inside the app folder, ships every file under it instead of the files
+# git tracks, so the build can produce the release itself (compiled assets, vendored code, a
+# binary). The box's own files never come from it: sync refuses a top-level .env, .env.*,
+# dboss.local.yaml or dboss-server.local.yaml there. Apply still removes only what an earlier
+# sync shipped.
+deploy:
+  build: ""                 # e.g. "bin/build && bin/pack tmp/release"
+  dir: ""                   # e.g. "tmp/release"
+#
 # A web process may set `subdomain`, one label or wildcard pattern or a list, prepended to the
 # domain; "@" is the domain itself (quote it, like "*"). "*" is every subdomain at any depth and
 # never the apex, so ["@", "*"] is the apex plus every subdomain. With "@" and no "www", dboss

@@ -40,3 +40,16 @@ func TestParseAppServer(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAppDeployDir(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	app, err := ParseApp([]byte("procfile:\n  web: ./server\ndeploy:\n  build: bin/pack\n  dir: tmp/release\n"), path, Default().Defaults)
+	if err != nil || app.Deploy.Build != "bin/pack" || app.Deploy.Dir != "tmp/release" {
+		t.Fatalf("deploy = %+v, err %v", app.Deploy, err)
+	}
+	for _, dir := range []string{"/srv/release", "../release", "tmp/../../x", ".", "./"} {
+		if _, err := ParseApp([]byte("procfile:\n  web: ./server\ndeploy:\n  dir: "+dir+"\n"), path, Default().Defaults); err == nil {
+			t.Fatalf("deploy.dir %q was accepted", dir)
+		}
+	}
+}

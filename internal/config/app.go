@@ -282,6 +282,8 @@ type App struct {
 	// Server is the box the app deploys to: an ssh destination, alone or as host:/path. It is
 	// read on the operator's machine by deploy sync and cf dns; the box itself ignores it.
 	Server string `yaml:"server" json:"server,omitempty"`
+	// Deploy is how deploy sync builds and ships the app, read on the operator's machine only.
+	Deploy Deploy `yaml:"deploy" json:"deploy"`
 	// WebProcesses and Hosts are derived from every procfile entry that declares a host or a subdomain; they
 	// are never written back to YAML and exist for the supervisor and proxy.
 	WebProcesses []WebProcess       `yaml:"-" json:"-"`
@@ -679,6 +681,7 @@ type appFile struct {
 	Domain    string                      `yaml:"domain"`
 	Branch    string                      `yaml:"branch"`
 	Server    string                      `yaml:"server"`
+	Deploy    Deploy                      `yaml:"deploy"`
 	Autostart Autostart                   `yaml:"autostart"`
 	Deletable bool                        `yaml:"deletable"`
 	Cron      map[string]CronJob          `yaml:"cron"`
@@ -722,7 +725,7 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 	if len(raw.Procfile) == 0 {
 		return App{}, &Error{Key: "procfile", Message: "must contain at least one process", Hint: "e.g. procfile:\n    web: bundle exec puma"}
 	}
-	app := App{Procfile: raw.Procfile, Domain: raw.Domain, Branch: raw.Branch, Server: raw.Server, Autostart: AutostartOn, Deletable: raw.Deletable, Cron: raw.Cron, Hooks: raw.Hooks, Lifecycle: raw.Lifecycle, Pages: DefaultPages, Defaults: defaults, Processes: raw.Processes}
+	app := App{Procfile: raw.Procfile, Domain: raw.Domain, Branch: raw.Branch, Server: raw.Server, Deploy: raw.Deploy, Autostart: AutostartOn, Deletable: raw.Deletable, Cron: raw.Cron, Hooks: raw.Hooks, Lifecycle: raw.Lifecycle, Pages: DefaultPages, Defaults: defaults, Processes: raw.Processes}
 	if raw.Pages != "" {
 		app.Pages = raw.Pages
 	}
@@ -784,6 +787,9 @@ func buildApp(raw appFile, defaults Defaults, dev bool, name string) (App, error
 		return App{}, err
 	}
 	if err := validateServer(app.Server); err != nil {
+		return App{}, err
+	}
+	if err := validateDeploy(app.Deploy); err != nil {
 		return App{}, err
 	}
 	app.allowPrefixes, _ = parsePrefixes(app.AllowIPs)

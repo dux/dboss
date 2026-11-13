@@ -701,6 +701,20 @@ An explicit target on the command line still wins.
 
 ### DNS on Cloudflare
 
+### Building the release here
+
+An app whose release is not its git tree (compiled assets, vendored gems, a binary) names the build and the folder it produces:
+
+```yaml
+deploy:
+  build: bin/build && bin/pack tmp/release   # runs in the app folder first; a failure stops the sync
+  dir: tmp/release                            # ships every file in here instead of git ls-files
+```
+
+Both keys are read on your machine only.
+`dir` must sit inside the app folder, and a top-level `.env`, `.env.*`, `dboss.local.yaml` or `dboss-server.local.yaml` in it is refused, since those belong to the box.
+Apply works as for a git sync: it removes only what an earlier sync shipped, and files that only exist on the box stay.
+
 `dboss cf dns` points every hostname the app answers at its server:
 
 ```

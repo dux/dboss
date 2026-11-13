@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -47,6 +48,25 @@ func validateServer(server string) error {
 	}
 	if _, _, err := SplitTarget(App{Server: server}.ServerTarget("app")); err != nil {
 		return keyErr("server", "%v", err)
+	}
+	return nil
+}
+
+// Deploy is the app's half of `dboss deploy sync`, read on the operator's machine only. Build runs
+// in the app folder before anything ships; Dir, when set, ships every file under that folder
+// instead of the files git tracks, so a build can produce the release itself.
+type Deploy struct {
+	Build string `yaml:"build" json:"build,omitempty"`
+	Dir   string `yaml:"dir" json:"dir,omitempty"`
+}
+
+func validateDeploy(deploy Deploy) error {
+	if deploy.Dir == "" {
+		return nil
+	}
+	// "." would ship the whole folder ignoring git, which is exactly what plain sync guards against
+	if !filepath.IsLocal(deploy.Dir) || filepath.Clean(deploy.Dir) == "." {
+		return keyErr("deploy.dir", "%q must be a folder inside the app folder", deploy.Dir)
 	}
 	return nil
 }

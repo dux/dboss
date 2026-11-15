@@ -17,6 +17,7 @@ type Echo struct {
 	colors map[string]int
 	width  int
 	soloed bool
+	plain  bool
 }
 
 func NewEcho(out io.Writer) *Echo { return &Echo{out: out} }
@@ -28,6 +29,13 @@ func (e *Echo) Solo() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.soloed = true
+}
+
+// Plain drops the color escapes from every key, for output that is not a terminal.
+func (e *Echo) Plain() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.plain = true
 }
 
 func (e *Echo) name(app, proc string) string {
@@ -56,6 +64,9 @@ func (e *Echo) key(name string) string {
 		e.next++
 		e.colors[name] = color
 		e.width = max(e.width, len(name))
+	}
+	if e.plain {
+		return fmt.Sprintf("%-*s | ", e.width, name)
 	}
 	return fmt.Sprintf("\x1b[%dm%-*s |\x1b[0m ", color, e.width, name)
 }

@@ -11,9 +11,13 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
+	"dboss/internal/config"
+	"dboss/internal/ctl"
 	"dboss/internal/daemon"
 	"dboss/internal/devtls"
+	"dboss/internal/ops"
 	"dboss/internal/supervisor"
 
 	"golang.org/x/term"
@@ -22,6 +26,7 @@ import (
 // start runs the session in the foreground. Under systemd this is the service process; on a
 // terminal every app's output is echoed with an app/proc prefix, and the apps wait for ENTER
 // after the banner so its addresses can be opened first. A dev session then restarts its app on r.
+// A dev start in a folder whose session already runs restarts that session's app instead.
 func (c CLI) start(args []string) error {
 	set := flag.NewFlagSet("start", flag.ContinueOnError)
 	set.SetOutput(c.Err)
@@ -42,8 +47,15 @@ func (c CLI) start(args []string) error {
 	if *https && !cfg.Dev() {
 		return errors.New("--https is for a dev session; a host serves HTTPS through proxy.tls")
 	}
+	info, statErr := os.Stdout.Stat()
+	terminal := statErr == nil && info.Mode()&os.ModeCharDevice != 0
+	if cfg.Dev() {
+		if handed, err := c.restartLive(cfg, *https, terminal); handed {
+			return err
+		}
+	}
 	var echo *supervisor.Echo
-	if info, statErr := os.Stdout.Stat(); statErr == nil && info.Mode()&os.ModeCharDevice != 0 {
+	if terminal {
 		echo = supervisor.NewEcho(c.Out)
 		if cfg.Dev() {
 			echo.Solo()
@@ -92,6 +104,41 @@ func (c CLI) start(args []string) error {
 	say("press r to restart " + app + ", Ctrl-C to stop")
 	restartOnKeys(ctx, keys, app, say, session.RestartApp)
 	return nil
+}
+
+// restartLive hands a dev start to the session already serving this folder: rescan, restart the
+// app, print that session's banner and return, so `dboss start -y` can run again and again (an
+// agent harness does) and always leaves the app restarted. It reports false when no session
+// answers, or when only a fresh session applies the change (--https differs, or the rescan names
+// a key that needs a restart); the start then takes the earlier session over.
+func (c CLI) restartLive(cfg config.Config, https, terminal bool) (bool, error) {
+	probe := ctl.Client{Socket: cfg.Socket, Timeout: 5 * time.Second}
+	var live daemon.Banner
+	if err := probe.Call(ctl.Request{Method: ctl.BannerMethod}, &live); err != nil || live.HTTPS != https {
+		return false, nil
+	}
+	var rescan ops.RescanResult
+	if err := probe.Call(ctl.Request{Method: ops.ActionRescan}, &rescan); err != nil || len(rescan.RestartRequired) > 0 {
+		return false, nil
+	}
+	app := filepath.Base(cfg.Dir)
+	restartErr := ctl.Client{Socket: cfg.Socket}.Call(ctl.Request{Method: ops.ActionRestart, App: app}, nil)
+	if err := probe.Call(ctl.Request{Method: ctl.BannerMethod}, &live); err != nil {
+		return true, errors.Join(restartErr, err)
+	}
+	echo := supervisor.NewEcho(c.Out)
+	echo.Solo()
+	if !terminal {
+		echo.Plain()
+	}
+	for _, line := range live.Lines(echo) {
+		echo.Print(line)
+	}
+	if restartErr != nil {
+		return true, fmt.Errorf("restart %s: %w", app, restartErr)
+	}
+	echo.Print(echo.Key("dboss", "dboss") + "restarted " + app + " in the running session; `dboss logs -f` follows its output")
+	return true, nil
 }
 
 // waitForEnter holds the apps until ENTER and reports false when the session is interrupted

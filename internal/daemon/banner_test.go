@@ -126,7 +126,7 @@ func TestBannerRowsEveryProcessAndAligns(t *testing.T) {
 			Processes:    []supervisor.ProcessSnapshot{{Name: "web", Type: "web"}},
 		},
 	}
-	lines := banner(snapshots, "http://127.0.0.1:3100/login?token=x", "signed in for an hour", "http", "", devHTTPS{}, echo)
+	lines := renderBanner(banner(snapshots, "http://127.0.0.1:3100/login?token=x", "signed in for an hour", "http", "", devHTTPS{}), echo)
 	if len(lines) != 4 {
 		t.Fatalf("want a row per process plus the console, got %d:\n%s", len(lines), strings.Join(lines, "\n"))
 	}
@@ -169,7 +169,7 @@ func stripANSI(line string) string {
 // A dev session admits this machine without a session, so its console row is the plain address.
 func TestBannerConsoleRowCarriesItsNote(t *testing.T) {
 	echo := supervisor.NewEcho(io.Discard)
-	lines := banner(nil, "http://127.0.0.1:3100", "open on this machine", "http", "", devHTTPS{}, echo)
+	lines := renderBanner(banner(nil, "http://127.0.0.1:3100", "open on this machine", "http", "", devHTTPS{}), echo)
 	if len(lines) != 1 || !strings.Contains(lines[0], "http://127.0.0.1:3100") || !strings.Contains(lines[0], "open on this machine") {
 		t.Fatalf("console row = %v", lines)
 	}
@@ -182,7 +182,7 @@ func TestBannerConsoleRowCarriesItsNote(t *testing.T) {
 func TestBannerShowsDevHTTPSRow(t *testing.T) {
 	echo := supervisor.NewEcho(io.Discard)
 	snapshots := []supervisor.Snapshot{{Name: "shop", State: supervisor.Running, WebProcesses: []supervisor.WebProcessSnapshot{{Name: "web", Hosts: []string{"shop.lvh.me"}}}}}
-	lines := banner(snapshots, "", "", "http", "", devHTTPS{port: "3101", note: "run `dboss trust` once"}, echo)
+	lines := renderBanner(banner(snapshots, "", "", "http", "", devHTTPS{port: "3101", note: "run `dboss trust` once"}), echo)
 	if len(lines) != 2 {
 		t.Fatalf("lines = %v", lines)
 	}
@@ -190,7 +190,7 @@ func TestBannerShowsDevHTTPSRow(t *testing.T) {
 	if !strings.Contains(row, "https://shop.lvh.me:3101") || !strings.Contains(row, "dboss trust") {
 		t.Fatalf("https row = %q", row)
 	}
-	if lines := banner(snapshots, "", "", "http", "", devHTTPS{}, echo); len(lines) != 1 {
+	if lines := renderBanner(banner(snapshots, "", "", "http", "", devHTTPS{}), echo); len(lines) != 1 {
 		t.Fatalf("no dev https should print no https row: %v", lines)
 	}
 }

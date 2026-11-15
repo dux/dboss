@@ -168,7 +168,7 @@ func TestListenRecoversStaleSocketWithWarning(t *testing.T) {
 	log.SetOutput(&output)
 	defer log.SetOutput(previous)
 	service := ops.New(&fakeRuntime{}, nil, nil, nil, nil, nil)
-	server, err := Listen(socket, service, nil)
+	server, err := Listen(socket, service, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestListenPreservesNonSocket(t *testing.T) {
 	if err := os.WriteFile(socket, []byte("keep me"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if server, err := Listen(socket, nil, nil); err == nil {
+	if server, err := Listen(socket, nil, nil, nil); err == nil {
 		server.Close()
 		t.Fatal("Listen should refuse a regular file")
 	}
@@ -202,7 +202,7 @@ func TestListenPreservesNonSocket(t *testing.T) {
 func TestListenServesAndRefusesASecondServer(t *testing.T) {
 	socket := testSocketPath(t)
 	service := ops.New(&fakeRuntime{}, nil, nil, nil, nil, nil)
-	server, listenErr := Listen(socket, service, nil)
+	server, listenErr := Listen(socket, service, nil, nil)
 	if listenErr != nil {
 		t.Fatal(listenErr)
 	}
@@ -220,7 +220,7 @@ func TestListenServesAndRefusesASecondServer(t *testing.T) {
 		t.Fatalf("pid file = %+v, %v; want this process", recorded, err)
 	}
 
-	if _, err := Listen(socket, service, nil); err == nil {
+	if _, err := Listen(socket, service, nil, nil); err == nil {
 		t.Fatal("second Listen on an active socket should fail")
 	}
 	if err := TakeOver(socket, time.Second); err == nil {

@@ -23,6 +23,7 @@ type Server struct {
 	listener net.Listener
 	service  *ops.Service
 	login    func() (string, string, error)
+	banner   func() any
 }
 
 // Idle refuses a socket path another session still answers on and removes a stale socket left by
@@ -100,8 +101,8 @@ func exited(o owner, timeout time.Duration) bool {
 }
 
 // Listen serves the control socket. login mints console login links and is nil when the
-// management console is not enabled.
-func Listen(path string, service *ops.Service, login func() (string, string, error)) (*Server, error) {
+// management console is not enabled; banner is the session's startup summary.
+func Listen(path string, service *ops.Service, login func() (string, string, error), banner func() any) (*Server, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func Listen(path string, service *ops.Service, login func() (string, string, err
 			return nil, err
 		}
 	}
-	server := &Server{path: path, listener: listener, service: service, login: login}
+	server := &Server{path: path, listener: listener, service: service, login: login, banner: banner}
 	go server.serve()
 	return server, nil
 }
@@ -166,13 +167,22 @@ func (s *Server) handle(connection net.Conn) {
 	}
 }
 
-const LoginMethod = "login"
+const (
+	LoginMethod  = "login"
+	BannerMethod = "banner"
+)
 
-// dispatch runs one control request. Everything but login is the shared ops action; login mints
-// a console link and so stays with the server.
+// dispatch runs one control request. Everything but login and banner is the shared ops action;
+// those two describe the session and so stay with the server.
 func (s *Server) dispatch(request Request) Response {
-	if request.Method == LoginMethod {
+	switch request.Method {
+	case LoginMethod:
 		return s.loginResponse()
+	case BannerMethod:
+		if s.banner == nil {
+			return Response{Error: "this session has no banner"}
+		}
+		return Response{OK: true, Data: s.banner()}
 	}
 	// The control socket has no user, so audited actions are attributed to the CLI.
 	if request.Actor == "" {

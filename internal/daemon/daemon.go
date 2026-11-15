@@ -274,7 +274,7 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 	if d.management != nil {
 		login = d.management.LoginURL
 	}
-	control, err := ctl.Listen(cfg.Socket, service, login)
+	control, err := ctl.Listen(cfg.Socket, service, login, func() any { return d.Banner() })
 	if err != nil {
 		d.Close()
 		return nil, err

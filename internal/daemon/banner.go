@@ -12,19 +12,31 @@ import (
 	"dboss/internal/version"
 )
 
-// printBanner writes the startup summary of a hand-run session. It is terminal-only, the same
-// signal that drives the output echo and the privileged-port fallback, so a service start still
-// logs nothing extra and never mints a console link.
-func (d *Daemon) printBanner() {
-	if d.echo == nil || len(d.listen) == 0 {
-		return
-	}
+// Banner is a session's startup summary: the intro line, one row per process, and whether a dev
+// session serves HTTPS. A dev `dboss start` reads it over the control socket when it restarts the
+// session already running, so both print the same summary.
+type Banner struct {
+	Intro string      `json:"intro"`
+	Rows  []BannerRow `json:"rows"`
+	HTTPS bool        `json:"https"`
+}
+
+// Lines renders the banner with echo's keys, so each row shares its process's log color.
+func (b Banner) Lines(echo *supervisor.Echo) []string {
+	return append([]string{b.Intro}, renderBanner(b.Rows, echo)...)
+}
+
+// Banner builds the summary from the bound listeners and the live snapshots.
+func (d *Daemon) Banner() Banner {
 	scheme, port := d.appAddress()
 	console, note := "", ""
-	// printBanner only runs for a terminal session, which admits loopback without a token, so the
-	// console row carries no sign-in link.
+	// A dev or hand-run session admits loopback without a token, so the console row carries no
+	// sign-in link.
 	if d.management != nil {
 		console, note = "http://"+managementAddress(d.managementPort), "open on this machine"
+		if !d.cfg.Dev() && !d.cfg.Local {
+			note = "run `dboss login` to sign in"
+		}
 	}
 	secure := devHTTPS{}
 	if d.devHTTPS != "" {
@@ -33,8 +45,17 @@ func (d *Daemon) printBanner() {
 			secure.note = "trusted local certificate"
 		}
 	}
-	d.echo.Print(bannerIntro(d.cfg))
-	for _, line := range banner(d.manager.Snapshots(), console, note, scheme, port, secure, d.echo) {
+	return Banner{Intro: bannerIntro(d.cfg), Rows: banner(d.manager.Snapshots(), console, note, scheme, port, secure), HTTPS: d.devHTTPS != ""}
+}
+
+// printBanner writes the startup summary of a hand-run session. It is terminal-only, the same
+// signal that drives the output echo and the privileged-port fallback, so a service start still
+// logs nothing extra and never mints a console link.
+func (d *Daemon) printBanner() {
+	if d.echo == nil || len(d.listen) == 0 {
+		return
+	}
+	for _, line := range d.Banner().Lines(d.echo) {
 		d.echo.Print(line)
 	}
 }
@@ -73,8 +94,8 @@ func bannerIntro(cfg config.Config) string {
 // banner is the startup summary a hand-run session prints before any app starts: one row per
 // process, keyed by the same colored prefix that process logs under, so the address and its later
 // output line up. Web processes carry a clickable URL and workers say so.
-func banner(snapshots []supervisor.Snapshot, console, consoleNote string, scheme, port string, secure devHTTPS, echo *supervisor.Echo) []string {
-	rows := make([]bannerRow, 0, len(snapshots))
+func banner(snapshots []supervisor.Snapshot, console, consoleNote string, scheme, port string, secure devHTTPS) []BannerRow {
+	rows := make([]BannerRow, 0, len(snapshots))
 	if console != "" {
 		// A sign-in link carries a token, so it is far longer than any hostname. Keeping it out
 		// of the column width stops one row from stretching every other one.
@@ -101,23 +122,28 @@ func banner(snapshots []supervisor.Snapshot, console, consoleNote string, scheme
 	if secure.note != "" && secureURL != "" {
 		rows = append(rows, newRow("dboss", "https", secureURL, secure.note, true))
 	}
+	return rows
+}
+
+// renderBanner turns the rows into lines, every address padded to one column.
+func renderBanner(rows []BannerRow, echo *supervisor.Echo) []string {
 	// Register every name before rendering any key, so all rows pad to the widest one.
 	for _, row := range rows {
-		echo.Key(row.app, row.proc)
+		echo.Key(row.App, row.Proc)
 	}
 	addressWidth := 0
 	for _, row := range rows {
-		if row.pad {
-			addressWidth = max(addressWidth, len(row.address))
+		if row.Pad {
+			addressWidth = max(addressWidth, len(row.Address))
 		}
 	}
 	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
-		address := row.address
-		if row.pad {
+		address := row.Address
+		if row.Pad {
 			address = fmt.Sprintf("%-*s", addressWidth, address)
 		}
-		lines = append(lines, strings.TrimRight(echo.Key(row.app, row.proc)+address+"  "+row.note, " "))
+		lines = append(lines, strings.TrimRight(echo.Key(row.App, row.Proc)+address+"  "+row.Note, " "))
 	}
 	return lines
 }
@@ -129,17 +155,18 @@ type devHTTPS struct {
 	note string
 }
 
-// bannerRow is one line: the process it names, its address and a note. pad lines the address up
+// BannerRow is one line: the process it names, its address and a note. Pad lines the address up
 // with the other rows.
-type bannerRow struct {
-	app, proc string
-	address   string
-	note      string
-	pad       bool
+type BannerRow struct {
+	App     string `json:"app"`
+	Proc    string `json:"proc"`
+	Address string `json:"address"`
+	Note    string `json:"note,omitempty"`
+	Pad     bool   `json:"pad,omitempty"`
 }
 
-func newRow(app, proc, address, note string, pad bool) bannerRow {
-	return bannerRow{app: app, proc: proc, address: address, note: note, pad: pad}
+func newRow(app, proc, address, note string, pad bool) BannerRow {
+	return BannerRow{App: app, Proc: proc, Address: address, Note: note, Pad: pad}
 }
 
 // webURL is the address to open for one web process. A pattern that matches only subdomains has

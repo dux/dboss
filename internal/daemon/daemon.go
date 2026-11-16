@@ -270,6 +270,10 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 			d.servers = append(d.servers, startHTTPServer("management", listener, management.Direct()))
 		}
 	}
+	// Every privileged port is bound; nothing dboss starts from here on may inherit the right.
+	if err := dropAmbientCaps(); err != nil {
+		logx.Warnf("could not clear ambient capabilities, so app processes keep them: %v", err)
+	}
 	var login func() (string, string, error)
 	if d.management != nil {
 		login = d.management.LoginURL

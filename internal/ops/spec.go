@@ -57,6 +57,7 @@ var specs = []Spec{
 		opt("app", TypeString, "app name; defaults to the repository name"),
 		opt("branch", TypeString, "branch to check out; defaults to the remote default"),
 		opt("host", TypeString, "hostname that replaces the app's own (one web process only)"),
+		opt("env", TypeObject, "string map written to the app's .env.local before its first start; it outranks .env and the config env"),
 	}},
 	{Name: ActionPorts, Group: "Apps", Summary: "Port of every process slot, keyed app/slot."},
 	{Name: ActionExec, Group: "Apps", Summary: "Run a one-off command in the app's folder and environment; returns combined output and exit code.", Params: []Param{

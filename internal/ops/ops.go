@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -195,11 +197,12 @@ type Request struct {
 	// Params carries the request query parameters a hook ping arrived with, keyed by their QS_
 	// name. The built-in github_pr hook reads branch/repo/action/num from it.
 	Params map[string]string `json:"params,omitempty"`
-	// Repo, Branch and Host describe the app an add clones: the git URL, the branch (empty for
-	// the default one) and a host that replaces the app's own.
-	Repo   string `json:"repo,omitempty"`
-	Branch string `json:"branch,omitempty"`
-	Host   string `json:"host,omitempty"`
+	// Repo, Branch, Host and Env describe the app an add clones: the git URL, the branch (empty
+	// for the default one), a host that replaces the app's own and the values of its .env.local.
+	Repo   string            `json:"repo,omitempty"`
+	Branch string            `json:"branch,omitempty"`
+	Host   string            `json:"host,omitempty"`
+	Env    map[string]string `json:"env,omitempty"`
 	// Key, Kind and Name address the events surface: a facet key (plan, #, data.), a saved
 	// entry's kind (view or funnel) and its name.
 	Key  string `json:"key,omitempty"`
@@ -433,6 +436,10 @@ func auditDetail(request Request) string {
 		}
 		if request.Host != "" {
 			detail += " host=" + request.Host
+		}
+		// Names only: the values are the app's secrets.
+		if len(request.Env) > 0 {
+			detail += " env=" + strings.Join(slices.Sorted(maps.Keys(request.Env)), ",")
 		}
 		return detail
 	default:

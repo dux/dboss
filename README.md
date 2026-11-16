@@ -665,6 +665,8 @@ It needs exactly one web process.
 dboss clones, validates the file against the host `defaults`, refuses a host another app already claims the same way (both `host`, or both `subdomain`; a rescan would otherwise hand it to whichever app sorts first), lets a `host` take a hostname a running app only derives from its `subdomain`, rescans and starts the app, so its `lifecycle.create` step runs.
 When anything fails after the clone, the folder is removed again and the reason is shown; the action is audited as `add` with the URL.
 Secrets are not in the repository: put `.env` or `dboss.local.yaml` in the folder and restart when the first start needs them.
+Over the API, `add` also takes `env`, an object of string values that dboss writes to the checkout's `.env.local` (mode 0600) before the first start, where it outranks `.env` and the config `env`.
+The file is added to the clone's `.git/info/exclude`, so it is never committed or stashed, the audit row lists the names only, and a repository that commits its own `.env.local` is refused.
 The clone has a remote, so it gets the automatic `deploy` hook and `dboss deploy git` updates the app from then on.
 
 ## Deploying

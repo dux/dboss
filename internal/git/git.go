@@ -90,6 +90,26 @@ func Clone(dir, repo, branch, token string) error {
 	return runner(token)(append(args, "--", repo, dir)...)
 }
 
+// Exclude adds pattern to the checkout's own exclude file, so a server-only file placed in the
+// folder is ignored without touching the repository's .gitignore: a commit never takes it and a
+// stash of untracked files never removes it.
+func Exclude(dir, pattern string) error {
+	path := filepath.Join(dir, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	// The leading newline covers an exclude file that does not end in one.
+	_, err = file.WriteString("\n" + pattern + "\n")
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
 var (
 	// scpRemote is git's user@host:path form, e.g. git@github.com:owner/repo.git.
 	scpRemote   = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/\s][^\s]*$`)

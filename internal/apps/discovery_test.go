@@ -29,6 +29,29 @@ func TestLoadEnv(t *testing.T) {
 	}
 }
 
+func TestWriteEnvReadsBackUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), LocalEnvFile)
+	want := map[string]string{"PLAIN": "one", "EMPTY": "", "SPACED": "  padded  ", "QUOTED": `say "hi" 'there'`, "LINES": "-----BEGIN-----\nabc\n-----END-----\n", "HASH": "a # b", "DOLLAR": "${PLAIN}"}
+	if err := WriteEnv(path, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadEnv(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("env = %#v", got)
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("%s = %q, want %q", key, got[key], value)
+		}
+	}
+	if err := WriteEnv(path, map[string]string{"NUL": "a\x00b"}); err == nil {
+		t.Fatal("a NUL byte must be refused")
+	}
+}
+
 func TestDiscoverWalksAppsDirectory(t *testing.T) {
 	root := t.TempDir()
 	appsDir := filepath.Join(root, "apps")

@@ -151,6 +151,8 @@ func TestAddRefusesAndCleansUp(t *testing.T) {
 		{"subdomain clash", map[string]string{"dboss.yaml": subdomainApp}, Request{}, []supervisor.Snapshot{webSnapshot("old", true, "example.com")}, "already served by app old"},
 		{"override needs one web", map[string]string{"dboss.yaml": twoWebs}, Request{Host: "x.test"}, nil, "exactly one web process"},
 		{"invalid name", map[string]string{"dboss.yaml": webApp}, Request{App: "Bad Name"}, nil, "invalid app name"},
+		{"committed env file", map[string]string{"dboss.yaml": webApp, ".env.local": "A=1\n"}, Request{Env: map[string]string{"A": "2"}}, nil, "commits .env.local"},
+		{"invalid env name", map[string]string{"dboss.yaml": webApp}, Request{Env: map[string]string{"BAD-NAME": "x"}}, nil, "invalid env name"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -186,6 +188,29 @@ func TestAddRefusesAnExistingApp(t *testing.T) {
 	}
 	if _, err := os.Stat(existing); err != nil {
 		t.Fatalf("existing folder was removed: %v", err)
+	}
+}
+
+// The env of an add lands in .env.local where git cannot see it: the box's own commit stages
+// everything and a reset stashes untracked files, so a visible file would leak or vanish.
+func TestAddWritesEnvHiddenFromGit(t *testing.T) {
+	store := &auditStore{}
+	runtime := addRuntime(t)
+	source := sourceRepo(t, map[string]string{"dboss.yaml": webApp})
+	request := Request{Method: ActionAdd, Repo: source, Env: map[string]string{"DATABASE_URL": "postgres://s3cret@db/shop", "API_KEY": "k"}}
+	if _, err := New(runtime, store, nil, nil, nil, nil).Do(request); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(runtime.host.Apps, "shop")
+	info, err := os.Stat(filepath.Join(dir, ".env.local"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("env file = %v, %v", info, err)
+	}
+	if out, err := exec.Command("git", "-C", dir, "status", "--porcelain").CombinedOutput(); err != nil || len(out) != 0 {
+		t.Fatalf("git status = %q, %v", out, err)
+	}
+	if detail := store.rows[0].Detail; detail != source+" env=API_KEY,DATABASE_URL" {
+		t.Fatalf("audit detail = %q", detail)
 	}
 }
 

@@ -28,7 +28,8 @@ func addName(request Request) string {
 }
 
 // add clones a repository that carries its own dboss.yaml into the apps folder, loads it and
-// starts it. Host, when set, replaces the single web process's hosts through a dboss.local.yaml.
+// starts it. Host, when set, replaces the single web process's hosts through a dboss.local.yaml,
+// and Env becomes the checkout's .env.local.
 // Anything that fails after the clone removes the folder again, so a retry starts clean.
 func (s *Service) add(request Request) (supervisor.Snapshot, error) {
 	cfg := s.runtime.HostConfig()
@@ -55,7 +56,7 @@ func (s *Service) add(request Request) (supervisor.Snapshot, error) {
 		_ = os.RemoveAll(dir)
 		return supervisor.Snapshot{}, err
 	}
-	snapshot, loaded, err := s.loadAdded(cfg, name, dir, request.Host)
+	snapshot, loaded, err := s.loadAdded(cfg, name, dir, request.Host, request.Env)
 	if err != nil {
 		_ = apps.Destroy(cfg.Apps, name)
 		if loaded {
@@ -66,9 +67,10 @@ func (s *Service) add(request Request) (supervisor.Snapshot, error) {
 	return snapshot, nil
 }
 
-// loadAdded validates the fresh checkout, applies the host override, rescans and starts it.
-// loaded reports whether the rescan picked the app up, so a failure can rescan it away again.
-func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervisor.Snapshot, bool, error) {
+// loadAdded validates the fresh checkout, applies the host override and the env, rescans and
+// starts it. loaded reports whether the rescan picked the app up, so a failure can rescan it away
+// again.
+func (s *Service) loadAdded(cfg config.Config, name, dir, host string, env map[string]string) (supervisor.Snapshot, bool, error) {
 	path, err := config.FindInDir(dir)
 	if errors.Is(err, config.ErrNoConfig) {
 		return supervisor.Snapshot{}, false, fault.Invalidf("the repository has no %s, so it is not a dboss app", config.FileName)
@@ -109,6 +111,12 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 			}
 		}
 	}
+	// The rescan reads the app's environment, so the file has to be there first.
+	if len(env) > 0 {
+		if err := writeEnv(dir, env); err != nil {
+			return supervisor.Snapshot{}, false, err
+		}
+	}
 
 	invalid, err := s.runtime.Rescan()
 	if err != nil {
@@ -134,6 +142,20 @@ func (s *Service) loadAdded(cfg config.Config, name, dir, host string) (supervis
 		snapshot = fresh
 	}
 	return snapshot, true, nil
+}
+
+// writeEnv puts env in the checkout's .env.local, the server-only file that outranks .env and the
+// config env. The clone's own exclude file hides it from git, so a commit from the box never
+// takes the secrets and a reset never stashes them away.
+func writeEnv(dir string, env map[string]string) error {
+	path := filepath.Join(dir, apps.LocalEnvFile)
+	if _, err := os.Lstat(path); err == nil {
+		return fault.Invalidf("the repository commits %s, the server-only file env is written to", apps.LocalEnvFile)
+	}
+	if err := apps.WriteEnv(path, env); err != nil {
+		return err
+	}
+	return git.Exclude(dir, "/"+apps.LocalEnvFile)
 }
 
 // overrideHost writes the checkout's config to dboss.local.yaml with host as the single web

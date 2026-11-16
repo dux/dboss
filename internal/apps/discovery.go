@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"dboss/internal/config"
+	"dboss/internal/fault"
+	"dboss/internal/fsutil"
 	"dboss/internal/schedule"
 )
 
@@ -312,7 +315,7 @@ func buildApp(name, dir string, appCfg config.App) (*App, error) {
 	// .env and .env.local stay separate so they can outrank the config env when the process
 	// environment is assembled (see supervisor.environment).
 	fileEnv := map[string]string{}
-	for _, filename := range []string{".env", ".env.local"} {
+	for _, filename := range []string{".env", LocalEnvFile} {
 		values, envErr := loadEnv(filepath.Join(dir, filename))
 		if envErr != nil {
 			return nil, envErr
@@ -437,6 +440,25 @@ func loadEnv(path string) (map[string]string, error) {
 		result[key] = value
 	}
 	return result, scanner.Err()
+}
+
+// LocalEnvFile is the server-only env file of an app folder; it overlays .env.
+const LocalEnvFile = ".env.local"
+
+// WriteEnv writes values as an env file loadEnv reads back unchanged, readable by the service
+// user only. Every value is double-quoted, so newlines and quotes survive.
+func WriteEnv(path string, values map[string]string) error {
+	var data bytes.Buffer
+	for _, key := range slices.Sorted(maps.Keys(values)) {
+		if !validEnvKey(key) {
+			return fault.Invalidf("invalid env name %q: use letters, digits and _, not starting with a digit", key)
+		}
+		if strings.ContainsRune(values[key], 0) {
+			return fault.Invalidf("env %s holds a NUL byte, which no process environment can carry", key)
+		}
+		data.WriteString(key + "=" + strconv.Quote(values[key]) + "\n")
+	}
+	return fsutil.WriteFile(path, data.Bytes(), 0o600)
 }
 
 func validEnvKey(key string) bool {

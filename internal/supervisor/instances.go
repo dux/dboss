@@ -83,10 +83,13 @@ func compareInstances(x, y string) int {
 	return cmp.Or(cmp.Compare(xp, yp), cmp.Compare(xi, yi))
 }
 
-// wanted reports whether the spec still asks for the instance, so a scale-down does not bring a
-// dropped copy back through the restart policy.
+// wanted reports whether the spec still asks for the instance, so a scale-down or a procfile
+// entry removed from the config does not bring a dropped copy back through the restart policy.
 func (a *appRuntime) wanted(name string) bool {
 	proc, _ := splitInstance(name)
+	if _, ok := a.spec.Commands[proc]; !ok {
+		return false
+	}
 	return slices.Contains(a.instancesOf(proc), name)
 }
 

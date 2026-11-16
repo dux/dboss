@@ -227,6 +227,34 @@ func TestCountRunsCopiesBehindOneRoute(t *testing.T) {
 	}
 }
 
+func TestRestartStopsProcessRemovedFromProcfile(t *testing.T) {
+	manager := rollConfig(t, [2]int{33800, 33820}, "", "  worker:\n    command: sleep 30\n")
+	before := livePIDs(t, manager)
+	if before["worker"] == 0 {
+		t.Fatalf("worker not started: %v", before)
+	}
+
+	snapshot, _ := manager.Snapshot("demo")
+	path := filepath.Join(snapshot.Dir, "dboss.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(data), "  worker:\n    command: sleep 30\n", "", 1)), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Rescan(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Restart("demo"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		after := livePIDs(t, manager)
+		return !alive(before["worker"]) && len(after) == 1 && after["web"] != 0
+	}, "removed worker still running")
+}
+
 func TestInstanceEnvironment(t *testing.T) {
 	root := t.TempDir()
 	out := filepath.Join(root, "env")

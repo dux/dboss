@@ -704,8 +704,6 @@ A bare ssh destination (a `~/.ssh/config` alias, host or `user@host`) means `/sr
 Only your machine reads the key; the box ignores it.
 An explicit target on the command line still wins.
 
-### DNS on Cloudflare
-
 ### Building the release here
 
 An app whose release is not its git tree (compiled assets, vendored gems, a binary) names the build and the folder it produces:
@@ -719,6 +717,8 @@ deploy:
 Both keys are read on your machine only.
 `dir` must sit inside the app folder, and a top-level `.env`, `.env.*`, `dboss.local.yaml` or `dboss-server.local.yaml` in it is refused, since those belong to the box.
 Apply works as for a git sync: it removes only what an earlier sync shipped, and files that only exist on the box stay.
+
+### DNS on Cloudflare
 
 `dboss cf dns` points every hostname the app answers at its server:
 

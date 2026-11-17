@@ -5,7 +5,7 @@
     }
 
     init() {
-      this.state.range = Fez.hqs('range') || '24h'
+      this.state.range = Fez.url.hqs('range') || '24h'
       this.state.rows = []
       this.state.loaded = false
       this.state.busy = false

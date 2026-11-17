@@ -164,8 +164,8 @@ func TestFormatLibIsShared(t *testing.T) {
 // a component root and feed it back into props, which re-enters any component that writes its own
 // root - ui-btn does - and they have no Fez(node).setAttribute, the channel the app cards use to
 // show an action as pending. Re-vendoring an older bundle froze the cards until a page reload.
-// The hash routes call Fez.hpath / Fez.hqs, which delegate to Fez.pjax; builds that only set
-// window.Pjax lack those shortcuts.
+// The hash routes call Fez.url.hpath / Fez.url.hqs; builds older than the Fez.url builder lack
+// them.
 func TestVendoredFezIsCurrent(t *testing.T) {
 	bundle, err := assets.ReadFile("static/fez.min.js")
 	if err != nil {
@@ -174,9 +174,9 @@ func TestVendoredFezIsCurrent(t *testing.T) {
 	if strings.Contains(string(bundle), "onPropsChange") {
 		t.Error("fez.min.js still carries onPropsChange: vendor 0.10.0 or newer")
 	}
-	for _, name := range []string{"hpath", "hqs"} {
-		if !strings.Contains(string(bundle), ".pjax."+name+"(") {
-			t.Errorf("fez.min.js has no Fez.%s: the console's hash routes need it", name)
+	for _, name := range []string{"_hpath", "_hqs"} {
+		if !strings.Contains(string(bundle), name) {
+			t.Errorf("fez.min.js has no Fez.url %s: the console's hash routes need it", name)
 		}
 	}
 }

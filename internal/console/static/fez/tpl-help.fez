@@ -396,7 +396,7 @@
 
   class {
     init() {
-      this.state.topic = Fez.hqs('topic') || 'intro'
+      this.state.topic = Fez.url.hqs('topic') || 'intro'
       this.state.groups = GROUPS
       this.state.examples = EXAMPLES
     }

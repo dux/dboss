@@ -1,8 +1,8 @@
 <script>
   class {
     init() {
-      this.state.app = Fez.hqs('app') || ''
-      this.state.uid = Fez.hqs('uid') || ''
+      this.state.app = Fez.url.hqs('app') || ''
+      this.state.uid = Fez.url.hqs('uid') || ''
       this.state.row = null
       this.state.loaded = false
       this.state.busy = false

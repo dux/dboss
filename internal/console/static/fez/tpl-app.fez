@@ -19,7 +19,7 @@
     // switch starts the new tab from a clean query and leaves one history entry behind.
     setTab(id) {
       if (!TABS.includes(id) || id === this.state.tab) return
-      Fez.hpath('app', { qs: { app: this.state.name, tab: id } })
+      Fez.url.hpath('app').hqs(null).hqs({ app: this.state.name, tab: id }).push()
       this.state.tab = id
     }
   }

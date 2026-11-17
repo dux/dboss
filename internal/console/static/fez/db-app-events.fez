@@ -15,8 +15,8 @@
     }
 
     init() {
-      this.state.filter = Fez.hqs('f') || ''
-      this.state.range = RANGES.includes(Fez.hqs('range')) ? Fez.hqs('range') : '30d'
+      this.state.filter = Fez.url.hqs('f') || ''
+      this.state.range = RANGES.includes(Fez.url.hqs('range')) ? Fez.url.hqs('range') : '30d'
       this.state.tab = ['latest', 'views', 'sql'].includes(Dboss.readQs('section')) ? Dboss.readQs('section') : 'overview'
       this.state.selectTab = (tab) => this.setTab(tab)
       this.state.summary = null

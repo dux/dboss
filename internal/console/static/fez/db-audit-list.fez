@@ -9,10 +9,10 @@
 
     init(props) {
       this.state.rows = []
-      this.state.app = props.app || Fez.hqs('app') || ''
-      this.state.actor = Fez.hqs('actor') || ''
-      this.state.action = Fez.hqs('action') || ''
-      this.state.row = Number(Fez.hqs('row') || 0)
+      this.state.app = props.app || Fez.url.hqs('app') || ''
+      this.state.actor = Fez.url.hqs('actor') || ''
+      this.state.action = Fez.url.hqs('action') || ''
+      this.state.row = Number(Fez.url.hqs('row') || 0)
       this.state.open = {}
       this.state.loading = false
       this.state.error = ''

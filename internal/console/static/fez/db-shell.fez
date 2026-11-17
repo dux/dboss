@@ -16,7 +16,7 @@
     NAV_PARENT = { app: 'overview', exception: 'overview', blocked: 'sys' }
 
     init() {
-      this.state.route = Fez.hpath() || 'overview'
+      this.state.route = this.routeName() || 'overview'
       this.state.csrf = ''
       this.state.viewer = ''
       this.state.version = ''
@@ -50,15 +50,19 @@
       this.state.navRoute = this.NAV_PARENT[this.state.route] || this.state.route
     }
 
+    routeName() {
+      return Fez.url.hpath().split('/').pop()
+    }
+
     // syncRoute maps the fragment onto a tpl-<name> component. A missing route (e.g. the bare
     // origin, or a stale #anchor) falls back to overview with a replace, never a history entry.
     syncRoute() {
-      if (!Fez.hpath()) Fez.hpath('overview', { replace: true })
+      if (!this.routeName()) Fez.url.hpath('overview').replace()
       this.navigate()
     }
 
     navigate() {
-      const name = Fez.hpath() || 'overview'
+      const name = this.routeName() || 'overview'
       this.state.route = name
       const tag = 'tpl-' + name
       const outlet = document.getElementById('route-outlet')
@@ -80,13 +84,14 @@
 
     // readQs/setQs wrap the hash-route query so a page never has to build URLSearchParams.
     readQs(key, fallback = '') {
-      return Fez.hqs(key) ?? fallback
+      return Fez.url.hqs(key) ?? fallback
     }
 
     setQs(key, value, replace = true) {
       const next = value || ''
-      if ((Fez.hqs(key) || '') === next) return
-      Fez.hqs(key, next || null, { replace })
+      if ((Fez.url.hqs(key) || '') === next) return
+      const url = Fez.url.hqs(key, next || null)
+      replace ? url.replace() : url.push()
     }
 
     initials() {

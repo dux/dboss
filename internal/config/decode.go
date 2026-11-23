@@ -195,6 +195,10 @@ func Parse(data []byte, path string) (Config, error) {
 	}
 	cfg.Pages = resolvePath(cfg.Dir, cfg.Pages)
 	cfg.Apps = resolvePath(cfg.Dir, cfg.Apps)
+	for i := range cfg.Proxy.TLS.Certs {
+		cert := &cfg.Proxy.TLS.Certs[i]
+		cert.Cert, cert.Key = resolvePath(cfg.Dir, cert.Cert), resolvePath(cfg.Dir, cert.Key)
+	}
 	if hasApp {
 		// Single mode: the root file is the app, so the host apps directory does not apply.
 		cfg.Apps = ""

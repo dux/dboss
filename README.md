@@ -40,7 +40,7 @@ All of it is in the one binary: no sidecars, no agents, no extra database, no YA
 * **Routing** - requests reach the right app by hostname, with wildcards, canonical redirects and static files from disk.
 * **Process supervision** - procfile per app, workers, several instances, restart backoff, health checks and zero-downtime rolling restarts.
 * **Apps that sleep** - an idle app stops on its own and the next request wakes it.
-* **HTTPS** - on-demand Let's Encrypt certificates, or Cloudflare in front.
+* **HTTPS** - on-demand Let's Encrypt certificates, Cloudflare Origin CA certificate files, or Cloudflare in front.
 * **Logs** - every log line and request in a per-app SQLite store with full-text search. All app logs are automaticly stored and rotated.
 * **Exceptions** - app exceptions grouped by fingerprint, with counts, resolve and ignore.
 * **Traffic** - requests over time, error rate, latency quantiles, top and slowest paths per app.
@@ -292,6 +292,44 @@ Tokens  (dboss-server.yaml)
   tokens.dboss    inbound: every /api call presents it and it grants every action; /hooks pings and /metrics accept it too; unset refuses the API                           e.g. $DBOSS_TOKEN
   tokens.webhook  inbound: the token /hooks ping URLs carry and /metrics takes; empty derives it from tokens.dboss (dboss token prints it)                                  e.g. $DBOSS_WEBHOOK_TOKEN
 ```
+
+## HTTPS
+
+dboss serves HTTPS itself only when `proxy.tls.listen` is set; otherwise TLS ends at Cloudflare.
+
+| Setup | Cloudflare SSL mode | Cloudflare to dboss |
+| --- | --- | --- |
+| `proxy.listen` only | Flexible | plain http on `:80`, HTTP/1.1 |
+| `proxy.tls.listen` (Let's Encrypt) | Full (strict) | https on `:443`, HTTP/2 |
+| `proxy.tls.listen` + `proxy.tls.certs` (Origin CA) | Full (strict) | https on `:443`, HTTP/2 |
+| `proxy.tls.listen`, DNS-only records | none | visitors reach dboss directly |
+
+With `proxy.tls.listen`, dboss obtains a Let's Encrypt certificate on demand for each hostname of the current apps and the console, caches it under `dir/state/acme` and renews it on its own.
+Plain http redirects to https, except a request Cloudflare already received over https (Flexible), which is served.
+Cloudflare only talks HTTP/2 to an origin over TLS, so the Flexible setup keeps that hop on HTTP/1.1; apps always receive HTTP/1.1 from dboss.
+
+`proxy.tls.certs` adds certificate files that win over ACME for every hostname they cover, wildcards included.
+It is meant for a Cloudflare Origin CA certificate: free, valid up to 15 years, and trusted by Cloudflare only.
+
+1. In the Cloudflare dashboard, open SSL/TLS > Origin Server and create a certificate for `example.com, *.example.com` (one per zone).
+2. Save the certificate and the private key on the box, next to the host config; keep the key out of git, since `dboss deploy sync` ships tracked files.
+3. Point dboss at them and close the origin to everyone but Cloudflare:
+
+```yaml
+proxy:
+  cloudflare: true
+  tls:
+    listen: ":443"
+    certs:
+      - { cert: certs/example.com.pem, key: certs/example.com.key }
+```
+
+4. Set the zone's SSL mode to Full (strict) and restart dboss.
+
+Every hostname an Origin CA certificate covers must stay proxied (orange cloud): a visitor reaching it directly gets a certificate no browser trusts.
+Hostnames no file covers still get Let's Encrypt certificates, so another zone or a DNS-only hostname keeps working.
+Paths are relative to the config dir and the files are read at start, so a replaced certificate needs a daemon restart.
+`dboss check` refuses a missing, mismatched or expired pair, and the startup log names the hostnames the files cover.
 
 ## Commands
 
@@ -732,7 +770,7 @@ The hostnames come from the shipped `dboss.yaml`, read the way the box reads it:
 A hostname is one record, `*.x` a wildcard record, and `.x` both `x` and `*.x`; `mail.*` and IP literals are skipped with a warning.
 The address is the box's public IP, asked over ssh with `dboss deploy ip` (the address the console's Sys tab shows), or `--ip` to skip asking.
 An IPv4 address makes `A` records, an IPv6 one `AAAA`.
-Records are proxied unless `--dns-only`, which a box that terminates TLS itself (`proxy.tls`) needs.
+Records are proxied unless `--dns-only`, for a hostname visitors should reach directly; a proxied hostname on a box with `proxy.tls` needs SSL mode Full (strict), see [HTTPS](#https).
 Records are only ever created or updated in place, never deleted.
 A second record of the same type at a name is a conflict to resolve in Cloudflare, a CNAME is only replaced with `--force`, and records of other types (MX, TXT) are left alone.
 A name with a conflict, or in no zone the token can read, is reported and skipped while the rest are set, and `--set` then exits non-zero.

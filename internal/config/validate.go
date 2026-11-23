@@ -44,6 +44,9 @@ func (c Config) validate(hasApp bool) error {
 	if c.Proxy.Timeout <= 0 {
 		return keyErr("proxy.timeout", "must be positive")
 	}
+	if err := validateProxyTLS(c.Proxy.TLS); err != nil {
+		return scoped(err, "proxy.tls")
+	}
 	if err := validateDefaults(c.Defaults); err != nil {
 		return scoped(err, "defaults")
 	}
@@ -106,6 +109,21 @@ func validateListen(key string, addresses List, ports [2]int) error {
 			return keyErr(key, "duplicate entry %q", address)
 		}
 		listeners[address] = true
+	}
+	return nil
+}
+
+func validateProxyTLS(t ProxyTLS) error {
+	if len(t.Certs) > 0 && !t.Enabled() {
+		return &Error{Key: "certs", Message: "needs listen", Hint: "set proxy.tls.listen, e.g. \":443\""}
+	}
+	for _, cert := range t.Certs {
+		if cert.Cert == "" || cert.Key == "" {
+			return keyErr("certs", "every entry needs cert and key")
+		}
+		if _, err := cert.Load(); err != nil {
+			return keyErr("certs", "%v", err)
+		}
 	}
 	return nil
 }

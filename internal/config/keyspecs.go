@@ -34,8 +34,9 @@ var keySpecs = map[string]KeySpec{
 	// --- Proxy ---
 	"proxy.listen":     {Block: "proxy", Name: "Listen addresses", Description: "one or more addresses to listen on; owns port 80 and routes every request to an app, empty disables the proxy", Example: "127.0.0.1:8080"},
 	"proxy.cloudflare": {Block: "proxy", Name: "Behind Cloudflare", Description: "accept connections only from Cloudflare's published ranges (and loopback); leave off when a hostname is DNS-only. A connection from those ranges always takes its client address from CF-Connecting-IP"},
-	"proxy.tls.listen": {Block: "proxy", Name: "TLS listener", Description: "address for the built-in HTTPS listener with Let's Encrypt certificates; empty means TLS terminates elsewhere (Cloudflare)", Example: ":443"},
+	"proxy.tls.listen": {Block: "proxy", Name: "TLS listener", Description: "address for the built-in HTTPS listener: certs for the hostnames they cover, Let's Encrypt certificates on demand for the rest; empty means TLS terminates elsewhere (Cloudflare)", Example: ":443"},
 	"proxy.tls.email":  {Block: "proxy", Name: "ACME email", Description: "contact email registered with the certificate authority", Example: "ops@example.com"},
+	"proxy.tls.certs":  {Block: "proxy", Name: "Certificate files", Description: "PEM certificate and key pairs served for the hostnames they cover, such as a Cloudflare Origin CA certificate behind SSL mode Full (strict); paths relative to the config dir", Example: "[{cert: certs/example.com.pem, key: certs/example.com.key}]"},
 	"proxy.timeout":    {Block: "proxy", Name: "Upstream timeout", Description: "how long an app may take to start responding", Example: "5m"},
 
 	// --- Management console ---

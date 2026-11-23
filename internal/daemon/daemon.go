@@ -221,9 +221,9 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 			return nil, err
 		}
 		d.appProxy = appProxy
-		var certs *proxy.ACME
+		var certs *proxy.Certs
 		if cfg.Proxy.TLS.Enabled() {
-			certs, err = proxy.NewACME(cfg, manager)
+			certs, err = proxy.NewCerts(cfg, manager)
 			if err != nil {
 				d.Close()
 				return nil, err
@@ -234,7 +234,11 @@ func Build(cfg config.Config, echo *supervisor.Echo, opts Options) (*Daemon, err
 				return nil, err
 			}
 			d.servers = append(d.servers, startHTTPSServer("proxy-tls", listener, edge, certs.TLSConfig()))
-			logx.Infof("proxy tls: %s (acme on demand)", cfg.Proxy.TLS.Listen)
+			if hosts := certs.Hosts(); len(hosts) > 0 {
+				logx.Infof("proxy tls: %s (certificate files for %s, acme on demand for the rest)", cfg.Proxy.TLS.Listen, strings.Join(hosts, ", "))
+			} else {
+				logx.Infof("proxy tls: %s (acme on demand)", cfg.Proxy.TLS.Listen)
+			}
 		}
 		for index, address := range cfg.Proxy.Listen {
 			handler := http.Handler(edge)

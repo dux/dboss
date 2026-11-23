@@ -157,12 +157,12 @@ proxy:
   # address.
   cloudflare: false
 
-  # Optional built-in TLS, for a box that is reached directly instead of through Cloudflare.
-  # dboss terminates HTTPS itself and obtains certificates from Let's Encrypt on demand for the
-  # hosts of the current apps and the console; nothing else may get a certificate, so a stranger
-  # cannot exhaust the authority's rate limit. Certificates are cached under dir/state/acme and
-  # renewed automatically, and plain http redirects to https. Leave listen empty to keep TLS at the
-  # edge (Cloudflare).
+  # Optional built-in TLS, for a box that terminates HTTPS itself: reached directly, or behind
+  # Cloudflare with SSL mode Full (strict), which also gives the Cloudflare-to-origin hop HTTP/2.
+  # dboss obtains certificates from Let's Encrypt on demand for the hosts of the current apps and
+  # the console; nothing else may get a certificate, so a stranger cannot exhaust the authority's
+  # rate limit. Certificates are cached under dir/state/acme and renewed automatically, and plain
+  # http redirects to https. Leave listen empty to keep TLS at the edge (Cloudflare).
   # A dev session (dboss start in an app folder) never uses ACME and ignores listen: only
   # `dboss start --https` serves HTTPS, on :443, with certificates from a local authority in the
   # user config directory, and plain http stays on at :80. `dboss trust` adds that root to the
@@ -172,6 +172,14 @@ proxy:
     listen: ""              # e.g. ":443"
     # Contact address registered with the certificate authority. Optional but recommended.
     email: ""
+    # Certificate files served instead of ACME for every hostname they cover (wildcards included);
+    # any other hostname still gets a Let's Encrypt certificate. Meant for a Cloudflare Origin CA
+    # certificate (SSL/TLS > Origin Server, valid up to 15 years): only Cloudflare trusts it, so
+    # every hostname it covers must be proxied through Cloudflare with SSL mode Full (strict), and
+    # proxy.cloudflare: true keeps the origin closed to everyone else. Paths are relative to the
+    # config dir; the files are read at start, so a replaced certificate needs a daemon restart.
+    # dboss check refuses a missing, mismatched or expired pair.
+    certs: []               # e.g. [{cert: certs/example.com.pem, key: certs/example.com.key}]
 
   # How long an app may take to start responding. Streaming and websockets are always passed
   # through once the response has started.

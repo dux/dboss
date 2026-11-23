@@ -3,7 +3,9 @@ package config
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
+	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
@@ -79,15 +81,40 @@ type Proxy struct {
 	Timeout    Duration `yaml:"timeout" json:"timeout"`
 }
 
-// ProxyTLS terminates HTTPS on the box with ACME certificates, for a host that is reached
-// directly instead of through Cloudflare. An empty listen disables it. Certificates are issued
-// on demand for the hostnames of the current apps and the console, and cached under state_dir.
+// ProxyTLS terminates HTTPS on the box. An empty listen disables it. Certs are certificate files
+// served for the hostnames they cover, such as a Cloudflare Origin CA certificate behind Full
+// (strict); every other hostname of the current apps and the console gets an ACME certificate on
+// demand, cached under state_dir.
 type ProxyTLS struct {
-	Listen string `yaml:"listen" json:"listen"`
-	Email  string `yaml:"email" json:"email"`
+	Listen string    `yaml:"listen" json:"listen"`
+	Email  string    `yaml:"email" json:"email"`
+	Certs  []TLSCert `yaml:"certs" json:"certs"`
 }
 
 func (t ProxyTLS) Enabled() bool { return t.Listen != "" }
+
+// TLSCert is one PEM certificate chain and its private key; Parse resolves both paths against
+// the config directory.
+type TLSCert struct {
+	Cert string `yaml:"cert" json:"cert"`
+	Key  string `yaml:"key" json:"key"`
+}
+
+// Load reads the pair and refuses a certificate that names no hostname or has expired, so
+// dboss check and the listener agree on what is served.
+func (c TLSCert) Load() (tls.Certificate, error) {
+	pair, err := tls.LoadX509KeyPair(c.Cert, c.Key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	if len(pair.Leaf.DNSNames) == 0 {
+		return tls.Certificate{}, fmt.Errorf("%s names no hostname", c.Cert)
+	}
+	if time.Now().After(pair.Leaf.NotAfter) {
+		return tls.Certificate{}, fmt.Errorf("%s expired on %s", c.Cert, pair.Leaf.NotAfter.Format(time.DateOnly))
+	}
+	return pair, nil
+}
 
 // Management is served by the proxy listener; any of the Host names selects the console and
 // signs in through AuthCog. Listen addresses serve it directly, whatever the Host header, and

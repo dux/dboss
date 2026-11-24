@@ -691,7 +691,7 @@
           <li>With no config, serving is on when a <code>public/</code> folder exists and off when it does not, so nothing has to be declared for the common case.</li>
           <li>Only GET and HEAD are answered; every other method reaches the app. Only the extensions in <code>static_extensions</code> are served, and an empty list serves any regular file.</li>
           <li>A missing file, a directory, an <code>.html</code> page, a dotfile or an extensionless path reaches the app, so a route always wins over a stray file. No index lookup.</li>
-          <li>Lookups stay inside the folder, so <code>..</code> cannot escape it. A release symlink swap is picked up on the next request.</li>
+          <li>Lookups stay inside the folder, so <code>..</code> cannot escape it. A deploy that replaces a file is picked up on the next request.</li>
           <li>Paths under <code>static_immutable</code> (default <code>/assets/</code>) get <code>Cache-Control: public, max-age=31536000, immutable</code>; everything else gets an hour.</li>
           <li>Static files sit behind <code>auth</code>, <code>basic_auth</code>, <code>password</code>, <code>allow_ips</code> and <code>deny</code>, so a protected app protects its assets too.</li>
           <li>For the pages dboss serves, including server errors, see <a href="#/help?topic=pages">Error pages</a>.</li>

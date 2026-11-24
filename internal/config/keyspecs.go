@@ -17,7 +17,7 @@ type KeySpec struct {
 // names a path no struct exposes.
 var keySpecs = map[string]KeySpec{
 	// --- Host ---
-	"apps":            {Block: "host", Name: "Apps directory", Description: "directory of app folders, one entry (folder or symlink) per app", Example: "./apps"},
+	"apps":            {Block: "host", Name: "Apps directory", Description: "directory of app folders, one folder per app", Example: "./apps"},
 	"dir":             {Block: "host", Name: "Runtime directory", Description: "everything dboss writes: state/, log/ and the dboss.sock control socket", Example: "/var/lib/dboss"},
 	"ports":           {Block: "host", Name: "Port range", Description: "inclusive port range dboss owns; the first port is the console"},
 	"log_level":       {Block: "host", Name: "Log level", Description: "dboss's own log level", Enum: []string{"debug", "info", "warn", "error"}},

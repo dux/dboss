@@ -12,8 +12,8 @@ import (
 )
 
 // keepPath is an allowed path as written and as resolved. The plan binds the resolved path back;
-// link recreates the written one when it was a symlink inside a hidden folder (an app folder that
-// is a symlink in the apps folder), so the command still finds it by the name it was given.
+// link recreates the written one when it was a symlink inside a hidden folder, so the command
+// still finds it by the name it was given.
 type keepPath struct {
 	written, resolved string
 }

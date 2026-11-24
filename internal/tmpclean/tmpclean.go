@@ -62,8 +62,8 @@ func (m *Module) runOnce(now time.Time) {
 // and a missing one is not an error. It returns the number of files removed and the first error
 // that stopped one from going.
 func Sweep(dir string, cutoff time.Time) (int, error) {
-	// The app directory is often a release symlink, and so is tmp itself on a shared-directory
-	// deploy; WalkDir does not follow either, so resolve the root before walking it.
+	// tmp may be a symlink to a shared directory; WalkDir does not follow it, so resolve the root
+	// before walking it.
 	root, err := filepath.EvalSymlinks(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, nil

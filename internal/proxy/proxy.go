@@ -234,8 +234,8 @@ func authorized(r *http.Request, users map[string]string) bool {
 }
 
 // serveStatic answers GET and HEAD for files under the static directory. Missing files and
-// directories fall through to the app. The directory is resolved on every request so a release
-// symlink swap is picked up immediately, and os.Root keeps the lookup inside it.
+// directories fall through to the app. The directory is opened on every request so a deploy that
+// replaces it is picked up immediately, and os.Root keeps the lookup inside it.
 func serveStatic(w http.ResponseWriter, r *http.Request, snapshot supervisor.Snapshot) bool {
 	web, ok := snapshot.WebForHost(r.Host)
 	if !ok || web.Static == "" || (r.Method != http.MethodGet && r.Method != http.MethodHead) {

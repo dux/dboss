@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 )
 
-// Destroy removes one direct entry of root. RemoveAll does not follow a symlink passed as its
-// root, so a deploy checkout behind an app symlink remains owned by the deploy system.
+// Destroy removes one direct entry of root, an app folder.
 func Destroy(root, name string) error {
 	if name == "" || name == "." || filepath.Base(name) != name || !filepath.IsLocal(name) {
 		return fmt.Errorf("invalid app name %q", name)
@@ -17,8 +16,8 @@ func Destroy(root, name string) error {
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-		return fmt.Errorf("app path %q is not a directory or symlink", path)
+	if !info.IsDir() {
+		return fmt.Errorf("app path %q is not a directory", path)
 	}
 	return os.RemoveAll(path)
 }

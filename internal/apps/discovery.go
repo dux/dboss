@@ -48,7 +48,7 @@ type App struct {
 	// when unknown (see gitSource).
 	Branch    string `json:"branch,omitempty"`
 	BranchURL string `json:"branch_url,omitempty"`
-	// GitConnected reports a checkout remote or packed release repository, even without a branch URL.
+	// GitConnected reports a checkout with a remote, even without a branch URL.
 	GitConnected bool `json:"git_connected,omitempty"`
 }
 
@@ -274,10 +274,10 @@ func loadRootApp(cfg config.Config, name string) (*App, error) {
 	return buildApp(name, cfg.Dir, *loaded.App)
 }
 
-// loadChildApp loads one entry of the apps directory. The entry path, not its symlink target,
-// is the process working directory so a target that is itself a release symlink keeps working.
+// loadChildApp loads one entry of the apps directory, which must be a real folder: deploys ship
+// into it in place, so a symlink to a release elsewhere is refused.
 func loadChildApp(cfg config.Config, name, dir string) (*App, error) {
-	info, err := os.Stat(dir)
+	info, err := os.Lstat(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -322,10 +322,10 @@ func buildApp(name, dir string, appCfg config.App) (*App, error) {
 		}
 		merge(fileEnv, values)
 	}
-	branch, branchURL, gitConnected := gitSource(dir, fileEnv)
+	branch, branchURL, gitConnected := gitSource(dir)
 	_, checkout := findGitDir(dir)
 	hooks := buildHooks(appCfg.Hooks, appCfg.Branch)
-	if _, configured := hooks["deploy"]; !configured && gitConnected && checkout {
+	if _, configured := hooks["deploy"]; !configured && gitConnected {
 		hooks["deploy"] = buildHook("deploy", config.PullHook(), appCfg.Branch)
 	}
 	lifecycle := buildLifecycle(appCfg.Lifecycle)

@@ -101,7 +101,8 @@ func TestSandboxConfinesTheCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The app folder is a link in the apps folder to a real folder elsewhere, as an app can be.
+	// The policy names the app folder through a link inside the hidden apps folder, so the launcher
+	// has to bind the target back and recreate the link.
 	link := filepath.Join(apps, "shop")
 	if err := os.Symlink(app, link); err != nil {
 		t.Fatal(err)

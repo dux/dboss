@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestDestroyRemovesDirectoryAndDoesNotFollowSymlink(t *testing.T) {
+func TestDestroyRemovesDirectoryAndRefusesSymlink(t *testing.T) {
 	root := t.TempDir()
 	plain := filepath.Join(root, "plain")
 	if err := os.MkdirAll(plain, 0o750); err != nil {
@@ -30,11 +30,8 @@ func TestDestroyRemovesDirectoryAndDoesNotFollowSymlink(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := Destroy(root, "linked"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Lstat(link); !os.IsNotExist(err) {
-		t.Fatalf("app symlink still exists: %v", err)
+	if err := Destroy(root, "linked"); err == nil {
+		t.Fatal("Destroy should refuse a symlink entry")
 	}
 	if info, err := os.Stat(target); err != nil || !info.IsDir() {
 		t.Fatalf("symlink target was removed: %v", err)

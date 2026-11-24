@@ -55,18 +55,19 @@ func TestWriteEnvReadsBackUnchanged(t *testing.T) {
 func TestDiscoverWalksAppsDirectory(t *testing.T) {
 	root := t.TempDir()
 	appsDir := filepath.Join(root, "apps")
-	realApp := filepath.Join(root, "checkouts", "real")
-	for _, dir := range []string{appsDir, realApp, filepath.Join(appsDir, "plain"), filepath.Join(appsDir, ".hidden")} {
+	elsewhere := filepath.Join(root, "checkouts", "elsewhere")
+	for _, dir := range []string{appsDir, elsewhere, filepath.Join(appsDir, "real"), filepath.Join(appsDir, "plain"), filepath.Join(appsDir, ".hidden")} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeTestFile(t, filepath.Join(realApp, config.FileName), "procfile:\n  web: ./server\n")
-	writeTestFile(t, filepath.Join(realApp, config.LocalFileName), "procfile:\n  web: ./local-server\n")
+	writeTestFile(t, filepath.Join(appsDir, "real", config.FileName), "procfile:\n  web: ./server\n")
+	writeTestFile(t, filepath.Join(appsDir, "real", config.LocalFileName), "procfile:\n  web: ./local-server\n")
 	writeTestFile(t, filepath.Join(appsDir, "plain", config.FileName), "procfile:\n  worker: ./jobs\n")
 	writeTestFile(t, filepath.Join(appsDir, ".hidden", config.FileName), "procfile:\n  web: ./server\n")
+	writeTestFile(t, filepath.Join(elsewhere, config.FileName), "procfile:\n  web: ./server\n")
 	writeTestFile(t, filepath.Join(appsDir, "stray.txt"), "")
-	if err := os.Symlink(realApp, filepath.Join(appsDir, "linked")); err != nil {
+	if err := os.Symlink(elsewhere, filepath.Join(appsDir, "linked")); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
@@ -75,14 +76,14 @@ func TestDiscoverWalksAppsDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 2 || found[0].Name != "linked" || found[1].Name != "plain" {
+	if len(found) != 2 || found[0].Name != "plain" || found[1].Name != "real" {
 		t.Fatalf("unexpected apps: %+v", found)
 	}
-	if found[0].Dir != filepath.Join(appsDir, "linked") || found[0].Commands["web"].Line != "./local-server" {
-		t.Fatalf("symlinked app should keep the link path and use the local file: %+v", found[0])
+	if found[1].Commands["web"].Line != "./local-server" {
+		t.Fatalf("app should use its local file: %+v", found[1])
 	}
-	if len(invalid) != 1 || invalid[0].(ScanError).Name != "stray.txt" {
-		t.Fatalf("expected stray.txt to be reported, got %v", invalid)
+	if len(invalid) != 2 || invalid[0].(ScanError).Name != "linked" || invalid[1].(ScanError).Name != "stray.txt" {
+		t.Fatalf("expected the symlink and stray.txt to be reported, got %v", invalid)
 	}
 }
 
@@ -123,7 +124,6 @@ func TestDiscoverAutomaticDeploy(t *testing.T) {
 		{name: "disabled", checkout: true, remote: true, hooks: "hooks:\n  deploy: {command: ./release, disabled: true}\n", command: "./release", disabled: true},
 		{name: "no remote", checkout: true},
 		{name: "no checkout"},
-		{name: "packed release", remote: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -142,8 +142,6 @@ func TestDiscoverAutomaticDeploy(t *testing.T) {
 				if tc.remote {
 					writeTestFile(t, filepath.Join(gitDir, "config"), "[remote \"origin\"]\n\turl = /srv/git/app.git\n")
 				}
-			} else if tc.remote {
-				writeTestFile(t, filepath.Join(dir, ".env"), "GIT_REPO=https://github.com/team/app.git\nGIT_BRANCH=main\n")
 			}
 			cfg, err := config.Load(path)
 			if err != nil {

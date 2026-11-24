@@ -8,20 +8,17 @@ import (
 	"strings"
 )
 
-// gitSource is the branch an app runs and that branch's page on its git host. A git checkout
-// answers from .git; connected reports its tracking remote (or origin) even without a branch page.
-// A packed release (lux-deploy) has none, so the deploy writes GIT_BRANCH and
-// GIT_REPO to its .env instead. A detached HEAD has no branch, and a remote that is not an
-// http(s) or ssh URL has no page, so either may come back empty.
-func gitSource(dir string, fileEnv map[string]string) (branch, branchURL string, connected bool) {
-	repo := ""
-	if gitDir, ok := findGitDir(dir); ok {
-		branch = headBranch(gitDir)
-		repo = remoteURL(gitDir, branch)
-	} else {
-		branch = strings.TrimSpace(fileEnv["GIT_BRANCH"])
-		repo = strings.TrimSpace(fileEnv["GIT_REPO"])
+// gitSource is the branch an app runs and that branch's page on its git host, read from the
+// checkout's .git; connected reports its tracking remote (or origin) even without a branch page.
+// A folder that is not a checkout has none. A detached HEAD has no branch, and a remote that is
+// not an http(s) or ssh URL has no page, so either may come back empty.
+func gitSource(dir string) (branch, branchURL string, connected bool) {
+	gitDir, ok := findGitDir(dir)
+	if !ok {
+		return "", "", false
 	}
+	branch = headBranch(gitDir)
+	repo := remoteURL(gitDir, branch)
 	web := repoWebURL(repo)
 	connected = repo != ""
 	if branch == "" || web == "" {

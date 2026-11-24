@@ -36,22 +36,18 @@ func TestGitSource(t *testing.T) {
 	writeTestFile(t, filepath.Join(local, ".git", "HEAD"), "ref: refs/heads/main\n")
 	writeTestFile(t, filepath.Join(local, ".git", "config"), "[remote \"origin\"]\n\turl = /srv/git/app.git\n")
 
-	release := map[string]string{"GIT_BRANCH": "master", "GIT_REPO": "https://github.com/dux/authcog.git"}
 	for _, tc := range []struct {
 		name, dir         string
-		env               map[string]string
 		branch, branchURL string
 		connected         bool
 	}{
-		{"checkout wins over env", checkout, release, "feature/x", "https://github.com/dux/dboss/tree/feature/x", true},
-		{"worktree", worktree, nil, "main", "https://github.com/dux/dboss/tree/main", true},
-		{"detached head with a remote", detached, nil, "", "", true},
-		{"local remote without a web URL", local, nil, "main", "", true},
-		{"packed release reads env", t.TempDir(), release, "master", "https://github.com/dux/authcog/tree/master", true},
-		{"branch without a repo", t.TempDir(), map[string]string{"GIT_BRANCH": "main"}, "main", "", false},
-		{"nothing known", t.TempDir(), nil, "", "", false},
+		{"checkout", checkout, "feature/x", "https://github.com/dux/dboss/tree/feature/x", true},
+		{"worktree", worktree, "main", "https://github.com/dux/dboss/tree/main", true},
+		{"detached head with a remote", detached, "", "", true},
+		{"local remote without a web URL", local, "main", "", true},
+		{"not a checkout", t.TempDir(), "", "", false},
 	} {
-		branch, branchURL, connected := gitSource(tc.dir, tc.env)
+		branch, branchURL, connected := gitSource(tc.dir)
 		if branch != tc.branch || branchURL != tc.branchURL || connected != tc.connected {
 			t.Errorf("%s: got %q %q %v, want %q %q %v", tc.name, branch, branchURL, connected, tc.branch, tc.branchURL, tc.connected)
 		}
@@ -82,7 +78,7 @@ func TestGitSourceUsesTrackingRemoteWithoutOrigin(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(gitDir, "HEAD"), "ref: refs/heads/main\n")
 	writeTestFile(t, filepath.Join(gitDir, "config"), "[remote \"upstream\"]\n\turl = git@github.com:team/app.git\n[branch \"main\"]\n\tremote = upstream\n\tmerge = refs/heads/main\n")
-	branch, page, connected := gitSource(dir, nil)
+	branch, page, connected := gitSource(dir)
 	if branch != "main" || page != "https://github.com/team/app/tree/main" || !connected {
 		t.Fatalf("git source = %q %q %v", branch, page, connected)
 	}

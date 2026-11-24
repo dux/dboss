@@ -60,10 +60,9 @@
 # --- Host --------------------------------------------------------------------
 
 # Directory whose entries are the apps. Defaults to ./apps, so a host file needs no apps key.
-# Relative paths resolve from the directory containing this file. Each entry is a symlink to
-# an app folder or a plain subfolder; the entry name is the app name and dot entries are
-# skipped. The entry path (not the symlink target) is the process working directory. Entries
-# are walked in name order.
+# Relative paths resolve from the directory containing this file. Each entry is an app folder
+# (a symlink entry is refused); the entry name is the app name and dot entries are skipped.
+# Entries are walked in name order.
 apps: ./apps
 
 # Everything dboss writes, created on first run and writable by the service user:
@@ -629,8 +628,8 @@ pages: ./public/error_pages
 
 # Permit operators to permanently stop and remove this app through the console or
 # `dboss destroy`. False hides the console action and rejects every destroy request.
-# In a host's apps directory, a plain app folder is removed recursively; a symlink entry is
-# unlinked without following its target. Single-app mode can never destroy itself.
+# In a host's apps directory, the app folder is removed recursively. Single-app mode can never
+# destroy itself.
 deletable: false
 
 # Per-app overrides of defaults.* (all optional, same semantics as above).
@@ -883,7 +882,7 @@ events:
 #   # comment
 #   export KEY=value       "export " prefix is tolerated and stripped
 #   - No variable interpolation. ${OTHER} stays literal.
-#   - .env.local should be mode 0600 and is never shipped by dboss deploy sync or lux-deploy.
+#   - .env.local should be mode 0600 and is never shipped by dboss deploy sync.
 
 # =============================================================================
 # PART 3: state files under dir/state (written by dboss, read-only for humans)

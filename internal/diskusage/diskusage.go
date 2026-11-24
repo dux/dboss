@@ -152,9 +152,9 @@ func (m *Module) release(app string) {
 // caller still gets the rest of the sum. skip leaves out one subtree, an already resolved path;
 // an empty one never matches.
 func dirBytes(dir, skip string) (int64, error) {
-	// An app entry is usually a symlink to the current release, so the root is resolved before the
-	// walk; entries below it are not, so a tmp or log symlink out of the app counts as the link
-	// itself and a shared directory is never billed to two apps.
+	// The root is resolved so it compares with the resolved skip path; entries below it are not,
+	// so a tmp or log symlink out of the app counts as the link itself and a shared directory is
+	// never billed to two apps.
 	root, err := filepath.EvalSymlinks(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, nil

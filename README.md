@@ -67,7 +67,7 @@ dboss reads them, hands every process a fixed `PORT`, proxies HTTP to the right 
 Daemon features are modules with a common lifecycle, so a new one (an ingestion sink, a security filter) plugs in at one place.
 
 dboss itself needs no containers; an app that wants Docker runs it from its procfile (see [Containers](#containers)).
-Deploys are two commands, `dboss deploy sync` and `dboss deploy git` (see [Deploying](#deploying)); lux-deploy, when you use it for releases and rollback, calls `dboss restart` at the end of a deploy.
+Deploys are two commands, `dboss deploy sync` and `dboss deploy git` (see [Deploying](#deploying)).
 The configuration reference ships in the binary: `dboss config --reference`, also embedded from `./internal/config/reference.yaml`.
 
 ## Requirements
@@ -112,7 +112,7 @@ curl -fsSL https://raw.githubusercontent.com/dux/dboss/main/install.sh | sudo sh
 * gives the whole directory to `--user`, so the runtime `dir`, the certificate cache and the generated pubsub secrets belong to the service user from the first start,
 * runs `dboss check` as the gate, then `dboss systemd --install` to write, reload and enable the unit.
 
-The user must already exist - reuse the account lux-deploy rsyncs with, so releases, app-written files and logs all have one owner and the control socket needs no group setup.
+The user must already exist - reuse the account `dboss deploy sync` connects as, so shipped files, app-written files and logs all have one owner and the control socket needs no group setup.
 The unit runs the daemon as that user with `CAP_NET_BIND_SERVICE`, so it binds `:80` and `:443` without being root.
 
 Then set `management.host`, `management.admins` and `tokens.dboss` in `/srv/dboss/dboss-server.local.yaml` (server-only, gitignored, never touched by a deploy), restart, and sign in:
@@ -656,10 +656,9 @@ a cleanup rather than waiting for the next pass.
 `dboss_app_disk_measured_timestamp_seconds`, and an app that has not been measured yet is left out
 of both instead of being published as zero.
 
-A walk of a release tree is far too slow for a page load, so the value is always the cached one.
+A walk of an app tree is far too slow for a page load, so the value is always the cached one.
 It is apparent size, what `du --apparent-size` prints: two hard links to one file count twice.
-An app entry that is a symlink to the current release measures that release, not its siblings, and
-a `tmp` or `uploads` symlink out of the app counts as the link, so a shared directory is never
+A `tmp` or `uploads` symlink out of the app counts as the link, so a shared directory is never
 billed to two apps.
 In a single-app session `dir/log` sits inside the app folder; the log store is still counted once,
 and the rest of `.dboss` (state, config history, certificates) lands in the app half.
@@ -813,7 +812,7 @@ hooks:
 A hook can also be written as the bare boolean `deploy: true`, shorthand for `git pull --ff-only` in the app folder plus `restart: true`; `git` must be on the service user's `PATH`, and a non-fast-forward update or a dirty tree fails the hook without restarting. `dboss hooks [app]` shows the resolved command.
 A Git checkout with a remote gets `deploy: true` automatically when the app file declares no `deploy` hook.
 A declared `deploy` hook replaces it, including one with `disabled: true`.
-A packed release without `.git` gets no automatic hook.
+A folder without `.git`, such as one shipped by `dboss deploy sync`, gets no automatic hook.
 
 `branch: main` in the app file pins the app's own checkout (a folder holding its own `.git`) to that branch.
 Every start outside a dev session first checks it: on any other branch or a detached HEAD, dboss runs `git stash push --include-untracked` (ignored files such as `.env` stay) and `git checkout main`, logged in the `lifecycle-branch` channel.
@@ -1286,7 +1285,7 @@ A changed `count` applies on the next restart.
 
 `deletable: true` opts an app into permanent removal through `dboss destroy <app>` or the console's **Destroy** button; the default is false.
 Destroy drains and stops the app, clears its running and maintenance state, removes its entry from the apps directory and drops it from the live host.
-A plain app folder is removed recursively; an app symlink is unlinked without following its target, which remains owned by lux-deploy.
+The app folder is removed recursively.
 Single-app mode cannot destroy itself, and retained logs, audit rows and config history continue through their normal retention.
 
 On the way to an app the proxy adds `X-Forwarded-Proto` and `X-Forwarded-Host` when they are missing; whatever Cloudflare sent is left untouched.
@@ -1331,7 +1330,8 @@ management console: https://dboss.example.com (AuthCog sign-in)
 `dboss start --login` also prints a one-time loopback sign-in link on stdout (never in the daemon log); `make demo` uses it.
 The browser tab reads `<hostname> | dboss`, so consoles of several boxes stay apart.
 It shows every app with state, uptime, memory, last activity and request rate, offers start, restart, stop and maintenance controls, and adds a typed-confirmation destroy action when the app sets `deletable: true`.
-Next to an app's name a gray `git:<branch>` label names the branch it runs and links to it on the git host: the branch and its tracking remote (or `origin`) of the checkout in its folder, or `GIT_BRANCH` and `GIT_REPO` from its `.env` for a packed release without `.git` (lux-deploy writes both).
+Next to an app's name a gray `git:<branch>` label names the branch it runs and links to it on the git host: the branch and its tracking remote (or `origin`) of the checkout in its folder.
+An app without `.git`, such as one shipped by `dboss deploy sync`, has no label.
 Git-connected apps also show **Redeploy** beside Restart, which opens a confirmation dialog with local and freshly fetched remote HEADs, commit subjects and the number of commits ahead and behind the current branch's upstream.
 Confirming runs the app's `deploy` hook immediately and shows progress, the result and the last output; cancelling leaves the app unchanged.
 Git checkouts with a remote automatically get a deploy action that pulls the current branch with `git pull --ff-only` and restarts on success; no `hooks` config is required.

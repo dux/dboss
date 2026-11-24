@@ -30,21 +30,6 @@ func TestDirBytesSumsRegularFiles(t *testing.T) {
 	}
 }
 
-func TestDirBytesFollowsASymlinkedRoot(t *testing.T) {
-	dir := t.TempDir()
-	release := filepath.Join(dir, "releases", "2026-09-21")
-	write(t, filepath.Join(release, "app.rb"), 250)
-	current := filepath.Join(dir, "current")
-	if err := os.Symlink(release, current); err != nil {
-		t.Fatal(err)
-	}
-
-	total, err := dirBytes(current, "")
-	if err != nil || total != 250 {
-		t.Fatalf("dirBytes through the release symlink = %d, %v; want 250", total, err)
-	}
-}
-
 func TestDirBytesDoesNotFollowEntrySymlinks(t *testing.T) {
 	dir := t.TempDir()
 	shared := filepath.Join(dir, "shared")

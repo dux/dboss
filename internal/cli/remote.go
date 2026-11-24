@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -85,6 +86,11 @@ func (c CLI) remote(command string, args []string) error {
 	if err != nil || request.Method == "" {
 		return err
 	}
+	if command == "stop" {
+		if stopped, err := c.stopDevSession(here, socket, request.App, opts.json); stopped || err != nil {
+			return err
+		}
+	}
 	// A start or restart waits on lifecycle.start (a build, a migration), which the daemon bounds
 	// with the step's own timeout; the default socket deadline would cut it off first.
 	if request.Method == ops.ActionStart || request.Method == ops.ActionRestart {
@@ -106,6 +112,28 @@ func (c CLI) remote(command string, args []string) error {
 		return c.printHosts(data.([]supervisor.Snapshot), request.App)
 	}
 	return c.printHuman(request.Method, data)
+}
+
+// stopDevSession ends the dev session of the folder's own app: in a dev session the app is the
+// session, so `dboss stop` stops the whole process (apps included) rather than leaving an empty
+// daemon behind. It reports false outside a dev folder, for another app, or for a socket that is
+// not the folder's own (a deployed app folder reaches the host session).
+func (c CLI) stopDevSession(here *workdir, socket, app string, jsonOutput bool) (bool, error) {
+	_, cfg, err := here.load()
+	if err != nil || !cfg.Dev() || socket != cfg.Socket || app != filepath.Base(cfg.Dir) {
+		return false, nil
+	}
+	pid, err := ctl.StopOwner(socket, cfg.Defaults.StopTimeout.Value()+10*time.Second)
+	if err != nil || pid == 0 {
+		return false, err
+	}
+	if jsonOutput {
+		encoded, _ := json.Marshal(map[string]any{"ok": true, "stopped_session": pid})
+		fmt.Fprintln(c.Out, string(encoded))
+		return true, nil
+	}
+	fmt.Fprintf(c.Out, "stopped the dev session of %s (pid %d)\n", app, pid)
+	return true, nil
 }
 
 // parseRemote turns a command line into its control request. An empty Method means the command

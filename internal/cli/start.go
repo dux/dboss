@@ -26,7 +26,8 @@ import (
 // start runs the session in the foreground. Under systemd this is the service process; on a
 // terminal every app's output is echoed with an app/proc prefix, and the apps wait for ENTER
 // after the banner so its addresses can be opened first. A dev session then restarts its app on r.
-// A dev start in a folder whose session already runs restarts that session's app instead.
+// A dev start on a terminal takes over a session already serving the folder (daemon.Build stops
+// it) and runs interactively; without a terminal it restarts that session's app instead.
 func (c CLI) start(args []string) error {
 	set := flag.NewFlagSet("start", flag.ContinueOnError)
 	set.SetOutput(c.Err)
@@ -49,8 +50,8 @@ func (c CLI) start(args []string) error {
 	}
 	info, statErr := os.Stdout.Stat()
 	terminal := statErr == nil && info.Mode()&os.ModeCharDevice != 0
-	if cfg.Dev() {
-		if handed, err := c.restartLive(cfg, *https, terminal); handed {
+	if cfg.Dev() && !terminal {
+		if handed, err := c.restartLive(cfg, *https); handed {
 			return err
 		}
 	}
@@ -106,12 +107,13 @@ func (c CLI) start(args []string) error {
 	return nil
 }
 
-// restartLive hands a dev start to the session already serving this folder: rescan, restart the
-// app, print that session's banner and return, so `dboss start -y` can run again and again (an
-// agent harness does) and always leaves the app restarted. It reports false when no session
-// answers, or when only a fresh session applies the change (--https differs, or the rescan names
-// a key that needs a restart); the start then takes the earlier session over.
-func (c CLI) restartLive(cfg config.Config, https, terminal bool) (bool, error) {
+// restartLive hands a dev start without a terminal to the session already serving this folder:
+// rescan, restart the app (start it when it is stopped), print that session's banner and return,
+// so `dboss start -y` can run again and again (an agent harness does) and always leaves the app
+// running. It reports false when no session answers, or when only a fresh session applies the
+// change (--https differs, or the rescan names a key that needs a restart); the start then takes
+// the earlier session over.
+func (c CLI) restartLive(cfg config.Config, https bool) (bool, error) {
 	probe := ctl.Client{Socket: cfg.Socket, Timeout: 5 * time.Second}
 	var live daemon.Banner
 	if err := probe.Call(ctl.Request{Method: ctl.BannerMethod}, &live); err != nil || live.HTTPS != https {
@@ -122,22 +124,25 @@ func (c CLI) restartLive(cfg config.Config, https, terminal bool) (bool, error) 
 		return false, nil
 	}
 	app := filepath.Base(cfg.Dir)
-	restartErr := ctl.Client{Socket: cfg.Socket}.Call(ctl.Request{Method: ops.ActionRestart, App: app}, nil)
+	method, verb := ops.ActionRestart, "restarted"
+	var status supervisor.Snapshot
+	if err := probe.Call(ctl.Request{Method: ops.ActionStatus, App: app}, &status); err == nil && status.State == supervisor.Stopped {
+		method, verb = ops.ActionStart, "started"
+	}
+	restartErr := ctl.Client{Socket: cfg.Socket}.Call(ctl.Request{Method: method, App: app}, nil)
 	if err := probe.Call(ctl.Request{Method: ctl.BannerMethod}, &live); err != nil {
 		return true, errors.Join(restartErr, err)
 	}
 	echo := supervisor.NewEcho(c.Out)
 	echo.Solo()
-	if !terminal {
-		echo.Plain()
-	}
+	echo.Plain()
 	for _, line := range live.Lines(echo) {
 		echo.Print(line)
 	}
 	if restartErr != nil {
-		return true, fmt.Errorf("restart %s: %w", app, restartErr)
+		return true, fmt.Errorf("%s %s: %w", method, app, restartErr)
 	}
-	echo.Print(echo.Key("dboss", "dboss") + "restarted " + app + " in the running session; `dboss logs -f` follows its output")
+	echo.Print(echo.Key("dboss", "dboss") + verb + " " + app + " in the running session; `dboss logs -f` follows its output")
 	return true, nil
 }
 

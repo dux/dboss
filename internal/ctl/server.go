@@ -60,26 +60,39 @@ type owner struct {
 
 func ownerPath(socket string) string { return strings.TrimSuffix(socket, ".sock") + ".pid" }
 
-// TakeOver stops the earlier session of the socket when its pid file still names that very
-// process, waits for it to exit (killing it after timeout; the next start reaps what it left),
-// then clears the socket like Idle. A live socket no pid file vouches for is still refused, and an
-// unreadable pid file vouches for nothing.
+// TakeOver stops the earlier session of the socket (StopOwner), then clears the socket like Idle.
+// A live socket no pid file vouches for is still refused.
 func TakeOver(path string, timeout time.Duration) error {
-	var previous owner
-	_ = fsutil.ReadJSON(ownerPath(path), &previous)
-	if previous.PID > 1 && previous.PID != os.Getpid() && same(previous) {
-		logx.Warnf("stopping the earlier session (pid %d) still serving %s", previous.PID, path)
-		if err := syscall.Kill(previous.PID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
-			return fmt.Errorf("stop the earlier session (pid %d): %w", previous.PID, err)
-		}
-		if !exited(previous, timeout) {
-			_ = syscall.Kill(previous.PID, syscall.SIGKILL)
-			if !exited(previous, 5*time.Second) {
-				return fmt.Errorf("the earlier session (pid %d) did not exit", previous.PID)
-			}
-		}
+	pid, err := StopOwner(path, timeout)
+	if err != nil {
+		return err
+	}
+	if pid != 0 {
+		logx.Warnf("stopped the earlier session (pid %d) that served %s", pid, path)
 	}
 	return Idle(path)
+}
+
+// StopOwner stops the session serving the socket when its pid file still names that very process
+// and waits for it to exit, killing it after timeout (the next start reaps what it left). It
+// returns the stopped pid, 0 when no live session is recorded; an unreadable pid file vouches for
+// nothing.
+func StopOwner(path string, timeout time.Duration) (int, error) {
+	var previous owner
+	_ = fsutil.ReadJSON(ownerPath(path), &previous)
+	if previous.PID <= 1 || previous.PID == os.Getpid() || !same(previous) {
+		return 0, nil
+	}
+	if err := syscall.Kill(previous.PID, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return 0, fmt.Errorf("stop the session (pid %d): %w", previous.PID, err)
+	}
+	if !exited(previous, timeout) {
+		_ = syscall.Kill(previous.PID, syscall.SIGKILL)
+		if !exited(previous, 5*time.Second) {
+			return 0, fmt.Errorf("the session (pid %d) did not exit", previous.PID)
+		}
+	}
+	return previous.PID, nil
 }
 
 // same reports whether the recorded process still runs.

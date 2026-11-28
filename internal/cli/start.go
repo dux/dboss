@@ -24,7 +24,7 @@ import (
 )
 
 // start runs the session in the foreground. Under systemd this is the service process; on a
-// terminal every app's output is echoed with an app/proc prefix, and the apps wait for ENTER
+// terminal every app's output is echoed with an app/proc prefix, and -w holds the apps for ENTER
 // after the banner so its addresses can be opened first. A dev session then restarts its app on r.
 // A dev start on a terminal takes over a session already serving the folder (daemon.Build stops
 // it) and runs interactively; without a terminal it restarts that session's app instead.
@@ -33,13 +33,13 @@ func (c CLI) start(args []string) error {
 	set.SetOutput(c.Err)
 	configPath := configFlag(set)
 	login := set.Bool("login", false, "print a one-time console sign-in link")
-	yes := set.Bool("y", false, "start the apps without waiting for ENTER")
+	wait := set.Bool("w", false, "wait for ENTER before starting the apps")
 	https := set.Bool("https", false, "dev session: listen on :80 and :443 with the local certificate authority instead of a free http port")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("usage: dboss start [-c path] [--login] [-y] [--https]")
+		return errors.New("usage: dboss start [-c path] [--login] [-w] [--https]")
 	}
 	cfg, err := loadHostConfig(*configPath)
 	if err != nil {
@@ -91,7 +91,7 @@ func (c CLI) start(args []string) error {
 	}
 	keys, restore := c.terminalKeys()
 	defer restore()
-	if !*yes && !c.waitForEnter(ctx, keys) {
+	if *wait && !c.waitForEnter(ctx, keys) {
 		return nil
 	}
 	session.Boot()
@@ -109,7 +109,7 @@ func (c CLI) start(args []string) error {
 
 // restartLive hands a dev start without a terminal to the session already serving this folder:
 // rescan, restart the app (start it when it is stopped), print that session's banner and return,
-// so `dboss start -y` can run again and again (an agent harness does) and always leaves the app
+// so `dboss start` can run again and again (an agent harness does) and always leaves the app
 // running. It reports false when no session answers, or when only a fresh session applies the
 // change (--https differs, or the rescan names a key that needs a restart); the start then takes
 // the earlier session over.
@@ -152,7 +152,7 @@ func (c CLI) waitForEnter(ctx context.Context, keys <-chan byte) bool {
 	if keys == nil {
 		return true
 	}
-	fmt.Fprint(c.Out, "Press ENTER to start the apps (dboss start -y skips this) ")
+	fmt.Fprint(c.Out, "Press ENTER to start the apps ")
 	// Single-key input does not echo, so the ENTER that ends the prompt line is printed here.
 	defer fmt.Fprintln(c.Out)
 	for {

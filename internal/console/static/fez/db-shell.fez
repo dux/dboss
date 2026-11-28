@@ -231,7 +231,7 @@
 {#if globalState.held}
   <div class="held-bar" role="alert">
     <svg class="icon"><use href="#i-alert"></use></svg>
-    <span>Apps are on hold: press ENTER in the terminal running dboss start.</span>
+    <span>Apps are on hold: press ENTER in the terminal running dboss start -w.</span>
   </div>
 {/if}
 

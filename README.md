@@ -335,7 +335,7 @@ Paths are relative to the config dir and the files are read at start, so a repla
 
 `dboss start` (or `dboss s`) automatically removes a stale control socket when no service is listening, prints a warning, and continues startup.
 In a dev session (an app folder) a start while the folder's session still answers hands over instead: it rescans, restarts the app through that session, prints its banner (the same addresses as on start) and exits, nonzero when the restart failed.
-So `dboss start -y` can be repeated, by hand or by an agent harness, and always leaves the app restarted.
+So `dboss start` can be repeated, by hand or by an agent harness, and always leaves the app restarted.
 It starts a fresh session instead when `--https` differs from the running one or the rescan names a key only a new session applies.
 That fresh start, like a start whose earlier session no longer answers, stops the earlier session of the same folder first: the session records its pid and process start time in `dboss.pid` next to the socket, and a new start sends it SIGTERM (SIGKILL after `stop_timeout` plus 10 seconds) and takes over, so a forgotten terminal or background run never blocks `dboss s`.
 A host session never does that and refuses while another one answers, since it would fight the systemd service; an active socket without a matching pid file blocks a dev session too, and permission errors and non-socket files are left untouched.
@@ -389,7 +389,7 @@ Binary
 Every other command talks to the running host over its control socket and accepts `--json`.
 Inside an app folder the app argument defaults to that app.
 
-On a terminal, `dboss start` opens with the dboss version and one row per process, then waits for ENTER before it starts any app:
+On a terminal, `dboss start` opens with the dboss version and one row per process, then starts the apps:
 
 ```
 dboss v113 - host /Users/me/dboss:
@@ -398,11 +398,10 @@ button/web    http://button.lvh.me
 sinatra/web   http://sinatra.lvh.me
 sinatra/job   worker
 dboss/console http://127.0.0.1:3100/login?token=...  signed in for an hour
-Press ENTER to start the apps (dboss start -y skips this)
 ```
 
-Every listener already answers at that point, so the console and each URL can be opened first; a page requested before ENTER gets the starting page, which reloads itself into the app once it is up.
-`dboss start -y` starts the apps right away, and so does a start without a terminal on stdin.
+`dboss start -w` waits for ENTER after the banner instead, so the console and each URL can be opened before any app starts; a page requested meanwhile gets the waiting page, which reloads itself until the apps are up.
+A start without a terminal on stdin never waits.
 
 Each row is keyed by the same colored `app/proc |` prefix that process logs under, so the address and the output that follows it line up:
 
@@ -419,7 +418,6 @@ dboss v113 - dev session for sinatra:
 web     | http://sinatra.lvh.me:3110
 job     | worker
 console | http://127.0.0.1:3101  open on this machine
-Press ENTER to start the apps (dboss start -y skips this)
 dboss   | press r to restart sinatra, Ctrl-C to stop
 web     | == Sinatra (v4.1.1) has taken the stage on 3107
 job     | tick
